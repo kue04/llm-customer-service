@@ -1,271 +1,271 @@
-# 本地中文客服问答 API
+# 外卖平台中文客服大模型项目
 
-这是一个基于 FastAPI、Transformers 和本地大语言模型的客服问答示例项目。
+这是一个面向个人学习和原型验证的中文外卖客服问答项目。项目当前已经完成了 FastAPI 服务、本地 Qwen 模型接入、外卖客服数据集扩展，以及可用于 LoRA/QLoRA 的 `messages` 格式训练数据准备。
 
-项目当前使用本地 `Qwen2.5-1.5B-Instruct` 模型作为生成模型，并提供一个简单的 RAG 流程：
+## 当前进度
 
-1. 用户向 `/chat/prompt` 发送问题。
-2. 系统先从本地示例知识库中检索相关 FAQ。
-3. 如果检索到相关内容，就把问题和上下文一起交给模型回答。
-4. 如果没有检索到内容，就让模型根据通用知识兜底回答，并降低置信度。
+已完成：
 
-## 当前模型
+- 使用 FastAPI 提供 `/chat/prompt` 问答接口。
+- 将原先 GPT-2 替换为本地 `Qwen2.5-1.5B-Instruct`。
+- 删除代码中的 Hugging Face Token 硬编码。
+- 本地模型通过 `local_files_only=True` 离线加载。
+- 构建外卖平台中文客服数据集，共 `500` 条。
+- 为数据补充 `category`、`intent`、`sentiment`、`entities`、`quality`、`dialogue_type` 等字段。
+- 生成 LoRA/QLoRA 常用的 `messages` 训练格式。
+- 按 `400/50/50` 切分为 train、val、test。
+- 配置 `.gitignore`，忽略 `venv/`、`local_models/`、`__pycache__/` 等本地文件。
+- 已在本地创建 Git 提交：`b8f2292 Initial takeout customer service LLM project`。
 
-默认模型路径：
+暂未完成：
 
-```text
-local_models/qwen2.5-1.5b-instruct
-```
-
-模型代码位置：
-
-```python
-MODEL_PATH = Path(__file__).resolve().parents[1] / "local_models" / "qwen2.5-1.5b-instruct"
-```
-
-这个项目不再使用 GPT-2。GPT-2 不适合中文客服场景，当前已切换为 Qwen2.5-1.5B-Instruct。
+- GitHub 远程推送。当前环境连接 GitHub 失败，报错为无法连接 `github.com:443`。
+- QLoRA 微调训练脚本。
+- 前端页面。
+- 真正的向量检索 RAG。
 
 ## 项目结构
 
 ```text
 llm-customer-service/
-├── main.py                         # FastAPI 应用入口
-├── requirements.txt                # Python 依赖
-├── README.md                       # 项目说明
+├── main.py
+├── requirements.txt
+├── README.md
+├── .gitignore
+├── data/
+│   ├── dataset_sources.md
+│   ├── takeout_customer_service_seed.jsonl
+│   └── messages/
+│       ├── takeout_sft_messages_all.jsonl
+│       ├── takeout_sft_train.jsonl
+│       ├── takeout_sft_val.jsonl
+│       └── takeout_sft_test.jsonl
 ├── local_models/
-│   └── qwen2.5-1.5b-instruct/      # 本地 Qwen 模型文件，不建议提交到 Git
+│   └── qwen2.5-1.5b-instruct/
 ├── models/
-│   └── prompt.py                   # 构造 RAG 提示词
+│   └── prompt.py
 ├── routers/
-│   └── chat.py                     # 聊天接口路由
+│   └── chat.py
 ├── schemas/
-│   └── chat_schema.py              # 请求和响应的数据结构
+│   └── chat_schema.py
+├── scripts/
+│   └── build_takeout_training_data.py
 ├── services/
-│   └── chat_service.py             # 模型加载、RAG 调用、回答生成
+│   └── chat_service.py
 └── utils/
-    └── retriever.py                # 简单本地知识库和检索逻辑
+    └── retriever.py
 ```
 
-## 环境要求
+注意：`local_models/` 是本地大模型目录，已经被 `.gitignore` 忽略，不应提交到 GitHub。
 
-建议环境：
+## 本地模型
 
-- Python 3.12
-- Windows PowerShell
-- 至少 8GB 内存
-- 本地磁盘预留 4GB 以上空间
-
-当前依赖：
+当前服务默认加载：
 
 ```text
-fastapi
-uvicorn
-transformers
-torch
-pydantic
+local_models/qwen2.5-1.5b-instruct
 ```
 
-## 安装依赖
-
-进入项目目录：
-
-```powershell
-cd D:\llm\llm-customer-service
-```
-
-创建并激活虚拟环境：
-
-```powershell
-python -m venv venv
-.\venv\Scripts\activate
-```
-
-安装依赖：
-
-```powershell
-pip install -r requirements.txt
-```
-
-## 下载本地模型
-
-如果 `local_models/qwen2.5-1.5b-instruct` 已经存在，并且里面有 `model.safetensors`，可以跳过本步骤。
-
-推荐使用 Hugging Face 镜像下载：
+如果模型不存在，可以下载：
 
 ```powershell
 $env:HF_ENDPOINT="https://hf-mirror.com"
 .\venv\Scripts\hf.exe download --max-workers 1 --local-dir .\local_models\qwen2.5-1.5b-instruct --include "*.json" --include "*.safetensors" --include "*.txt" --include "*.md" Qwen/Qwen2.5-1.5B-Instruct
 ```
 
-下载完成后，目录中应包含类似文件：
+## 安装依赖
 
-```text
-config.json
-generation_config.json
-model.safetensors
-tokenizer.json
-tokenizer_config.json
-vocab.json
+```powershell
+cd D:\llm\llm-customer-service
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
 ```
-
-其中 `model.safetensors` 大约 3GB。
 
 ## 启动服务
 
-建议使用虚拟环境中的 Python 启动，避免误用全局环境：
+建议使用虚拟环境里的 Python 启动，避免误用全局环境：
 
 ```powershell
 .\venv\Scripts\python.exe -m uvicorn main:app --reload
 ```
 
-启动成功后访问：
+访问：
 
 ```text
 http://127.0.0.1:8000
-```
-
-接口文档：
-
-```text
 http://127.0.0.1:8000/docs
-http://127.0.0.1:8000/redoc
 ```
 
-## API 使用
-
-### 根路径
-
-请求：
+## API 示例
 
 ```powershell
-curl http://127.0.0.1:8000/
+Invoke-RestMethod -Uri http://127.0.0.1:8000/chat/prompt -Method Post -ContentType "application/json" -Body '{"message":"我的外卖怎么还没到？"}'
 ```
 
-响应：
+响应格式：
 
 ```json
 {
-  "message": "Welcome to the customer service API"
-}
-```
-
-### 聊天接口
-
-接口地址：
-
-```text
-POST /chat/prompt
-```
-
-请求体：
-
-```json
-{
-  "message": "What is the capital of France?"
-}
-```
-
-PowerShell 示例：
-
-```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:8000/chat/prompt -Method Post -ContentType "application/json" -Body '{"message":"What is the capital of France?"}'
-```
-
-curl 示例：
-
-```bash
-curl -X POST "http://127.0.0.1:8000/chat/prompt" \
-  -H "accept: application/json" \
-  -H "Content-Type: application/json" \
-  -d '{"message":"What is the capital of France?"}'
-```
-
-响应示例：
-
-```json
-{
-  "reply": "The capital of France is Paris.",
+  "reply": "很抱歉让您久等了...",
   "confidence_score": 0.5
 }
 ```
 
-## 置信度说明
+## 数据集
 
-当前项目使用一个简单的规则返回置信度：
+主数据文件：
 
-- `0.95`：本地知识库检索到相关内容，模型基于检索上下文回答。
-- `0.5`：本地知识库没有命中，模型使用通用知识兜底回答。
-
-这个分数不是模型真实概率，只是当前示例项目中的业务标记。
-
-## 当前知识库
-
-知识库暂时写在 `utils/retriever.py` 中：
-
-```python
-knowledge_base = [
-    {"question": "What is your return policy?", "answer": "You can return products within 30 days."},
-    {"question": "How can I contact customer support?", "answer": "You can contact support at support@example.com."},
-]
+```text
+data/takeout_customer_service_seed.jsonl
 ```
 
-如果要做真实中文客服，可以把它替换成：
+当前规模：
 
-- JSON 文件
-- CSV/Excel FAQ
-- SQLite 数据库
-- 向量数据库
-- 企业知识库接口
+```text
+总条数：500
+单轮样本：376
+多轮样本：124
+quality=high：188
+quality=medium：312
+```
 
-## 常见问题
+字段格式：
 
-### 1. 为什么第一次启动比较慢？
+```json
+{
+  "id": "takeout_0001",
+  "source": "curated_seed",
+  "dialogue_type": "single_turn",
+  "quality": "high",
+  "question": "我的外卖怎么还没到？已经超过预计时间了。",
+  "answer": "很抱歉让您久等了...",
+  "category": "配送进度",
+  "intent": "催单",
+  "sentiment": "negative",
+  "entities": {
+    "order_status": "超时",
+    "risk": "低"
+  }
+}
+```
 
-服务启动时会加载本地 Qwen 模型。模型权重约 3GB，第一次加载需要一些时间。
+覆盖场景：
 
-### 2. 为什么不要直接运行 `uvicorn main:app --reload`？
+- 用户投诉
+- 订单支付问题
+- 优惠券和促销问题
+- 常见问答
+- 配送进度
+- 订单取消
+- 退款售后
+- 售后流程
+- 平台安全
+- 会员服务
+- 评价反馈
+- 多轮追问
 
-PowerShell 中直接运行 `uvicorn` 可能会使用全局 Python 环境。建议使用：
+## LoRA/QLoRA 训练数据
+
+训练数据目录：
+
+```text
+data/messages/
+```
+
+文件说明：
+
+```text
+takeout_sft_messages_all.jsonl   # 全量 500 条
+takeout_sft_train.jsonl          # 训练集 400 条
+takeout_sft_val.jsonl            # 验证集 50 条
+takeout_sft_test.jsonl           # 测试集 50 条
+```
+
+`messages` 格式示例：
+
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是外卖平台中文客服。回答要礼貌、准确、简洁..."
+    },
+    {
+      "role": "user",
+      "content": "我的外卖怎么还没到？已经超过预计时间了。"
+    },
+    {
+      "role": "assistant",
+      "content": "很抱歉让您久等了..."
+    }
+  ],
+  "metadata": {
+    "id": "takeout_0001",
+    "category": "配送进度",
+    "intent": "催单",
+    "sentiment": "negative",
+    "quality": "high",
+    "dialogue_type": "single_turn",
+    "entities": {
+      "order_status": "超时",
+      "risk": "低"
+    }
+  }
+}
+```
+
+生成脚本：
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn main:app --reload
+.\venv\Scripts\python.exe -B .\scripts\build_takeout_training_data.py
 ```
 
-这样可以确保使用当前项目的虚拟环境。
+## GitHub 手动提交顺序
 
-### 3. 为什么模型下载和 pip 镜像没有关系？
-
-`pip` 只负责安装 Python 包，例如 `fastapi`、`torch`、`transformers`。
-
-`Qwen2.5-1.5B-Instruct` 是模型权重，需要通过 Hugging Face 或镜像站单独下载。
-
-### 4. 是否需要 Hugging Face Token？
-
-当前模型是公开模型，通常不需要 Token。
-
-项目中不应硬编码任何 Token 或 API Key。如果之前写过 Token，建议去 Hugging Face 后台撤销并重新生成。
-
-### 5. 如果接口返回 500 怎么办？
-
-先看终端日志。常见原因：
-
-- 模型目录不存在
-- `model.safetensors` 没下载完整
-- 没有用虚拟环境启动服务
-- 内存不足导致模型加载失败
-
-可以先测试模型是否能离线加载：
+如果当前环境无法自动推送，可以在本机 PowerShell 手动执行：
 
 ```powershell
-.\venv\Scripts\python.exe -B -c "from pathlib import Path; from transformers import AutoTokenizer, AutoModelForCausalLM; p=Path('local_models/qwen2.5-1.5b-instruct'); AutoTokenizer.from_pretrained(p, local_files_only=True); AutoModelForCausalLM.from_pretrained(p, local_files_only=True); print('model ok')"
+cd D:\llm\llm-customer-service
+git status
+git remote -v
+git log --oneline -1
+git push -u origin master
 ```
 
-## 后续改进方向
+如果 GitHub 仓库默认分支希望使用 `main`，执行：
 
-- 把示例知识库改成中文 FAQ。
-- 使用向量检索替代当前的关键词匹配。
-- 增加流式输出。
-- 给模型调用增加超时、异常捕获和日志。
-- 把模型加载改成应用启动生命周期管理。
-- 增加单元测试和接口测试。
-- 增加 `.gitignore`，避免提交 `venv/` 和 `local_models/`。
+```powershell
+git branch -M main
+git push -u origin main
+```
+
+如果提示需要登录 GitHub：
+
+1. 打开 GitHub 登录账号 `kue04`。
+2. 确认仓库存在：`https://github.com/kue04/llm-customer-service`。
+3. 使用 Git Credential Manager 登录，或使用 GitHub Personal Access Token。
+4. 重新执行 `git push -u origin master` 或 `git push -u origin main`。
+
+如果远程仓库已经有内容，先不要强推。建议先执行：
+
+```powershell
+git pull --rebase origin master
+git push -u origin master
+```
+
+如果远程默认分支是 `main`，把上面的 `master` 改成 `main`。
+
+## 下一步建议
+
+优先顺序：
+
+1. 手动把当前提交推送到 GitHub。
+2. 增加 QLoRA 训练依赖，例如 `datasets`、`peft`、`trl`、`accelerate`。
+3. 编写最小 QLoRA 训练脚本，先用 500 条数据跑通流程。
+4. 编写 LoRA adapter 推理加载脚本。
+5. 将微调后的 adapter 接回 FastAPI。
+6. 再做一个简单前端页面，让用户通过网页聊天。
+7. 后续再把关键词检索升级成向量检索 RAG。
+
+当前最推荐的下一步是：先写一个最小 QLoRA 训练脚本，但不要急着追求效果，目标只是跑通“数据读取、训练、保存 adapter、加载 adapter 推理”这一整条链路。

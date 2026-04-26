@@ -1,98 +1,135 @@
-# 外卖平台中文客服数据来源渠道
+# 外卖平台中文客服数据说明
 
-真实客服对话通常包含手机号、地址、订单号、支付信息、投诉内容等隐私数据。个人学习阶段不建议直接爬取真实平台聊天记录，也不建议使用来源不明的数据包。
+本项目的数据用于学习中文客服问答、RAG、SFT、LoRA 和 QLoRA 流程。当前数据为合成数据，不来自真实外卖平台，不包含真实用户手机号、地址、订单号、支付流水号等隐私信息。
 
-## 推荐渠道
+## 当前数据文件
 
-### 1. 自建合成数据
+主数据集：
 
-最适合当前项目起步。
-
-做法：
-
-- 先整理外卖客服常见业务场景。
-- 为每个场景写标准客服回复。
-- 再扩展不同用户问法。
-- 最后转成 JSONL 或 messages 格式，用于 RAG、SFT 或 LoRA。
-
-适合场景：
-
-- 催单
-- 取消订单
-- 修改地址
-- 退款
-- 少送漏送
-- 错送
-- 餐品撒漏
-- 骑手联系不上
-- 优惠券不可用
-- 发票
-- 食品安全投诉
-- 商家休息
-- 配送费疑问
-- 会员权益
-- 恶劣天气延迟
-
-### 2. 公开中文客服/电商客服数据集
-
-这些数据不一定是外卖领域，但可以学习客服对话结构、意图分类、多轮问答和回复风格。
-
-- JDDC：京东电商客服多轮中文对话数据集。论文页：https://huggingface.co/papers/1911.09969
-- JDDC 2.0：多模态中文电商客服数据集，包含文本、图片和知识库。介绍页：https://papersgraph.com/datasets/jddc-20
-- Nexdata 多领域中文客服对话数据：覆盖电商、金融、生活服务等领域，但通常是商业授权。GitHub 介绍页：https://github.com/Nexdata-AI/80000-sets-Multi-domain-Customer-Service-Dialogue-Text-Data
-- 淘宝客服相关数据：常用于多轮客服回复选择研究，使用前需要确认下载来源和许可证。
-- ECCSQA 等电商客服数据：适合作为客服对话风格参考，但使用前要确认授权。
-
-### 3. 平台公开规则和帮助中心
-
-适合做 RAG 知识库，而不是直接做微调数据。
-
-可收集的信息类型：
-
-- 用户服务协议
-- 退款规则
-- 配送规则
-- 优惠券规则
-- 会员规则
-- 发票规则
-- 投诉处理规则
-
-注意：只整理事实规则，不要复制大段受版权保护的网页内容。
-
-### 4. 真实业务数据
-
-如果以后有自己的平台或模拟系统，可以收集真实用户咨询。
-
-必须处理：
-
-- 用户同意
-- 隐私脱敏
-- 删除手机号、地址、姓名、订单号、支付流水号
-- 删除骑手和商家个人信息
-- 标注数据来源和授权范围
-
-## 建议的数据格式
-
-当前推荐使用 JSONL，一行一条样本：
-
-```json
-{"id":"takeout_001","intent":"催单","user":"我的外卖怎么还没到？","assistant":"很抱歉让您久等了。我可以先帮您查看订单配送状态..."}
+```text
+data/takeout_customer_service_seed.jsonl
 ```
 
-后续做 LoRA/SFT 时，可以转换成 messages 格式：
+训练格式数据：
 
-```json
-{"messages":[{"role":"system","content":"你是外卖平台中文客服..."},{"role":"user","content":"我的外卖怎么还没到？"},{"role":"assistant","content":"很抱歉让您久等了..."}]}
+```text
+data/messages/takeout_sft_messages_all.jsonl
+data/messages/takeout_sft_train.jsonl
+data/messages/takeout_sft_val.jsonl
+data/messages/takeout_sft_test.jsonl
 ```
 
-## 当前项目内置数据
+生成脚本：
 
-本目录下的 `takeout_customer_service_seed.jsonl` 是一份外卖平台中文客服合成种子数据。
+```text
+scripts/build_takeout_training_data.py
+```
 
-它不是来自真实平台，不包含个人隐私，可以用于：
+## 当前数据规模
 
-- 学习数据清洗
-- 学习意图标注
-- 构建 FAQ/RAG 知识库
-- 转换为微调训练样本
-- 做前端交互演示
+```text
+主数据集：500 条
+messages 全量：500 条
+train：400 条
+val：50 条
+test：50 条
+单轮样本：376 条
+多轮样本：124 条
+quality=high：188 条
+quality=medium：312 条
+```
+
+## 主数据字段
+
+每一行是一个 JSON 对象：
+
+```json
+{
+  "id": "takeout_0001",
+  "source": "curated_seed",
+  "dialogue_type": "single_turn",
+  "quality": "high",
+  "question": "我的外卖怎么还没到？已经超过预计时间了。",
+  "answer": "很抱歉让您久等了...",
+  "category": "配送进度",
+  "intent": "催单",
+  "sentiment": "negative",
+  "entities": {
+    "order_status": "超时",
+    "risk": "低"
+  }
+}
+```
+
+字段含义：
+
+- `id`：样本编号。
+- `source`：数据来源，当前包括人工种子数据和合成扩增数据。
+- `dialogue_type`：`single_turn` 或 `multi_turn`。
+- `quality`：当前为 `high` 或 `medium`。
+- `question`：用户问题。
+- `answer`：客服回答。
+- `category`：问题大类。
+- `intent`：用户意图。
+- `sentiment`：用户情绪，当前包括 `negative`、`neutral`、`positive`。
+- `entities`：结构化实体，例如订单状态、风险等级、支付状态等。
+
+## 覆盖场景
+
+当前数据覆盖：
+
+- 配送进度
+- 订单取消
+- 退款售后
+- 用户投诉
+- 订单支付问题
+- 优惠券和促销问题
+- 常见问答
+- 订单信息修改
+- 商家问题
+- 平台安全
+- 会员服务
+- 评价反馈
+- 售后流程
+- 复杂多轮对话
+
+## 数据来源建议
+
+真实客服对话通常包含隐私，不建议直接爬取或使用来源不明的数据包。更合理的来源包括：
+
+- 自建合成数据：最适合个人学习阶段。
+- 平台公开帮助中心：适合整理成 RAG 知识库。
+- 公开中文电商客服数据：适合学习对话结构和回复风格。
+- 自有业务数据：必须获得授权，并完成隐私脱敏。
+
+可参考公开资料：
+
+- JDDC 中文电商客服多轮对话数据集：https://huggingface.co/papers/1911.09969
+- JDDC 2.0 多模态中文电商客服数据集：https://papersgraph.com/datasets/jddc-20
+- Nexdata 多领域中文客服对话数据：https://github.com/Nexdata-AI/80000-sets-Multi-domain-Customer-Service-Dialogue-Text-Data
+
+## 数据质量注意事项
+
+当前数据已经足够用于学习训练流程，但还不是生产级客服数据。
+
+后续优化方向：
+
+- 扩展到 1000 到 5000 条。
+- 增加更多真实口语表达、错别字、模糊描述和强情绪投诉。
+- 增加更多食品安全、隐私安全、支付异常等高风险样本。
+- 增加更多多轮对话。
+- 人工抽检高风险样本，避免错误承诺退款、赔偿或平台规则。
+- 统一客服话术风格：先安抚，再说明，再给操作路径。
+
+## LoRA/QLoRA 使用建议
+
+当前 `messages` 数据可以用于 SFT、LoRA 或 QLoRA 训练。第一次训练时建议目标放低：先跑通流程，而不是追求模型效果。
+
+推荐流程：
+
+1. 安装训练依赖：`datasets`、`peft`、`trl`、`accelerate`。
+2. 使用 `data/messages/takeout_sft_train.jsonl` 作为训练集。
+3. 使用 `data/messages/takeout_sft_val.jsonl` 作为验证集。
+4. 训练 LoRA adapter。
+5. 用 `data/messages/takeout_sft_test.jsonl` 做人工评估。
+6. 将 adapter 接回 FastAPI 推理服务。
