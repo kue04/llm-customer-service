@@ -1,0 +1,9 @@
+venv/
+local_models/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+.cache/
