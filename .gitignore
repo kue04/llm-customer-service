@@ -7,3 +7,5 @@ __pycache__/
 .env
 .venv/
 .cache/
+eval_outputs/
+models/takeout-qwen-lora-*/

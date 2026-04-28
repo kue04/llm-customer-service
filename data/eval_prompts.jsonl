@@ -1,0 +1,20 @@
+{"id":"identity_001","category":"角色定位","prompt":"你现在是什么客服","expected_points":["说明自己是外卖平台中文客服","语气礼貌","可以继续承接用户问题"],"must_have_keywords":["外卖","客服"]}
+{"id":"refund_complaint_001","category":"退款投诉","prompt":"我想咨询一下退款和投诉能不能同时申请","expected_points":["说明退款和投诉可以按不同入口处理或分别提交","不编造绝对平台规则","建议在订单页或官方客服渠道处理"],"must_have_keywords":["退款","投诉","订单"]}
+{"id":"cancel_after_pickup_001","category":"订单取消","prompt":"骑手已经取餐了，我还能取消吗？","expected_points":["先安抚用户","说明取餐后取消通常需要平台/商家/骑手核实","给出订单页售后或客服渠道"],"must_have_keywords":["取餐","订单","客服"]}
+{"id":"risk_offplatform_001","category":"站外交易","prompt":"骑手让我加微信转账可以吗","expected_points":["明确不建议站外转账","说明支付安全和售后风险","建议在订单页或官方渠道处理","提醒保留证据或投诉反馈"],"must_have_keywords":["不建议","订单","官方","证据"]}
+{"id":"risk_privacy_001","category":"隐私安全","prompt":"客服要我提供身份证号和银行卡号才能退款，这正常吗？","expected_points":["提醒谨慎提供敏感信息","不要在非官方渠道提交隐私信息","建议通过订单页或官方客服核实","提醒保留证据"],"must_have_keywords":["隐私","官方","证据"]}
+{"id":"food_safety_001","category":"食品安全","prompt":"我吃了一口发现食物有异味，现在肚子不舒服怎么办？","expected_points":["先安抚并建议停止食用","建议保留餐品照片订单等证据","食品安全/身体不适建议及时就医","通过官方售后或客服处理"],"must_have_keywords":["停止","证据","就医","官方"]}
+{"id":"missing_item_001","category":"少餐漏餐","prompt":"商家少放了一份餐，我该怎么处理？","expected_points":["先安抚用户","建议拍照核对订单","通过订单页申请售后或联系客服","不要承诺一定退款"],"must_have_keywords":["订单","售后","客服"]}
+{"id":"not_received_001","category":"未收到餐","prompt":"订单显示已送达，但我根本没收到","expected_points":["先安抚用户","建议查看取餐点/联系骑手","通过订单页反馈或官方客服核实","保留订单截图"],"must_have_keywords":["订单","骑手","客服"]}
+{"id":"rider_attitude_001","category":"骑手投诉","prompt":"骑手态度很差，我想投诉他","expected_points":["先安抚用户情绪","建议在订单页评价/投诉入口反馈","提醒保留沟通记录","避免攻击性表达"],"must_have_keywords":["投诉","订单","记录"]}
+{"id":"late_delivery_001","category":"配送延迟","prompt":"我的外卖已经超时半小时了，骑手也联系不上","expected_points":["先表达歉意和理解","建议查看订单配送状态","通过订单页催单或联系客服","不要编造赔付规则"],"must_have_keywords":["订单","骑手","客服"]}
+{"id":"wrong_address_001","category":"地址问题","prompt":"我地址填错了，现在还能改吗？","expected_points":["说明需看订单状态","建议尽快联系骑手或官方客服","如果已配送可能无法直接修改","不承诺一定能改"],"must_have_keywords":["订单","骑手","客服"]}
+{"id":"refund_time_001","category":"退款时效","prompt":"退款申请提交后多久能到账？","expected_points":["说明到账时间可能受支付渠道和审核影响","建议在订单页查看进度","不编造具体固定时效"],"must_have_keywords":["退款","订单","支付"]}
+{"id":"merchant_no_response_001","category":"商家问题","prompt":"商家一直不接电话，我的餐还没做怎么办？","expected_points":["先安抚用户","建议查看订单状态或催单","通过订单页/官方客服处理","不要让用户站外联系"],"must_have_keywords":["订单","商家","客服"]}
+{"id":"bad_weather_001","category":"配送异常","prompt":"下大雨外卖迟到了，我可以催骑手快点吗？","expected_points":["先理解用户等待","提醒注意骑手配送安全","建议通过订单页查看进度或联系官方客服","语气平衡"],"must_have_keywords":["安全","订单","骑手"]}
+{"id":"invoice_001","category":"发票问题","prompt":"这单外卖可以开发票吗？在哪里开？","expected_points":["建议在订单详情查看发票入口","如无入口联系商家或官方客服","不编造平台固定入口"],"must_have_keywords":["发票","订单","客服"]}
+{"id":"coupon_001","category":"优惠券","prompt":"我的优惠券没有用上，可以补吗？","expected_points":["说明优惠券通常需下单时选择","建议查看订单和优惠券规则","需要平台核实则走官方客服","不承诺补偿"],"must_have_keywords":["优惠券","订单","客服"]}
+{"id":"duplicate_payment_001","category":"支付异常","prompt":"我好像重复支付了两次，怎么办？","expected_points":["先安抚用户","建议核对支付记录和订单状态","不要泄露支付隐私","通过官方客服提交核实"],"must_have_keywords":["支付","订单","官方"]}
+{"id":"allergy_001","category":"食品安全","prompt":"我备注了不要花生，结果餐里有花生，我过敏怎么办？","expected_points":["建议立即停止食用","身体不适及时就医","保留餐品和订单证据","通过官方售后/客服处理"],"must_have_keywords":["停止","就医","证据","官方"]}
+{"id":"refund_denied_001","category":"售后争议","prompt":"我的退款被拒绝了，我不接受怎么办？","expected_points":["先安抚用户","建议查看拒绝原因","补充证据重新申诉或联系官方客服","不承诺一定通过"],"must_have_keywords":["退款","证据","客服"]}
+{"id":"out_of_scope_001","category":"边界问题","prompt":"你能帮我写一段 Python 爬虫吗？","expected_points":["说明自己主要处理外卖客服问题","可以礼貌拒绝或简短引导","不要偏离业务太远"],"must_have_keywords":["外卖","客服"]}

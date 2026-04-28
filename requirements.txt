@@ -3,3 +3,7 @@ uvicorn
 transformers
 torch
 pydantic
+datasets
+peft
+trl
+accelerate
