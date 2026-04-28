@@ -4,9 +4,9 @@
 
 ## 当前学习阶段
 
-当前阶段：FastAPI 基础接口开发。
+当前阶段：FastAPI 基础接口开发与项目结构整理。
 
-路由拆分还没有正式开始学习。下一阶段会从 `APIRouter` 的最基础概念重新开始，不默认已经掌握。
+路由拆分已经完成第一轮练习：examples 接口和 model info 接口都已经从 `main.py` 拆到独立 router。当前正在学习模型主线：`/chat/prompt` 如何检索资料、拼 prompt，并交给本地模型生成回复。
 
 ## 已完成练习
 
@@ -107,6 +107,116 @@
 
 掌握情况：已能完成 schema、service、接口调用和测试。
 
+### 6. 路由拆分
+
+练习内容：
+
+- 新建 `routers/example.py`。
+- 把 `/examples/categories`、`/examples/by-category`、`/examples/search` 从 `main.py` 拆到 `routers/example.py`。
+- 在 `main.py` 中使用 `app.include_router(example.router, prefix="/examples", tags=["examples"])` 注册。
+- 新建 `routers/info.py`。
+- 把 `/model/info` 从 `main.py` 拆到 `routers/info.py`。
+- 在 `main.py` 中使用 `app.include_router(info.router, prefix="/model", tags=["info"])` 注册。
+- 理解 router 内部路径和 `prefix` 会拼成最终访问路径。
+
+关键收获：
+
+- `APIRouter` 可以理解成“小型路由盒子”。
+- `main.py` 应该尽量只负责创建 `app` 和注册 router。
+- 子路由文件负责具体业务接口。
+- `prefix="/examples"` 加上 `@router.get("/categories")`，最终路径是 `/examples/categories`。
+- `tags` 主要影响 `/docs` 里的接口分组。
+
+掌握情况：已完成第一轮拆分，能理解 `prefix` 的作用。
+
+### 7. Service 层小重构
+
+练习内容：
+
+- 把重复的 `DATA_PATH` 提到 `services/example_service.py` 顶部。
+- 新增 `iter_examples()`，统一读取 JSONL 文件。
+- 使用 `yield json.loads(line)` 一条一条返回样本。
+- 让 `get_categories()`、`get_examples_by_category()`、`search_examples()` 复用 `iter_examples()`。
+
+关键收获：
+
+- 重构的目标是外部行为不变，内部结构更清楚。
+- `yield` 适合一条一条读取文件数据。
+- 公共读取逻辑抽出来后，后续修改数据来源只需要改一个地方。
+
+掌握情况：已完成，并通过接口测试确认行为不变。
+
+### 8. OpenAPI 错误响应说明
+
+练习内容：
+
+- 给 `/examples/by-category` 增加 `responses={404: ...}`。
+- 理解 `HTTPException` 和 `responses` 的区别。
+
+关键收获：
+
+- `HTTPException` 负责真实运行时返回 404。
+- `responses` 负责让 `/docs` 文档展示这个接口可能返回 404。
+
+掌握情况：已理解并完成。
+
+### 9. Chat 主链路理解
+
+练习内容：
+
+- 阅读 `routers/chat.py`，理解 `request.message` 来自 POST 请求体。
+- 阅读 `services/chat_service.py`，理解 `get_answer_from_rag(query)` 的两条路径。
+- 理解 `query` 只是函数内部参数名，本质上是用户输入的 message。
+- 理解 `retrieve_documents(query)` 是项目自定义检索函数，不是外部 API。
+- 理解 `documents` 非空时才会调用 `create_prompt(query, documents)`。
+- 理解 `documents=[]` 时会走兜底 prompt，并把 `confidence_score` 设为 `0.5`。
+
+关键收获：
+
+- POST 请求体字段由 Pydantic 模型决定，例如 `ChatRequest.message`。
+- `request.message` 传入函数后可以换名为 `query`。
+- `create_prompt()` 负责生成提示词，不负责生成最终回答。
+- 最终回答由 `generate_reply(prompt)` 调用本地 Qwen 模型生成。
+
+掌握情况：已能复述 `/chat/prompt` 的核心调用链。
+
+### 10. 中文关键词检索器
+
+练习内容：
+
+- 将 `utils/retriever.py` 从英文硬编码 `knowledge_base` 改为读取 `data/takeout_customer_service_seed.jsonl`。
+- 新增 `iter_knowledge_items()` 逐行读取 JSONL。
+- 给 `retrieve_documents(query, limit=3)` 增加返回数量限制。
+- 新增 `DOMAIN_KEYWORDS`，从中文用户问题中提取外卖领域关键词。
+- 将检索字段从只看 `question` 扩展为 `question`、`answer`、`category`、`intent`。
+- 从“先匹配先返回”改成“候选结果打分排序后返回前 N 条”。
+
+关键收获：
+
+- 当前检索器是关键词检索，不是向量检索。
+- `query_terms.intersection(search_terms)` 用于找用户关键词和数据关键词的交集。
+- `score = len(matched_terms)` 可以作为最简单的相关性分数。
+- 同分结果仍可能受数据顺序影响，后续可继续做字段加权排序。
+
+掌握情况：已能让“会员退款怎么办？”检索到会员退款相关中文资料。
+
+### 11. 中文 Prompt 模板与 Debug 脚本
+
+练习内容：
+
+- 将 `models/prompt.py:create_prompt()` 从英文模板改成中文客服模板。
+- 理解 `create_prompt()` 返回的是普通字符串，不是 JSON，也不是最终客服回答。
+- 新增 `scripts/debug_prompt.py`，用于调试“用户问题 -> 检索资料 -> prompt”。
+- 解决脚本从 `scripts/` 目录运行时找不到 `models` 模块的问题，使用 `sys.path.insert(...)` 加入项目根目录。
+
+关键收获：
+
+- prompt 是模型输入，不是模型输出。
+- debug prompt 可以在不加载大模型的情况下检查 RAG 上游是否正常。
+- 如果 `参考资料` 为空，说明检索器没有命中，不应该先怀疑模型。
+
+掌握情况：已能使用 `scripts/debug_prompt.py` 查看模型将收到的 prompt。
+
 ## 当前代码能力统计
 
 | 能力点 | 当前状态 | 说明 |
@@ -121,11 +231,14 @@
 | set 去重 | 已理解 | 知道和 list 的区别 |
 | HTTPException | 已入门 | 知道用它返回 404 等错误 |
 | service 层函数 | 已入门 | 能把业务逻辑放到 service |
-| router 拆分 | 未开始 | 下一阶段从零开始 |
-| Git 提交流程 | 待加强 | 需要继续练习 status、add、commit、push |
+| router 拆分 | 已入门 | 已拆分 examples 和 info router |
+| Git 提交流程 | 已入门 | 已完成 status、分批 add、cached diff、commit、push |
+| Chat 调用链路 | 已入门 | 理解 request、query、retriever、prompt、generate_reply |
+| 中文关键词检索 | 已入门 | 已能读取 JSONL 并按简单分数排序 |
+| Prompt 调试 | 已入门 | 已新增 debug prompt 脚本 |
 | LoRA 训练代码 | 看过/跑过 | 还没有作为代码能力重点练习 |
 | 前端 | 未开始 | 后续阶段学习 |
-| RAG 向量检索 | 未开始 | 后续阶段学习 |
+| RAG 向量检索 | 未开始 | 当前只有关键词检索，后续升级 |
 
 ## 仍然容易混淆的点
 
@@ -136,57 +249,39 @@
 - `Field` 放在 Pydantic 模型字段里，属于请求体或模型字段校验。
 - `HTTPException` 应该用于真实错误，不要用普通 200 响应伪装错误。
 - `response_model` 不是业务逻辑，而是接口返回结构声明和校验。
+- `prefix` 会和 router 内部路径拼接，不要重复写 `/examples/examples/...`。
+- `HTTPException` 是运行时行为，`responses={...}` 是文档说明。
+- `create_prompt()` 生成的是模型输入，不是客服回答。
+- `documents=[]` 时不会调用 `create_prompt()`，而是走兜底 prompt。
+- 当前中文检索是关键词匹配，不是真正语义理解。
 
 ## 下一阶段学习路线
 
-### 第 1 步：重新学习路由拆分
+### 第 1 步：继续优化中文检索排序
 
 目标：
 
-- 理解 `APIRouter` 是什么。
-- 新建 `routers/example.py`。
-- 把 examples 相关接口从 `main.py` 移过去。
-- 在 `main.py` 用 `app.include_router(...)` 注册。
+- 给 `intent`、`category`、`question`、`answer` 不同字段设置不同权重。
+- 让“会员退款怎么办？”更稳定地优先返回“会员退款”样本。
+- 学习为什么检索排序会影响模型回答质量。
 
-暂定练习：
-
-```text
-main.py 只负责创建 app 和注册 router
-routers/example.py 负责 /examples/categories、/examples/by-category、/examples/search
-```
-
-### 第 2 步：整理 service 层
+### 第 2 步：配置化模型与 adapter
 
 目标：
 
-- 把重复的 `DATA_PATH` 提到 `services/example_service.py` 顶部。
-- 抽一个 `iter_examples()` 或 `load_examples()` 小函数。
-- 理解“避免重复代码”不是炫技，而是减少未来改错地方。
+- 学习把硬编码路径改成配置项。
+- 例如通过环境变量控制是否启用 adapter。
+- 让 `/model/info` 返回更完整但不暴露本机绝对路径的信息。
 
-### 第 3 步：补充接口错误文档
-
-目标：
-
-- 让 `/docs` 里不再显示 `404 Undocumented`。
-- 学习 FastAPI 的 `responses={...}`。
-
-### 第 4 步：学习 Git 整理
+### 第 3 步：继续练习 Git 小提交
 
 目标：
 
-- 理解 `git status`。
-- 区分源码、数据、模型产物、缓存。
-- 学习哪些文件应该提交，哪些文件应该忽略。
+- 每完成一个小功能就查看 `git status`。
+- 学会用小 commit 保存阶段性成果。
+- 保持 GitHub 远程同步。
 
-### 第 5 步：回到模型主线
-
-目标：
-
-- 理解当前 `/chat/prompt` 如何调用模型。
-- 理解 LoRA adapter 是怎样被加载的。
-- 后续增加配置开关，例如是否启用 adapter。
-
-### 第 6 步：后续扩展
+### 第 4 步：后续扩展
 
 候选方向：
 
@@ -205,4 +300,4 @@ routers/example.py 负责 /examples/categories、/examples/by-category、/exampl
 4. Codex 做代码审查、解释错误、必要时帮你补丁。
 5. 每完成一小节，更新本文件。
 
-路由拆分部分从下一次开始重新学，不跳过概念。
+每完成一小节，及时更新本文件。

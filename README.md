@@ -14,6 +14,7 @@
 - 本地模型通过 `local_files_only=True` 离线加载。
 - 支持检测并加载本地 LoRA adapter：`models/takeout-qwen-lora-minimal`。
 - 提供 `/model/info` 接口，返回当前基础模型和 adapter 状态。
+- 将 `/model/info` 拆分到 `routers/info.py`。
 - 构建外卖平台中文客服数据集，共 `500` 条。
 - 为数据补充 `category`、`intent`、`sentiment`、`entities`、`quality`、`dialogue_type` 等字段。
 - 生成 LoRA/QLoRA 常用的 `messages` 训练格式。
@@ -21,19 +22,23 @@
 - 提供 `/examples/categories` 接口，返回数据集中所有客服分类。
 - 提供 `/examples/by-category` 接口，按分类查询样本，并支持 `limit` 参数限制。
 - 提供 `/examples/search` POST 接口，按关键词搜索问题和答案。
+- 将 examples 相关接口拆分到 `routers/example.py`。
 - 为新增接口添加 Pydantic `response_model`。
 - 为 GET 查询参数添加 `Query(default=5, ge=1, le=20)` 校验。
 - 为 POST 请求体添加 `Field(min_length=1)`、`Field(default=5, ge=1, le=20)` 校验。
 - 分类不存在时使用 `HTTPException(status_code=404)` 返回业务错误。
+- 将原英文占位检索器替换为读取中文外卖 JSONL 数据的关键词检索器。
+- 检索器支持领域关键词提取、简单打分排序和 `limit` 返回数量限制。
+- 将 `create_prompt()` 改成中文客服提示词模板。
+- 新增 `scripts/debug_prompt.py`，用于在不加载大模型时检查检索资料和最终 prompt。
 - 配置 `.gitignore`，忽略 `venv/`、`local_models/`、`__pycache__/`、`.cache/`、`eval_outputs/` 等本地文件。
 - 已在本地创建 Git 提交：`b8f2292 Initial takeout customer service LLM project`。
 
 暂未完成：
 
 - GitHub 远程推送。当前环境连接 GitHub 失败，报错为无法连接 `github.com:443`。
-- examples 接口尚未拆分到独立 router；路由部分计划从下一阶段重新学习。
 - 前端页面。
-- 真正的向量检索 RAG。
+- 真正的向量检索 RAG；当前是中文关键词检索版本。
 - 更系统的 LoRA 训练评估和模型效果对比。
 
 ## 项目结构
@@ -62,13 +67,16 @@ llm-customer-service/
 │   ├── takeout-qwen-lora-gpu-smoke/
 │   └── takeout-qwen-lora-minimal/
 ├── routers/
-│   └── chat.py
+│   ├── chat.py
+│   ├── example.py
+│   └── info.py
 ├── schemas/
 │   ├── chat_schema.py
 │   ├── example_schema.py
 │   └── info_schema.py
 ├── scripts/
 │   ├── build_takeout_training_data.py
+│   ├── debug_prompt.py
 │   ├── evaluate_lora_adapter.py
 │   ├── infer_lora_adapter.py
 │   └── train_qlora_minimal.py
@@ -140,6 +148,18 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/chat/prompt -Method Post -ContentTy
   "confidence_score": 0.5
 }
 ```
+
+当前 `/chat/prompt` 调用链路：
+
+```text
+routers/chat.py
+  -> services/chat_service.py:get_answer_from_rag()
+  -> utils/retriever.py:retrieve_documents()
+  -> models/prompt.py:create_prompt()
+  -> services/chat_service.py:generate_reply()
+```
+
+`retrieve_documents()` 当前会读取 `data/takeout_customer_service_seed.jsonl`，从 `question`、`answer`、`category`、`intent` 中进行中文关键词匹配和简单打分排序，默认返回前 `3` 条参考资料。
 
 ### 模型信息接口
 
@@ -287,6 +307,14 @@ models/takeout-qwen-lora-minimal
 
 说明：训练脚本默认 `--use-4bit auto`。如果本机有 CUDA 且安装了 `bitsandbytes`，会走 4bit QLoRA；否则会自动退回普通 LoRA，用于 CPU 环境下冒烟验证链路。
 
+调试 prompt：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\debug_prompt.py
+```
+
+该脚本只测试“用户问题 -> 检索参考资料 -> 生成 prompt”，不会加载大模型，适合排查模型回答异常时的上游输入。
+
 ## 学习记录
 
 学习进度详见：
@@ -306,8 +334,12 @@ STUDY.md
 - `set` 去重。
 - `json.loads` 转 Python dict。
 - `HTTPException` 业务错误。
+- `APIRouter` 路由拆分。
+- 中文 JSONL 关键词检索。
+- 中文客服 prompt 模板。
+- debug prompt 脚本。
 
-下一阶段从“路由拆分”重新开始，不默认你已经掌握 router。
+路由拆分已经完成第一轮：examples 接口在 `routers/example.py`，模型信息接口在 `routers/info.py`。
 
 ## GitHub 手动提交顺序
 
@@ -348,9 +380,7 @@ git push -u origin master
 
 优先学习顺序：
 
-1. 从头学习 FastAPI `APIRouter`，把 examples 相关接口从 `main.py` 拆到 `routers/example.py`。
-2. 学习 service 层小重构，把重复的 `DATA_PATH` 提到文件顶部，并抽出读取 JSONL 的小函数。
-3. 给 examples 接口补充更友好的错误信息和 OpenAPI 错误响应说明。
-4. 学习 Git 整理：确认哪些文件应该提交，哪些训练产物应该忽略。
-5. 再学习把 LoRA adapter 接入 `/chat/prompt` 的可配置开关。
-6. 后续再做前端页面和向量检索 RAG。
+1. 继续优化关键词检索排序，例如给 `intent`、`category` 和完整 query 命中更高权重。
+2. 学习把模型路径、adapter 路径和 adapter 开关配置化。
+3. 继续练习 Git 小提交，保持本地和 GitHub 同步。
+4. 后续再做前端页面和向量检索 RAG。
