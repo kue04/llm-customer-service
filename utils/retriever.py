@@ -36,6 +36,13 @@ DOMAIN_KEYWORDS = {
     "账号",
 }
 
+FIELD_WEIGHTS = {
+    "intent": 5,
+    "category": 3,
+    "question": 2,
+    "answer": 1,
+}
+
 
 def normalize_terms(text: str) -> set[str]:
     lowered = text.lower()
@@ -49,32 +56,40 @@ def normalize_terms(text: str) -> set[str]:
     return terms
 
 
+def score_knowledge_item(query: str, query_terms: set[str], item: dict) -> int:
+    query_lower = query.lower()
+    score = 0
+
+    for field_name, weight in FIELD_WEIGHTS.items():
+        field_text = item.get(field_name, "")
+        if not field_text:
+            continue
+
+        field_lower = field_text.lower()
+        field_terms = normalize_terms(field_text)
+        matched_terms = query_terms.intersection(field_terms)
+        score += len(matched_terms) * weight
+
+        if query_lower in field_lower:
+            score += weight + 2
+
+    return score
+
+
 def retrieve_documents(query: str, limit: int = 3) -> List[str]:
     query_terms = normalize_terms(query)
     candidates = []
+    seen_answers = set()
 
     for item in iter_knowledge_items():
-        search_text = " ".join(
-            [
-                item.get("question", ""),
-                item.get("answer", ""),
-                item.get("category", ""),
-                item.get("intent", ""),
-            ]
-        ).lower()
-        search_terms = normalize_terms(search_text)
-
-        matched_terms = query_terms.intersection(search_terms)
-        score = len(matched_terms)
-
-        if query.lower() in search_text:
-            score += 2
-
-        if score > 0:
+        score = score_knowledge_item(query, query_terms, item)
+        answer = item["answer"]
+        if score > 0 and answer not in seen_answers:
+            seen_answers.add(answer)
             candidates.append(
                 {
                     "score": score,
-                    "answer": item["answer"],
+                    "answer": answer,
                 }
             )
 
