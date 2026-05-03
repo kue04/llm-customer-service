@@ -35,6 +35,7 @@ def build_real_vector_index() -> list[dict]:
                 "vector": build_embedding(document["text"]),
                 "answer": document["answer"],
                 "text": document["text"],
+                "source": document["source"],
             }
         )
 
@@ -184,11 +185,17 @@ def retrieve_by_real_vector(
         if similarity < min_score:
             continue
 
+        bonus = calculate_keyword_bonus(query, item["source"])
+        final_score = similarity + bonus
+
         raw_candidates.append(
             {
-                "score": similarity,
+                "score": final_score,
+                "vector_score": similarity,
+                "keyword_bonus": bonus,
                 "answer": item["answer"],
                 "text": item["text"],
+                "source": item["source"],
             }
         )
 
@@ -212,33 +219,31 @@ def retrieve_by_real_vector(
 
     return candidates
 
-    query_vector = build_embedding(query)
-    index = get_real_vector_index()
-    candidates = []
-    seen_answers = set()
-
-    for item in index:
-        similarity = cosine_similarity(query_vector, item["vector"])
-
-        if similarity < min_score:
-            continue
-
-        if item["answer"] in seen_answers:
-            continue
-
-        if any(is_similar_answer(item["answer"], seen_answer) for seen_answer in seen_answers):
-            continue
-
-        seen_answers.add(item["answer"])
 
 
-        candidates.append(
-            {
-                "score": similarity,
-                "answer": item["answer"],
-                "text": item["text"],
-            }
-        )
 
-    candidates.sort(key=lambda item: item["score"], reverse=True)
-    return candidates[:limit]
+
+def calculate_keyword_bonus(query: str, source: dict) -> float:
+    field_weights = {
+        "intent": 0.04,
+        "category": 0.03,
+        "question": 0.02,
+        "answer": 0.01,
+    }
+    keyword_weights = {
+        "退款": 1.0,
+        "到账": 1.0,
+        "进度": 0.8,
+        "会员": 0.3,
+    }
+
+    bonus = 0.0
+
+    for field_name, field_weight in field_weights.items():
+        field_text = source.get(field_name, "")
+
+    for keyword, keyword_weight in keyword_weights.items():
+        if keyword in query and keyword in field_text:
+            bonus += field_weight * keyword_weight
+
+    return bonus
