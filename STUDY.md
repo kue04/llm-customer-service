@@ -603,3 +603,89 @@ OK：5
   - FAISS / Chroma 如何保存和检索向量
   - 关键词检索和向量检索的区别
   - hybrid search 和 rerank 为什么重要
+## 2026-05-03 学习记录：向量检索 RAG 与检索调试 API
+
+### 本节完成内容
+
+- 新增 `utils/vector_retriever.py`，从关键词检索升级到向量检索学习版本。
+- 先用 `build_toy_embedding()` 理解文本如何变成低维向量。
+- 学习 `cosine_similarity()`，理解向量检索按语义方向相似度排序。
+- 新增 toy 向量索引缓存：`build_toy_vector_index()`、`get_toy_vector_index()`。
+- 安装并使用 `sentence-transformers`。
+- 使用 `BAAI/bge-small-zh-v1.5` 将中文文本编码为 512 维真实 embedding。
+- 新增真实向量索引缓存：`get_embedding_model()`、`build_embedding()`、`build_real_vector_index()`、`get_real_vector_index()`。
+- 新增真实向量检索 `retrieve_by_real_vector()`，支持 `min_score`、答案去重和相似答案去重。
+- 新增 hybrid 排序信号：`vector_score`、`keyword_bonus`、`direction_penalty`。
+- 当前 hybrid 分数公式：`score = vector_score + keyword_bonus - direction_penalty`。
+- 新增 `scripts/evaluate_vector_retrieval.py`，用于批量评估向量检索质量。
+- 评估脚本支持 `Top1 命中`、`Top3 召回但 Top1 错误`、`未命中`、`error_type`、`notes` 和错误类型分布统计。
+- 新增 `/retrieval/search` API，供前端和 `/docs` 调试检索结果。
+- 新增 `docs/API_INTEGRATION.md` 和 `docs/FRONTEND_DESIGN.md`，为前端阶段做准备。
+
+### 关键理解
+
+- embedding 是把文本转换成数字向量，向量空间里方向相近通常代表语义相近。
+- toy embedding 适合理解机制，但不能作为真实检索方案。
+- 真实 embedding 不应在每次请求时重新给知识库计算向量，而是应该构建索引并缓存。
+- 纯向量检索能召回语义接近内容，但可能出现意图粒度相近、角色方向相反、答案重复等问题。
+- hybrid search 的目标不是替代向量检索，而是用业务可解释信号轻微纠偏。
+- RAG 优化不能只看单条 query，需要固定评估集和可重复评估脚本。
+- `Top3 召回但 Top1 错误` 表示召回到了可用资料，但排序仍需优化。
+
+### 当前接口能力
+
+新增接口：
+
+```text
+POST /retrieval/search
+```
+
+请求示例：
+
+```json
+{
+  "query": "会员退款多久到账",
+  "mode": "hybrid",
+  "limit": 3,
+  "min_score": 0.62
+}
+```
+
+返回字段包括：
+
+- `rank`
+- `score`
+- `vector_score`
+- `keyword_bonus`
+- `direction_penalty`
+- `category`
+- `intent`
+- `question`
+- `answer`
+
+### 当前评估结果
+
+当前小型向量检索评估集结果：
+
+```text
+总问题数：3
+Top1 命中：2
+Top3 召回但 Top1 错误：1
+未命中：0
+错误类型分布：
+意图粒度相近：1
+```
+
+### 当前限制
+
+- `keyword_bonus` 和 `direction_penalty` 仍是轻量规则，不是通用 reranker。
+- 当前评估集只有 3 条，不能代表整体检索质量。
+- 仍然使用 Python list + for 循环做向量相似度比较，适合 500 条知识库学习，不适合大规模生产。
+- 后续如果知识库变大，应学习 FAISS、Chroma 或 Milvus。
+
+### 下一步建议
+
+- 先做前端 RAG 检索调试台，对接 `/retrieval/search`。
+- 前端优先展示 `score`、`vector_score`、`keyword_bonus`、`direction_penalty`，帮助观察排序原因。
+- 再扩展评估集，增加食品安全、优惠券、取消退款、配送异常等更多 case。
+- 后续再学习 rerank，用更强模型对 TopK 候选重新排序。

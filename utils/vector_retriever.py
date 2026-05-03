@@ -174,6 +174,7 @@ def retrieve_by_real_vector(
     query: str,
     limit: int = 3,
     min_score: float = 0.62,
+    use_hybrid: bool = True,
 ) -> list[dict]:
     query_vector = build_embedding(query)
     index = get_real_vector_index()
@@ -185,8 +186,9 @@ def retrieve_by_real_vector(
         if similarity < min_score:
             continue
 
-        bonus = calculate_keyword_bonus(query, item["source"])
-        final_score = similarity + bonus
+        bonus = calculate_keyword_bonus(query, item["source"]) if use_hybrid else 0.0
+        penalty = calculate_direction_penalty(query, item["source"]) if use_hybrid else 0.0
+        final_score = similarity + bonus - penalty
 
         raw_candidates.append(
             {
@@ -196,6 +198,7 @@ def retrieve_by_real_vector(
                 "answer": item["answer"],
                 "text": item["text"],
                 "source": item["source"],
+                "direction_penalty": penalty,
             }
         )
 
@@ -219,6 +222,23 @@ def retrieve_by_real_vector(
 
     return candidates
 
+
+def calculate_direction_penalty(query: str, source: dict) -> float:
+    question = source.get("question", "")
+
+    user_contact_rider = "联系不上" in query and (
+        "骑手" in query or "配送员" in query
+    )
+
+    rider_contact_user = (
+        ("骑手" in question or "配送员" in question)
+        and ("联系不到我" in question or "联系不上我" in question)
+    )
+
+    if user_contact_rider and rider_contact_user:
+        return 0.08
+
+    return 0.0
 
 
 
