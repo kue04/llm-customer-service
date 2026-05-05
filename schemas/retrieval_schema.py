@@ -16,6 +16,8 @@ class RetrievalSearchRequest(BaseModel):
 class RetrievalResultItem(BaseModel):
     rank: int
     score: float
+    rerank_score: float
+    model_rerank_score: float
     vector_score: float
     keyword_bonus: float
     direction_penalty: float

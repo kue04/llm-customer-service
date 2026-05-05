@@ -27,6 +27,8 @@ def search_retrieval(request: RetrievalSearchRequest) -> RetrievalSearchResponse
             RetrievalResultItem(
                 rank=rank,
                 score=item["score"],
+                rerank_score=item["rerank_score"],
+                model_rerank_score=item["model_rerank_score"],
                 vector_score=item["vector_score"],
                 keyword_bonus=item["keyword_bonus"],
                 direction_penalty=item.get("direction_penalty", 0.0),

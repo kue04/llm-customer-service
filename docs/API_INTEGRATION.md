@@ -57,6 +57,8 @@ POST /retrieval/search
 
 - `rank`
 - `score`
+- `rerank_score`
+- `model_rerank_score`
 - `vector_score`
 - `keyword_bonus`
 - `direction_penalty`
@@ -67,9 +69,38 @@ POST /retrieval/search
 
 前端展示建议：
 
-- 把 `score` 作为主排序分。
+- 把 `rerank_score` 作为最终排序分。
+- 同时展示 `score`，用于观察 rerank 前的 vector/hybrid 分数。
+- 展示 `model_rerank_score`，用于观察 bge-reranker 对 query-candidate pair 的相关性判断。
 - 同时展示 `vector_score`、`keyword_bonus`、`direction_penalty`。
 - 展示 `category`、`intent`、`question`、`answer`，方便判断是否召回正确。
+
+### Rerank 对接状态
+
+后端检索链路内部已经接入 rerank 学习版本：
+
+```text
+vector_score
+-> score = vector_score + keyword_bonus - direction_penalty
+-> rerank_score = score + model_rerank_score * 0.01 + rule_rerank_bonus
+```
+
+当前使用：
+
+- embedding 模型：`BAAI/bge-small-zh-v1.5`
+- reranker 模型：`BAAI/bge-reranker-base`
+- 模型 rerank 权重：`model_rerank_score * 0.01`
+- 规则 rerank 示例：当 query 包含 `怎么办`，且候选意图或问题包含 `追问` 时，加 `0.02`
+
+评估脚本 `scripts/evaluate_vector_retrieval.py` 已经打印：
+
+- `rerank`
+- `model`
+- `vector`
+- `bonus`
+- `penalty`
+
+当前正式 `/retrieval/search` response model 已暴露 `rerank_score` 和 `model_rerank_score`，前端调试台可以直接展示模型 reranker 对排序的影响。
 
 ## 聊天接口
 
@@ -158,3 +189,4 @@ POST /examples/search
 - `POST /retrieval/prompt-preview`：返回最终拼接给模型的 prompt。
 - `POST /retrieval/evaluate`：触发固定评估集，返回 Top1/Top3 统计。
 - `GET /retrieval/config`：返回当前 embedding 模型、默认阈值和 hybrid 配置。
+- 在前端调试台展示 `rerank_score` 和 `model_rerank_score`，观察模型 reranker 对排序的影响。

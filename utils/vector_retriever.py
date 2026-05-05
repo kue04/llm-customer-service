@@ -1,13 +1,24 @@
 
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer,CrossEncoder
 from utils.retriever import iter_knowledge_items, is_similar_answer
 
 
 _TOY_VECTOR_INDEX: list[dict] | None = None
 
+_RERANKER_MODEL = None
+
 _EMBEDDING_MODEL = None
 
 _REAL_VECTOR_INDEX: list[dict] | None = None
+
+
+def get_reranker_model() -> CrossEncoder:
+    global _RERANKER_MODEL
+
+    if _RERANKER_MODEL is None:
+        _RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-base")
+
+    return _RERANKER_MODEL
 
 def get_toy_vector_index() -> list[dict]:
     global _TOY_VECTOR_INDEX
@@ -169,6 +180,88 @@ def retrieve_by_toy_index(query: str, limit: int = 3) -> list[dict]:
     candidates.sort(key=lambda item: item["score"], reverse=True)
     return candidates[:limit]
 
+def build_rerank_text(candidate: dict) -> str:
+    source = candidate.get("source", {})
+    parts = [
+        f"分类：{source.get('category', '')}",
+        f"意图：{source.get('intent', '')}",
+        f"问题：{source.get('question', '')}",
+        f"答案：{source.get('answer', '')}",
+    ]
+    return "\n".join(parts)
+
+
+
+def calculate_model_rerank_score(query: str, candidate: dict) -> float:
+    """Placeholder for a future model reranker.
+
+    The real implementation will compare the user query with the candidate
+    text and return a relevance score.
+    """
+    return 0.0
+
+def calculate_model_rerank_scores(
+    query: str,
+    candidates: list[dict],
+) -> list[float]:
+    """Placeholder batch interface for a future model reranker."""
+    if not candidates:
+        return []
+
+    pairs = [
+        [query, build_rerank_text(candidate)]
+        for candidate in candidates
+    ]
+
+    model = get_reranker_model()
+    scores = model.predict(pairs)
+
+    return [float(score) for score in scores]
+
+
+
+def rerank_candidates(query: str, candidates: list[dict]) -> list[dict]:
+    """Rule-based reranker for the current learning stage.
+
+    The vector/hybrid step is responsible for recalling candidates from the
+    knowledge base. This function only re-scores those recalled candidates.
+    Later it can be replaced or extended with a model reranker such as
+    bge-reranker.
+    """
+    reranked_candidates = []
+    model_rerank_scores = calculate_model_rerank_scores(query, candidates)
+    if len(model_rerank_scores) != len(candidates):
+        raise ValueError("Model rerank scores count must match candidates count.")
+
+    for index, candidate in enumerate(candidates):
+        reranked_candidate = candidate.copy()
+        model_rerank_score = model_rerank_scores[index]
+        rerank_score = candidate["score"] + model_rerank_score * 0.01
+        source = candidate.get("source", {})
+        intent = source.get("intent", "")
+        question = source.get("question", "")
+
+        # A weak rule signal: process-oriented questions often prefer
+        # follow-up style answers, but the small weight avoids overriding
+        # strong vector/hybrid evidence.
+        if "怎么办" in query and ("追问" in intent or "追问" in question):
+            rerank_score += 0.02
+
+        
+
+        reranked_candidate["rerank_score"] = rerank_score
+        reranked_candidate["model_rerank_score"] = model_rerank_score
+        reranked_candidates.append(reranked_candidate)
+        
+    reranked_candidates.sort(
+        key=lambda candidate: candidate["rerank_score"],
+        reverse=True,
+    )
+
+    return reranked_candidates
+
+
+
 
 def retrieve_by_real_vector(
     query: str,
@@ -202,7 +295,8 @@ def retrieve_by_real_vector(
             }
         )
 
-    raw_candidates.sort(key=lambda item: item["score"], reverse=True)
+    raw_candidates = rerank_candidates(query, raw_candidates)
+
 
     candidates = []
     seen_answers = set()
@@ -224,7 +318,17 @@ def retrieve_by_real_vector(
 
 
 def calculate_direction_penalty(query: str, source: dict) -> float:
+    intent = source.get("intent", "")
     question = source.get("question", "")
+
+    has_timeout = "超时" in query
+    has_cancel_intent = any(
+        word in query
+        for word in ["取消", "不想要", "不要了", "退款", "退单"]
+    )
+
+    if has_timeout and not has_cancel_intent and intent == "超时取消":
+        return 0.08
 
     user_contact_rider = "联系不上" in query and (
         "骑手" in query or "配送员" in query
@@ -255,6 +359,10 @@ def calculate_keyword_bonus(query: str, source: dict) -> float:
         "到账": 1.0,
         "进度": 0.8,
         "会员": 0.3,
+        "退回来": 1.0,
+        "退钱": 1.0,
+        "钱": 0.6,
+        "多久": 0.5,
     }
 
     bonus = 0.0
@@ -262,8 +370,8 @@ def calculate_keyword_bonus(query: str, source: dict) -> float:
     for field_name, field_weight in field_weights.items():
         field_text = source.get(field_name, "")
 
-    for keyword, keyword_weight in keyword_weights.items():
-        if keyword in query and keyword in field_text:
-            bonus += field_weight * keyword_weight
+        for keyword, keyword_weight in keyword_weights.items():
+            if keyword in query and keyword in field_text:
+                bonus += field_weight * keyword_weight
 
     return bonus

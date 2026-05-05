@@ -689,3 +689,85 @@ Top3 召回但 Top1 错误：1
 - 前端优先展示 `score`、`vector_score`、`keyword_bonus`、`direction_penalty`，帮助观察排序原因。
 - 再扩展评估集，增加食品安全、优惠券、取消退款、配送异常等更多 case。
 - 后续再学习 rerank，用更强模型对 TopK 候选重新排序。
+
+## 2026-05-05 学习记录：规则版 rerank 与 bge-reranker 精排接入
+
+### 本节完成内容
+
+- 将向量检索评估集从 3 条扩展到 12 条，覆盖退款、配送超时、骑手联系、食品安全、优惠券、取消订单、账号安全、隐私保护、地址修改和平台安全风险。
+- 修正 `calculate_keyword_bonus()` 的缩进问题，让 `intent`、`category`、`question`、`answer` 字段权重都能参与计算。
+- 给 `calculate_direction_penalty()` 增加保守客服流程规则：
+  - query 只有 `超时`，但没有 `取消`、`不想要`、`不要了`、`退款`、`退单` 时，对 `超时取消` 候选减 `0.08`。
+  - 这样 `外卖超时怎么办` 不会过早进入取消流程，而 `外卖已经超时了我不想要了` 仍然能命中 `超时取消`。
+- 新增 `rerank_candidates()`，将 rerank 层插入 vector/hybrid 之后、去重之前。
+- 新增 `rerank_score`，用于和原始 hybrid `score` 分开观察。
+- 新增规则版 rerank 弱信号：
+  - query 包含 `怎么办`，且候选 `intent` 或 `question` 包含 `追问` 时，加 `0.02`。
+- 新增 `build_rerank_text(candidate)`，把 candidate dict 转成模型 reranker 可读文本。
+- 新增 `get_reranker_model()`，加载并缓存 `BAAI/bge-reranker-base`。
+- 新增 `calculate_model_rerank_scores(query, candidates)`，使用 `CrossEncoder.predict()` 批量计算 query-candidate pair 的模型相关性分数。
+- 将 `model_rerank_score` 写入候选结果，并在评估脚本中打印 `model` 字段。
+- 将模型 rerank 分数以弱权重接入最终精排：
+
+```text
+rerank_score = score + model_rerank_score * 0.01 + rule_rerank_bonus
+```
+
+### 关键理解
+
+- vector retrieval 负责召回，rerank 负责精排。
+- reranker 不应该重新遍历整个知识库，它只处理已经召回出来的 TopK candidates。
+- embedding 检索是分别编码 query 和 document，再用向量相似度比较；cross-encoder reranker 是把 query 和 candidate text 放在一起判断相关性。
+- `score` 是 vector/hybrid 阶段的分数；`model_rerank_score` 是模型对 query-candidate pair 的相关性判断；`rerank_score` 是最终用于精排的分数。
+- 模型 reranker 分数不能无脑替代 hybrid score。`bge-reranker-base` 能给强相关候选接近 1 的分数，但也可能把语义相近、业务边界不同的候选打高分。
+- 第一次使用 `model_rerank_score * 0.05` 时，`取消订单后钱多久退回来` 被 `支付超时取消` 反超，Top1 从正确的 `退款进度` 变成排序错误。
+- 将模型权重降到 `0.01` 后，评估集恢复到 12/12 Top1 命中。这个过程说明模型 reranker 应该先作为弱精排信号接入，再逐步观察。
+- PowerShell 管道传中文给 Python stdin 时可能出现乱码，测试中文样例时可以使用 `.py` 文件、JSONL 文件或 Unicode 转义。
+
+### 当前评估结果
+
+运行命令：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_vector_retrieval.py
+```
+
+当前汇总：
+
+```text
+总问题数：12
+Top1 命中：12
+Top3 召回但 Top1 错误：0
+未命中：0
+Rerank 调整候选数：33
+```
+
+典型观察：
+
+- `会员退款多久到账`：`退款进度` 的 `model_rerank_score` 接近 1，明显高于会员退款和退款金额咨询。
+- `取消订单后钱多久退回来`：`支付超时取消` 的模型分数高于 `退款进度`，但因模型权重只有 `0.01`，最终仍保留业务主意图 `退款进度` 为 Top1。
+- `骑手让我私下转配送费可以吗`：模型认为 `骑手打赏咨询` 也高度相关，说明模型能抓语义相似，但仍需要业务信号区分平台安全风险和普通打赏咨询。
+
+### 当前限制
+
+- 当前 rerank 仍混合了规则弱信号和模型弱信号，不是最终生产级精排方案。
+- `/retrieval/search` 的正式 API schema 还没有暴露 `rerank_score` 和 `model_rerank_score`，目前主要在评估脚本中观察。
+- `BAAI/bge-reranker-base` 首次加载需要下载约 1GB 模型文件，首次运行较慢。
+- 当前向量索引仍是 Python list + for 循环，适合学习和小数据量，不适合大规模生产。
+
+### 本节掌握情况
+
+- 已理解 reranker 的输入是 query-candidate pair，而不是单独的 query 或完整 Python dict。
+- 已理解为什么模型 reranker 比 embedding 检索更适合精排，但也更慢。
+- 已理解为什么模型 reranker 只处理 TopK，而不是全库扫描。
+- 已理解 batch rerank 的输入输出顺序必须一一对应。
+- 已理解模型分数需要通过评估集校准权重，不能直接替代业务排序。
+
+### 下一步建议
+
+- 把 `/retrieval/search` 的 response schema 扩展出 `rerank_score` 和 `model_rerank_score`，让前端调试台可以观察模型精排影响。
+- 给评估脚本增加更细的对比指标：
+  - model rerank 改变 Top1 的 case 数
+  - model rerank 改好的 case 数
+  - model rerank 改坏的 case 数
+- 后续再学习 FAISS 或 Chroma，把当前 list 向量检索替换为更接近生产的向量索引。
