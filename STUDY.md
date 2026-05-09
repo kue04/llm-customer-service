@@ -771,3 +771,405 @@ Rerank 调整候选数：33
   - model rerank 改好的 case 数
   - model rerank 改坏的 case 数
 - 后续再学习 FAISS 或 Chroma，把当前 list 向量检索替换为更接近生产的向量索引。
+## 2026-05-06 学习记录：rerank 权重参数化与评估对比
+
+### 本节完成内容
+
+- 将 `rerank_score` 和 `model_rerank_score` 正式暴露到 `/retrieval/search` API response。
+- 前端调试台已经显示：
+  - `final`：最终 `rerank_score`
+  - `score`：rerank 前的 vector/hybrid 分数
+  - `model`：`model_rerank_score`
+  - `vector`、`bonus`、`penalty`：召回和 hybrid 阶段的分数拆解
+- 给 `utils/vector_retriever.py` 增加 `DEFAULT_MODEL_RERANK_WEIGHT = 0.01`。
+- 将模型 rerank 权重从写死公式改为函数参数：
+  - `retrieve_by_real_vector(..., rerank_weight=...)`
+  - `rerank_candidates(..., model_rerank_weight=...)`
+- 给评估脚本增加单权重参数：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_vector_retrieval.py --rerank-weight 0.01
+```
+
+- 给评估脚本增加多权重对比参数：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_vector_retrieval.py --compare-rerank-weights 0.01 0.03 0.05
+```
+
+- 增加 rerank Top1 影响分析：
+  - `Rerank 改变 Top1`
+  - `Rerank 提高 Top1`
+  - `Rerank 降低 Top1`
+  - `Rerank 未改变 Top1`
+  - `Rerank 改变 Top1 neutral`
+- 增加测试：
+  - 验证 API response 暴露 rerank 调试字段。
+  - 验证 `model_rerank_weight` 会真正进入 `rerank_score` 公式。
+  - 验证评估脚本会把 `rerank_weight` 传给检索函数。
+  - 验证 `--compare-rerank-weights` 能解析多组权重并输出对比表。
+
+### 当前评估结论
+
+多权重对比结果：
+
+```text
+Rerank weight comparison:
+weight  Top1  Top3Error  Miss  ChangedTop1  Improved  Worsened
+0.01    12    0          0     0            0         0
+0.03    11    1          0     1            0         1
+0.05    11    1          0     1            0         1
+```
+
+当前默认权重应保留为：
+
+```text
+DEFAULT_MODEL_RERANK_WEIGHT = 0.01
+```
+
+原因不是“数字小更安全”，而是评估集证明：
+
+- `0.01`：Top1 命中 12/12，没有带偏。
+- `0.03`：Top1 命中 11/12，带偏 1 条。
+- `0.05`：Top1 命中 11/12，带偏 1 条。
+
+带偏 case：
+
+```text
+取消订单后钱多久退回来
+```
+
+正确业务意图应是：
+
+```text
+退款进度
+```
+
+但较高权重下，reranker 会把：
+
+```text
+支付超时取消
+```
+
+推到 Top1。
+
+### 关键手算理解
+
+对于 query：
+
+```text
+取消订单后钱多久退回来
+```
+
+候选分数大致如下：
+
+```text
+退款进度      score=0.7741 model=0.8048
+支付超时取消  score=0.7727 model=0.9078
+退款金额咨询  score=0.7725 model=0.4128
+```
+
+rerank 前，`退款进度` 只比 `支付超时取消` 高：
+
+```text
+0.7741 - 0.7727 = 0.0014
+```
+
+但 `支付超时取消` 的模型分更高：
+
+```text
+0.9078 - 0.8048 = 0.1030
+```
+
+当权重为 `0.01`：
+
+```text
+0.1030 * 0.01 = 0.00103
+```
+
+还不足以超过原始领先差距 `0.0014`，所以 `退款进度` 保住 Top1。
+
+当权重为 `0.03`：
+
+```text
+0.1030 * 0.03 = 0.00309
+```
+
+已经超过原始领先差距，因此 `支付超时取消` 反超。
+
+### 本节必须掌握
+
+- `score` 是 vector/hybrid 阶段分数。
+- `model_rerank_score` 是 cross-encoder reranker 对 query-candidate pair 的语义相关性判断。
+- `rerank_score` 是最终排序分。
+- 模型语义相关性不等于业务意图正确性。
+- reranker 不能无脑加大权重；权重必须通过固定评估集校准。
+- 调参不能靠手改代码，应该通过命令行参数和评估脚本做可复现实验。
+- 对比实验要分成两种模式：
+  - 单权重详细模式：看每个 query 的 TopK 和分数拆解。
+  - 多权重对比模式：只看汇总表，快速比较参数好坏。
+
+### 当前学习进度
+
+已经完成：
+
+1. keyword retrieval baseline
+2. vector retrieval with `BAAI/bge-small-zh-v1.5`
+3. hybrid search：`score = vector_score + keyword_bonus - direction_penalty`
+4. 12 条向量检索评估集
+5. 规则版 rerank
+6. `BAAI/bge-reranker-base` cross-encoder rerank
+7. API 暴露 `rerank_score` 和 `model_rerank_score`
+8. 前端调试台显示 final/score/model/vector/bonus/penalty
+9. rerank Top1 影响分析
+10. rerank weight 参数化
+11. 多权重评估对比表
+
+下一步建议：
+
+```text
+学习 prompt preview：把检索结果如何进入最终 prompt 展示出来。
+```
+
+原因：目前我们已经能观察检索和排序，但还看不到“这些资料最终如何被拼进模型输入”。下一阶段应学习 RAG 的下游 prompt 组织。
+## 2026-05-07 学习记录：RAG Prompt Preview API
+
+### 本节完成内容
+
+- 阅读并理解了 `models/prompt.py:create_prompt(query, documents)`。
+- 明确了 `create_prompt()` 返回的是普通 prompt 字符串，不是 JSON，也不是模型最终回复。
+- 在 `schemas/retrieval_schema.py` 中新增 `PromptPreviewResponse`。
+- 在 `routers/retrieval.py` 中新增 `POST /retrieval/prompt-preview`。
+- 通过 `retrieve_by_real_vector()` 复用当前 vector/hybrid/rerank 检索链路。
+- 新增 `build_retrieval_result_item(rank, item)`，让 `/retrieval/search` 和 `/retrieval/prompt-preview` 复用同一段结果转换逻辑。
+- 新增单元测试，覆盖直接函数调用和 FastAPI HTTP 接口调用两种行为。
+
+### 当前 prompt preview 数据流
+
+```text
+POST /retrieval/prompt-preview
+-> RetrievalSearchRequest
+-> retrieve_by_real_vector(...)
+-> candidates
+-> build_retrieval_result_item(rank, item)
+-> results
+-> documents = [item["answer"], ...]
+-> create_prompt(query, documents)
+-> PromptPreviewResponse
+```
+
+### 本节关键概念
+
+- `candidates` 是 `retrieve_by_real_vector()` 返回的后端内部检索结果。
+- `results` 是根据 `candidates` 整理出来的对外 API 返回结果。
+- 一个 `RetrievalResultItem` 表示一条检索结果。
+- `results: list[RetrievalResultItem]` 表示返回给前端的多条检索结果。
+- 使用 `source = item["source"]`，是因为 `category`、`intent`、`question` 位于嵌套的 `source` 字典中。
+- `patch()` 可以在测试期间临时替换真实函数。本项目中用它避免在单元测试里加载 embedding 和 reranker 模型。
+- 直接函数测试可以调用 `preview_prompt(request)`，检查 Python 对象。
+- `TestClient` 测试会向 `/retrieval/prompt-preview` 发送 HTTP JSON，并检查 HTTP 响应 JSON。
+
+### 验证命令
+
+```powershell
+.\venv\Scripts\python.exe -B -m unittest tests.test_retrieval_api
+```
+
+预期结果：
+
+```text
+Ran 3 tests
+OK
+```
+
+完整后端测试命令：
+
+```powershell
+.\venv\Scripts\python.exe -B -m unittest discover tests
+```
+
+预期结果：
+
+```text
+Ran 10 tests
+OK
+```
+
+### 为什么这对 RAG 调试重要
+
+在这一步之前，前后端调试链路已经能展示检索分数和 rerank 分数，但还看不到最终送给生成模型的 prompt。Prompt preview 补上了这个可观测性缺口：
+
+```text
+retrieval quality
+-> rerank order
+-> prompt construction
+-> model generation
+```
+
+这样可以更容易判断一次错误回答到底来自检索错误、重排错误，还是 prompt 组织方式不合理。
+
+### 下一步建议
+
+把 `/retrieval/prompt-preview` 接到 `D:\llm\front` 的前端调试台中，让页面同时展示检索分数和最终 prompt 文本。
+## 2026-05-08 学习记录：RAG 回答可追溯与 grounding 初步评估
+
+### 本阶段完成内容
+
+- 后端 `/chat/prompt` 已经返回 `retrieved_documents`，客服回复可以带上本次使用的参考资料。
+- 前端客服回复下方已经能显示“本次参考资料”，方便对照模型回答是否来自检索证据。
+- 正式生成链路已经改为复用 `retrieve_rag_documents()`，它内部继续走 `retrieve_by_real_vector()` 的 hybrid 和 rerank 检索链路。
+- 新增 `scripts/evaluate_chat_grounding.py`，用于学习“回答是否被资料支撑”的最小评估脚本。
+- 新增 `find_risky_promises(reply)`，先用规则识别客服回答里的高风险承诺词。
+- 新增 `build_grounding_report(query, retrieved_documents, reply)`，把用户问题、参考资料、客服回复和风险判断拼成报告。
+- 新增 `tests/test_chat_api.py` 和 `tests/test_evaluate_chat_grounding.py`，锁住聊天接口返回证据和 grounding 评估函数行为。
+
+### 当前学习进度统计
+
+已经完成的主线能力：
+
+1. keyword retrieval baseline：理解最朴素的关键词召回。
+2. vector retrieval：使用 `BAAI/bge-small-zh-v1.5` 做中文语义召回。
+3. hybrid search：理解 `score = vector_score + keyword_bonus - direction_penalty`。
+4. retrieval evaluation：用固定评估集看 Top1、Top3 和 miss。
+5. rerank：接入 `BAAI/bge-reranker-base`，并用权重实验确定默认 `0.01` 更稳。
+6. retrieval observability：前端显示 final、score、model、vector、bonus、penalty。
+7. prompt preview：通过 `/retrieval/prompt-preview` 查看检索资料如何进入最终 prompt。
+8. RAG evidence：通过 `/chat/prompt` 返回 `retrieved_documents`，让最终客服回复可追溯。
+9. grounding 初步评估：开始从“检索准不准”进入“回答有没有被资料支撑”。
+
+### 本阶段重点要掌握
+
+- `candidates`：检索器内部返回的候选结果，包含 `score`、`rerank_score`、`source`、`answer` 等内部字段。
+- `documents`：传给 `create_prompt(query, documents)` 的参考资料列表，通常只保留答案正文。
+- `retrieved_documents`：聊天接口返回给前端的参考资料，用来让用户或开发者对照模型回复。
+- `results`：对外 API 返回的结构化检索结果列表，每一项是一个 `RetrievalResultItem`。
+- `prompt preview` 解决的是“模型到底看到了什么输入”。
+- `RAG evidence` 解决的是“最终回答引用了哪些资料”。
+- `groundedness` 关注回答是否被资料支撑，不等于回答是否好用。
+- `usefulness` 关注回答是否真正解决用户问题，不等于资料是否完全支撑。
+- `patch()` 适合在单元测试中替换重模型、网络、数据库等慢依赖。
+- `TestClient` 适合不启动服务也验证 FastAPI HTTP 层结构。
+
+### 已验证命令
+
+```powershell
+.\venv\Scripts\python.exe -B -m unittest discover tests
+```
+
+当前验证结果：
+
+```text
+Ran 15 tests
+OK
+```
+
+前端 evidence 展示阶段也已经验证过：
+
+```powershell
+npm run build
+```
+
+### 下一步建议
+
+下一步不要急着做复杂自动评分。建议继续把 `scripts/evaluate_chat_grounding.py` 从“单条固定样例”升级成“小型固定评估集”：
+
+1. 定义 3 到 5 条客服回复样例。
+2. 每条样例包含 `query`、`retrieved_documents`、`reply`。
+3. 脚本循环输出每条的 grounding report。
+4. 先用规则识别高风险承诺词和是否需要人工复核。
+5. 再讨论规则评估的局限，以及什么时候需要 LLM-as-judge。
+
+## 2026-05-09 学习记录：本地 LLM-as-Judge 与评分质量约束
+
+### 本阶段完成内容
+
+- 把 `scripts/evaluate_chat_grounding.py` 从人工观察模板推进到本地 LLM-as-judge 流程。
+- 新增 `build_judge_prompt(report)`，让模型根据用户问题、参考资料和客服回复输出结构化 JSON。
+- 新增 `local_judge_provider(prompt)`，复用本地 Qwen 生成 judge 结果。
+- 新增 `parse_judge_response(text)`，把 judge 的 JSON 文本解析成 Python 字典。
+- 新增 `apply_judge_result(report, judge_result)`，把 judge 评分写回 `manual_judgment`。
+- 新增 `--use-local-judge` 和 `--show-judge-response`，可以观察本地 Qwen 实际输出。
+- 优化 judge prompt，避免 `risk_notes` 把“参考资料里有但客服没提”的内容误判成风险。
+- 对“可以吗/能不能”类问题增加直接回答要求：必须明确回答“可以/不建议/需要平台核实”。
+- 新增硬校验：`reason` 不能为空，否则 `parse_judge_response()` 抛出 `ValueError`。
+
+### 本阶段关键理解
+
+LLM-as-judge 不是在做简单关键词匹配，而是在做语义判断。它主要判断：
+
+1. `direct_answer`：客服回复有没有正面回答用户问题。
+2. `grounded`：客服回复里的关键说法能不能被参考资料支撑。
+3. `useful`：客服回复有没有给用户安全、可执行的下一步。
+4. `risk_notes`：客服回复自身是否存在未被资料支撑、过度承诺或误导用户的内容。
+5. `reason`：为什么给出这个判断。
+
+### 为什么当前评分不完全准确是正常的
+
+- 本地 Qwen 是一个生成模型，不是专门训练过的评测器。
+- judge prompt 还在校准阶段，规则越含糊，评分越容易漂移。
+- RAG 回复本身每次可能不同，judge 输入变了，评分也会变。
+- 小模型对“完整性”和“有用性”的边界不一定稳定。
+- 所以当前阶段的目标不是追求 100% 准确，而是学会搭建可观测、可校准、可验证的评估链路。
+
+### Judge 模型选择建议
+
+学习阶段可以继续使用本地 Qwen：
+
+- 优点：本地可跑、成本低、方便反复调 prompt。
+- 缺点：判断稳定性和严格性有限，偶尔会漏填 `reason` 或给出偏松/偏严的评分。
+
+更正式的评估可以考虑更强、更稳定的 judge 模型，但无论用哪个模型，都需要：
+
+- 固定评估集。
+- 明确评分 rubric。
+- 保存原始 judge response。
+- 做 JSON 解析和字段校验。
+- 抽样人工复核，校准 judge prompt。
+
+### 当前学习进度统计
+
+已经完成的能力链路：
+
+1. 关键词检索 baseline。
+2. 中文向量检索。
+3. hybrid search 打分。
+4. 固定检索评估集。
+5. reranker 接入和权重实验。
+6. 检索分数可观测。
+7. prompt preview。
+8. chat evidence 展示。
+9. grounding report。
+10. 固定 RAG 回复评估集。
+11. LLM-as-judge prompt。
+12. 本地 Qwen judge provider。
+13. judge JSON 解析和结果写回。
+14. judge 输出非空 reason 校验。
+
+### 已验证命令
+
+```powershell
+.\venv\Scripts\python.exe -B -m unittest tests.test_evaluate_chat_grounding
+.\venv\Scripts\python.exe -B -m unittest discover tests
+```
+
+验证结果：
+
+```text
+Ran 18 tests in tests.test_evaluate_chat_grounding
+OK
+
+Ran 30 tests in unittest discover tests
+OK
+```
+
+### 下一步建议
+
+继续做 judge 失败处理。当前 `parse_judge_response()` 已经能识别坏输出，但一旦识别失败，主流程会抛异常中断。下一步应该让 report 保留：
+
+```text
+raw_judge_response
+judge_error
+manual_judgment
+```
+
+这样你会学到真实 LLM 应用工程里的一个重点：模型输出永远可能不稳定，工程系统必须保留证据、暴露错误、允许人工复核。
