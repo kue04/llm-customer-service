@@ -1,4 +1,6 @@
+import json
 import sys
+import tempfile
 import types
 import unittest
 
@@ -14,6 +16,8 @@ from scripts.evaluate_chat_grounding import (
     local_judge_provider,
     parse_judge_response,
     parse_args,
+    save_reports_to_file,
+    summarize_grounding_reports,
 )
 
 
@@ -77,6 +81,24 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
             },
         )
 
+    def test_build_grounding_report_includes_retrieval_metadata(self) -> None:
+        retrieved_items = [
+            {
+                "rank": 1,
+                "intent": "食品安全投诉",
+                "vector_score": 0.82,
+            }
+        ]
+
+        report = build_grounding_report(
+            query="餐品有异物可以赔吗",
+            retrieved_documents=["请停止食用并提交食品安全投诉。"],
+            reply="可以申请售后核实赔付，请先保留证据。",
+            retrieved_items=retrieved_items,
+        )
+
+        self.assertEqual(report["retrieved_items"], retrieved_items)
+
     def test_build_judge_prompt_includes_report_and_json_schema(self) -> None:
         report = build_grounding_report(
             query="骑手让我私下转配送费可以吗",
@@ -106,6 +128,9 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
             prompt,
         )
         self.assertIn("reason 必须填写，不能为空", prompt)
+        self.assertIn("即使三个评分都是 yes，也必须说明", prompt)
+        self.assertIn('"reason": "必须用一句中文解释评分理由，不能留空"', prompt)
+        self.assertNotIn('"reason": ""', prompt)
         self.assertIn(
             "回复只给泛泛建议，没有回答核心问题",
             prompt,
@@ -125,6 +150,11 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
         args = parse_args(["--show-judge-response"])
 
         self.assertEqual(args.show_judge_response, True)
+
+    def test_parse_args_supports_save_report(self) -> None:
+        args = parse_args(["--save-report"])
+
+        self.assertEqual(args.save_report, True)
 
     def test_parse_judge_response_returns_structured_result(self) -> None:
         text = """
@@ -227,9 +257,33 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
             '"direct_answer": "partial"',
             judged_report["raw_judge_response"],
         )
+        self.assertEqual(judged_report["judge_status"], "succeeded")
+        self.assertEqual(judged_report["judge_error"], "")
         self.assertEqual(judged_report["manual_judgment"]["direct_answer"], "partial")
         self.assertEqual(judged_report["manual_judgment"]["grounded"], "partial")
         self.assertEqual(judged_report["manual_judgment"]["useful"], "partial")
+
+    def test_judge_grounding_report_records_parse_error(self) -> None:
+        bad_responses = [
+            "not json",
+            '{"direct_answer": "yes", "grounded": "yes"}',
+            '{"direct_answer": "mostly", "grounded": "yes", "useful": "yes", "risk_notes": "", "reason": "invalid"}',
+            '{"direct_answer": "yes", "grounded": "yes", "useful": "yes", "risk_notes": "", "reason": "   "}',
+        ]
+        for response in bad_responses:
+            with self.subTest(response=response):
+                report = build_grounding_report(
+                    query="refund time",
+                    retrieved_documents=["refunds return to original payment"],
+                    reply="usually returns to original payment",
+                )
+
+                judged_report = judge_grounding_report(report, lambda prompt: response)
+
+                self.assertEqual(judged_report["raw_judge_response"], response)
+                self.assertEqual(judged_report["judge_status"], "failed")
+                self.assertIn("judge_error", judged_report)
+                self.assertEqual(judged_report["manual_judgment"]["direct_answer"], "")
 
     def test_judge_grounding_reports_updates_each_report(self) -> None:
         reports = [
@@ -285,9 +339,109 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
         self.assertEqual(calls, ["judge prompt"])
         self.assertEqual(result, '{"direct_answer": "yes"}')
 
-    def test_evaluation_queries_have_three_to_five_items(self) -> None:
-        self.assertGreaterEqual(len(EVALUATION_QUERIES), 3)
-        self.assertLessEqual(len(EVALUATION_QUERIES), 5)
+    def test_evaluation_queries_have_eight_to_twelve_items(self) -> None:
+        self.assertGreaterEqual(len(EVALUATION_QUERIES), 8)
+        self.assertLessEqual(len(EVALUATION_QUERIES), 12)
+
+    def test_summarize_grounding_reports_counts_status_and_scores(self) -> None:
+        succeeded_report = build_grounding_report(
+            query="refund time",
+            retrieved_documents=["refunds return to original payment"],
+            reply="usually returns to original payment",
+        )
+        succeeded_report["judge_status"] = "succeeded"
+        succeeded_report["manual_judgment"] = {
+            "direct_answer": "yes",
+            "grounded": "partial",
+            "useful": "no",
+            "notes": "checked",
+        }
+
+        failed_report = build_grounding_report(
+            query="food issue",
+            retrieved_documents=["keep evidence and submit after-sales request"],
+            reply="platform will compensate",
+        )
+        failed_report["judge_status"] = "failed"
+        failed_report["needs_manual_review"] = True
+
+        not_run_report = build_grounding_report(
+            query="delivery delay",
+            retrieved_documents=["check order page"],
+            reply="check order page",
+        )
+
+        summary = summarize_grounding_reports([
+            succeeded_report,
+            failed_report,
+            not_run_report,
+        ])
+
+        self.assertEqual(summary["total"], 3)
+        self.assertEqual(summary["manual_review_count"], 1)
+        self.assertEqual(
+            summary["judge_status_counts"],
+            {
+                "succeeded": 1,
+                "failed": 1,
+                "not_run": 1,
+            },
+        )
+        self.assertEqual(
+            summary["judgment_counts"]["direct_answer"],
+            {
+                "yes": 1,
+                "partial": 0,
+                "no": 0,
+                "empty": 2,
+            },
+        )
+        self.assertEqual(
+            summary["judgment_counts"]["grounded"],
+            {
+                "yes": 0,
+                "partial": 1,
+                "no": 0,
+                "empty": 2,
+            },
+        )
+        self.assertEqual(
+            summary["judgment_counts"]["useful"],
+            {
+                "yes": 0,
+                "partial": 0,
+                "no": 1,
+                "empty": 2,
+            },
+        )
+
+    def test_save_reports_to_file_writes_complete_json(self) -> None:
+        reports = [
+            build_grounding_report(
+                query="refund time",
+                retrieved_documents=["refunds return to original payment"],
+                reply="usually returns to original payment",
+            )
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = save_reports_to_file(
+                reports=reports,
+                output_dir=temp_dir,
+                use_local_judge=True,
+            )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["script"], "scripts/evaluate_chat_grounding.py")
+        self.assertEqual(payload["use_local_judge"], True)
+        self.assertEqual(payload["report_count"], 1)
+        self.assertEqual(payload["summary"]["total"], 1)
+        self.assertEqual(payload["summary"]["judge_status_counts"]["not_run"], 1)
+        self.assertEqual(payload["reports"][0]["query"], "refund time")
+        self.assertEqual(payload["reports"][0]["judge_status"], "not_run")
+        self.assertIn("raw_judge_response", payload["reports"][0])
+        self.assertIn("judge_error", payload["reports"][0])
+        self.assertIn("retrieved_items", payload["reports"][0])
 
     def test_build_grounding_reports_from_rag_uses_answer_provider(self) -> None:
         calls = []
@@ -297,6 +451,7 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
             return {
                 "reply": f"{query} 的客服回复",
                 "retrieved_documents": [f"{query} 的参考资料"],
+                "retrieved_items": [{"intent": f"{query} intent"}],
             }
 
         reports = build_grounding_reports_from_rag(
@@ -309,6 +464,7 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
         self.assertEqual(reports[0]["query"], "退款多久到账")
         self.assertEqual(reports[0]["reply"], "退款多久到账 的客服回复")
         self.assertEqual(reports[0]["retrieved_document_count"], 1)
+        self.assertEqual(reports[0]["retrieved_items"], [{"intent": "退款多久到账 intent"}])
 
 
 if __name__ == "__main__":

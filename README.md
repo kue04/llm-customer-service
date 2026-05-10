@@ -33,13 +33,18 @@
 - 新增 `scripts/debug_prompt.py`，用于在不加载大模型时检查检索资料和最终 prompt。
 - 配置 `.gitignore`，忽略 `venv/`、`local_models/`、`__pycache__/`、`.cache/`、`eval_outputs/` 等本地文件。
 - 已在本地创建 Git 提交：`b8f2292 Initial takeout customer service LLM project`。
+- 已接入向量检索、hybrid search、bge reranker 和 FAISS 持久化索引。
+- 已提供 `/retrieval/search` 和 `/retrieval/prompt-preview` 调试接口。
+- `/chat/prompt` 已返回 `retrieved_documents` 和 `retrieved_items`，支持观察最终回复使用了哪些检索证据。
+- 已新增 chat grounding 评估脚本和 bad case 分析脚本。
+- 已新增高频问题 reply rules，对私下转账、优惠券不可用、骑手联系不上、餐洒售后等场景做工程兜底。
 
-暂未完成：
+暂未完成或后续继续完善：
 
 - GitHub 远程推送。当前环境连接 GitHub 失败，报错为无法连接 `github.com:443`。
-- 前端页面。
-- 真正的向量检索 RAG；当前是中文关键词检索版本。
+- 更系统的 RAG 配置化和实验参数记录。
 - 更系统的 LoRA 训练评估和模型效果对比。
+- 更大规模的知识库和更接近生产环境的评估集。
 
 ## 项目结构
 
@@ -154,12 +159,69 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/chat/prompt -Method Post -ContentTy
 ```text
 routers/chat.py
   -> services/chat_service.py:get_answer_from_rag()
-  -> utils/retriever.py:retrieve_documents()
+  -> utils/vector_retriever.py:retrieve_rag_items()
   -> models/prompt.py:create_prompt()
   -> services/chat_service.py:generate_reply()
+  -> services/reply_rules.py:apply_reply_rules()
 ```
 
-`retrieve_documents()` 当前会读取 `data/takeout_customer_service_seed.jsonl`，从 `question`、`answer`、`category`、`intent` 中进行中文关键词匹配和简单打分排序，默认返回前 `3` 条参考资料。
+当前 RAG 检索会读取 `data/takeout_customer_service_seed.jsonl`，使用 `BAAI/bge-small-zh-v1.5` 生成向量，通过 FAISS 检索相似知识库资料，再叠加 hybrid 规则和 bge reranker 进行排序，默认返回前 `3` 条参考资料。
+
+聊天响应现在包含：
+
+```json
+{
+  "reply": "客服回答文本",
+  "confidence_score": 0.95,
+  "retrieved_documents": ["进入 prompt 的参考资料文本"],
+  "retrieved_items": [
+    {
+      "rank": 1,
+      "category": "售后流程",
+      "intent": "餐品撒漏售后",
+      "question": "餐洒了怎么申请售后？",
+      "score": 0.9283,
+      "vector_score": 0.9283,
+      "rerank_score": 0.9362
+    }
+  ]
+}
+```
+
+## RAG 调试与评估
+
+检索调试：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_vector_retrieval.py
+```
+
+生成 chat grounding 报告：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_chat_grounding.py --use-local-judge --save-report
+```
+
+分析 bad case：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\analyze_grounding_report.py reports\chat_grounding\新报告.json
+```
+
+查看全部 case：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\analyze_grounding_report.py reports\chat_grounding\新报告.json --show-all
+```
+
+FAISS 持久化文件：
+
+```text
+data/faiss_store/real_vector.index
+data/faiss_store/real_vector_docs.json
+```
+
+FAISS 保存的是知识库向量索引，不是用户问题缓存，也不是模型回复缓存。知识库变化、索引数量不匹配或向量维度不匹配时会自动重建。
 
 ### 模型信息接口
 

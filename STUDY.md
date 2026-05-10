@@ -931,6 +931,163 @@ rerank 前，`退款进度` 只比 `支付超时取消` 高：
 学习 prompt preview：把检索结果如何进入最终 prompt 展示出来。
 ```
 
+## 2026-05-10 学习记录：FAISS 持久化、Grounding 可观测性与 Bad Case 分析
+
+### 本阶段完成内容
+
+- 将真实向量检索从内存 list 扫描升级为 FAISS `IndexFlatIP`。
+- 将 FAISS 索引和对应文档持久化到 `data/faiss_store/`。
+- 增加 FAISS store 兼容性检查，避免知识库变化后继续使用旧索引。
+- 修复测试污染真实 FAISS 索引导致的维度不匹配问题。
+- 将 `generate_reply()` 显式设置为确定性生成：
+
+```python
+do_sample=False
+```
+
+- 将 chat grounding 评估集扩展到 10 条，覆盖退款、超时、食品安全、私下转账、优惠券、商家拒绝退款、骑手联系不上、隐私、餐洒售后等场景。
+- 让 `/chat/prompt` 和 grounding report 同时返回：
+  - `retrieved_documents`
+  - `retrieved_items`
+- 新增 `scripts/analyze_grounding_report.py`，用于按 bad case 分析评估报告。
+- 给 bad case 分析增加真实 retrieval metadata 输出，能看到：
+  - `category`
+  - `intent`
+  - `question`
+  - `score`
+  - `vector_score`
+  - `rerank_score`
+  - `keyword_bonus`
+  - `direction_penalty`
+- 新增 `services/reply_rules.py`，对高频高风险问题增加回答骨架后处理。
+- 补充“餐洒了怎么申请售后”的明确知识库 QA，让该 query 能命中 `餐品撒漏售后`。
+- 更新 `models/prompt.py`，要求模型优先复述参考资料里的具体原因、入口和凭证要求。
+
+### 当前最重要的工程理解
+
+FAISS 保存的不是“用户问过的问题和模型答过的答案”，而是知识库文本对应的向量索引。
+
+当前 RAG 查询流程是：
+
+```text
+用户问题
+-> 对用户问题做 embedding
+-> 用 FAISS 搜索相似知识库向量
+-> 得到 TopK 知识库资料
+-> hybrid / rerank 排序
+-> 拼 prompt
+-> 本地 Qwen 生成客服回复
+-> reply rules 对少数高频风险场景兜底
+```
+
+### 为什么加了 FAISS 速度不一定明显变快
+
+当前知识库只有约 500 条，原来的 list 扫描本身不慢。一次完整 grounding 评估的主要耗时来自：
+
+- embedding 模型加载和 query embedding。
+- bge-reranker 加载和 candidate rerank。
+- 本地 Qwen 生成客服回复。
+- 本地 Qwen 作为 judge 再生成评分。
+
+所以 FAISS 的价值更多体现在：
+
+- 知识库变大后避免全量向量扫描。
+- 避免每次启动都重新计算全部知识库 embedding。
+- 更接近真实生产 RAG 架构。
+
+### Bad Case 分析方法
+
+现在分析报告时，不再只看 summary：
+
+```text
+direct_answer yes/no
+grounded yes/partial
+useful yes/no
+```
+
+而是要看每个 bad case 的链路：
+
+```text
+query
+-> retrieved_items 的 intent/category/question 是否正确
+-> reply 有没有使用这些资料
+-> judge_reason 是否合理
+```
+
+定位方式：
+
+- `retrieved_items` 不相关：优先修知识库或检索/rerank。
+- `retrieved_items` 正确但 reply 泛化：优先修 prompt 或 reply rules。
+- reply 明显合理但 judge 给 no：优先修 judge prompt 或评估规则。
+
+### 高频业务规则后处理
+
+当前新增了 4 类最小规则：
+
+1. 私下转账：
+   - 必须明确“不建议私下转账”。
+   - 必须说明以平台订单结算页和官方渠道为准。
+2. 优惠券不可用：
+   - 必须说明常见限制：使用门槛、有效期、适用品类、适用商家、支付方式。
+3. 骑手联系不上：
+   - 必须说明订单详情页查看状态。
+   - 仍联系不上或超时时，提交配送异常或未收到餐反馈。
+4. 餐洒申请售后：
+   - 必须说明订单详情页。
+   - 必须说明餐品问题、包装破损、撒漏或配送异常。
+   - 必须提醒上传照片凭证。
+
+这不是要把所有回答都写死，而是对高风险、高频、评估反复失败的问题增加工程兜底。
+
+### 当前验证命令
+
+完整测试：
+
+```powershell
+.\venv\Scripts\python.exe -B -m unittest discover tests
+```
+
+当前预期：
+
+```text
+Ran 41 tests
+OK
+```
+
+运行 grounding 评估：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_chat_grounding.py --use-local-judge --save-report
+```
+
+分析 bad case：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\analyze_grounding_report.py reports\chat_grounding\新报告.json
+```
+
+查看所有 case：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\analyze_grounding_report.py reports\chat_grounding\新报告.json --show-all
+```
+
+### 下一步学习建议
+
+下一步不要继续只调 prompt。更适合进入：
+
+```text
+RAG 配置化与实验可复现
+```
+
+要学习的点：
+
+- 为什么 embedding 模型名、reranker 模型名、rerank weight、min_score 都应该配置化。
+- 为什么每次评估报告应该记录当前配置。
+- 为什么同一套评估集必须能复现实验参数。
+- 如何设计一个简单的 `settings.py` 或 `config.py`。
+- 如何让 `/model/info` 或新的 debug 接口返回当前 RAG 配置。
+
 原因：目前我们已经能观察检索和排序，但还看不到“这些资料最终如何被拼进模型输入”。下一阶段应学习 RAG 的下游 prompt 组织。
 ## 2026-05-07 学习记录：RAG Prompt Preview API
 

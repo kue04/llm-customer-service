@@ -1,0 +1,20 @@
+[
+  {
+    "id": 0,
+    "text": "doc 0",
+    "answer": "first answer",
+    "source": {
+      "category": "refund",
+      "intent": "refund_progress"
+    }
+  },
+  {
+    "id": 1,
+    "text": "doc 1",
+    "answer": "second answer",
+    "source": {
+      "category": "order",
+      "intent": "order_status"
+    }
+  }
+]

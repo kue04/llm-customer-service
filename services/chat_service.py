@@ -3,8 +3,9 @@ from pathlib import Path
 
 from models.prompt import create_prompt
 from peft import PeftModel
+from services.reply_rules import apply_reply_rules
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils.retriever import retrieve_documents
+from utils.vector_retriever import retrieve_rag_items
 
 
 MODEL_PATH = Path(__file__).resolve().parents[1] / "local_models" / "qwen2.5-1.5b-instruct"
@@ -30,12 +31,18 @@ def generate_reply(prompt: str) -> str:
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(text, return_tensors="pt")
     input_length = inputs["input_ids"].shape[-1]
-    outputs = model.generate(**inputs, max_new_tokens=256, pad_token_id=tokenizer.eos_token_id)
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=256,
+        do_sample=False,
+        pad_token_id=tokenizer.eos_token_id,
+    )
     return tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
 
 def get_answer_from_rag(query: str):
-    documents = retrieve_documents(query)
+    retrieved_items = retrieve_rag_items(query)
+    documents = [item["answer"] for item in retrieved_items]
     if documents:
         prompt = create_prompt(query, documents)
         confidence_score = 0.95
@@ -47,7 +54,15 @@ def get_answer_from_rag(query: str):
         )
         confidence_score = 0.5
 
-    return {"reply": generate_reply(prompt), "confidence_score": confidence_score}
+    reply = generate_reply(prompt)
+    reply = apply_reply_rules(query, reply, retrieved_items)
+
+    return {
+        "reply": reply,
+        "confidence_score": confidence_score,
+        "retrieved_documents": documents,
+        "retrieved_items": retrieved_items,
+    }
 
 
 def get_model_info():

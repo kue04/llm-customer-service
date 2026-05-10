@@ -1,3 +1,6 @@
+import argparse
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 import sys
 
@@ -5,7 +8,7 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.vector_retriever import retrieve_by_real_vector
+from utils.vector_retriever import DEFAULT_MODEL_RERANK_WEIGHT, retrieve_by_real_vector
 
 
 EVAL_QUERIES = [
@@ -101,10 +104,89 @@ def judge_result(top_intents: list[str], expected_intents: list[str]) -> str:
     return "未命中"
 
 
-def print_query_result(case: dict) -> dict:
-    results = retrieve_by_real_vector(case["query"], limit=3)
+def analyze_rerank_top1_change(
+    results: list[dict],
+    expected_intents: list[str],
+) -> dict:
+    if not results:
+        return {
+            "top1_changed": False,
+            "impact": "unchanged",
+            "original_top_intent": "",
+            "reranked_top_intent": "",
+        }
+
+    original_results = sorted(
+        results,
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+    original_top_intent = original_results[0]["source"].get("intent", "")
+    reranked_top_intent = results[0]["source"].get("intent", "")
+    top1_changed = original_top_intent != reranked_top_intent
+
+    original_hit = original_top_intent in expected_intents
+    reranked_hit = reranked_top_intent in expected_intents
+
+    if not top1_changed:
+        impact = "unchanged"
+    elif not original_hit and reranked_hit:
+        impact = "improved"
+    elif original_hit and not reranked_hit:
+        impact = "worsened"
+    else:
+        impact = "changed_neutral"
+
+    return {
+        "top1_changed": top1_changed,
+        "impact": impact,
+        "original_top_intent": original_top_intent,
+        "reranked_top_intent": reranked_top_intent,
+    }
+
+
+def summarize_rerank_top1_changes(results: list[dict]) -> dict[str, int]:
+    changed = sum(
+        1 for result in results
+        if result["rerank_impact"] != "unchanged"
+    )
+
+    return {
+        "changed": changed,
+        "improved": sum(
+            1 for result in results
+            if result["rerank_impact"] == "improved"
+        ),
+        "worsened": sum(
+            1 for result in results
+            if result["rerank_impact"] == "worsened"
+        ),
+        "unchanged": sum(
+            1 for result in results
+            if result["rerank_impact"] == "unchanged"
+        ),
+        "changed_neutral": sum(
+            1 for result in results
+            if result["rerank_impact"] == "changed_neutral"
+        ),
+    }
+
+
+def print_query_result(
+    case: dict,
+    rerank_weight: float = DEFAULT_MODEL_RERANK_WEIGHT,
+) -> dict:
+    results = retrieve_by_real_vector(
+        case["query"],
+        limit=3,
+        rerank_weight=rerank_weight,
+    )
     top_intents = collect_top_intents(results)
     judgement = judge_result(top_intents, case["expected_intents"])
+    rerank_analysis = analyze_rerank_top1_change(
+        results,
+        case["expected_intents"],
+    )
 
     print("=" * 60)
     print(f"用户问题：{case['query']}")
@@ -138,6 +220,9 @@ def print_query_result(case: dict) -> dict:
         "top_intents": top_intents,
         "error_type": case.get("error_type", ""),
         "notes": case.get("notes", ""),
+        "rerank_impact": rerank_analysis["impact"],
+        "original_top_intent": rerank_analysis["original_top_intent"],
+        "reranked_top_intent": rerank_analysis["reranked_top_intent"],
         "rerank_changed_count": sum(
             1
             for item in results
@@ -159,7 +244,39 @@ def summarize_error_types(results: list[dict]) -> dict[str, int]:
     return error_counts
 
 
-def print_summary(results: list[dict]) -> None:
+def summarize_results(results: list[dict]) -> dict:
+    rerank_top1_summary = summarize_rerank_top1_changes(results)
+
+    return {
+        "total": len(results),
+        "top1": sum(
+            1 for result in results
+            if result["judgement"].startswith("Top1")
+        ),
+        "top3_error": sum(
+            1 for result in results
+            if result["judgement"].startswith("Top3")
+        ),
+        "miss": sum(
+            1 for result in results
+            if not result["judgement"].startswith(("Top1", "Top3"))
+        ),
+        "rerank_changed_count": sum(
+            result["rerank_changed_count"]
+            for result in results
+        ),
+        "changed_top1": rerank_top1_summary["changed"],
+        "improved": rerank_top1_summary["improved"],
+        "worsened": rerank_top1_summary["worsened"],
+        "unchanged": rerank_top1_summary["unchanged"],
+        "changed_neutral": rerank_top1_summary["changed_neutral"],
+    }
+
+
+def print_summary(
+    results: list[dict],
+    rerank_weight: float = DEFAULT_MODEL_RERANK_WEIGHT,
+) -> None:
     total = len(results)
     top1_count = sum(1 for result in results if result["judgement"] == "Top1 命中")
     top3_ranking_error_count = sum(
@@ -171,8 +288,10 @@ def print_summary(results: list[dict]) -> None:
         result["rerank_changed_count"]
         for result in results
     )
+    rerank_top1_summary = summarize_rerank_top1_changes(results)
     error_counts = summarize_error_types(results)
 
+    print(f"Rerank model weight: {rerank_weight}")
     print("=" * 60)
     print("向量检索评估汇总：")
     print(f"总问题数：{total}")
@@ -180,6 +299,12 @@ def print_summary(results: list[dict]) -> None:
     print(f"Top3 召回但 Top1 错误：{top3_ranking_error_count}")
     print(f"未命中：{missed_count}")
     print(f"Rerank 调整候选数：{rerank_changed_count}")
+
+    print(f"Rerank 改变 Top1: {rerank_top1_summary['changed']}")
+    print(f"Rerank 提高 Top1: {rerank_top1_summary['improved']}")
+    print(f"Rerank 降低 Top1: {rerank_top1_summary['worsened']}")
+    print(f"Rerank 未改变 Top1: {rerank_top1_summary['unchanged']}")
+    print(f"Rerank 改变 Top1 neutral: {rerank_top1_summary['changed_neutral']}")
 
     if error_counts:
         print()
@@ -190,14 +315,72 @@ def print_summary(results: list[dict]) -> None:
 
 
 
-def main() -> None:
+def evaluate_cases(
+    rerank_weight: float,
+    verbose: bool = True,
+) -> list[dict]:
     results = []
 
     for case in EVAL_QUERIES:
-        result = print_query_result(case)
+        if verbose:
+            result = print_query_result(case, rerank_weight=rerank_weight)
+        else:
+            with redirect_stdout(StringIO()):
+                result = print_query_result(case, rerank_weight=rerank_weight)
+
         results.append(result)
 
-    print_summary(results)
+    return results
+
+
+def print_weight_comparison(weights: list[float]) -> None:
+    print("Rerank weight comparison:")
+    print(
+        "weight\tTop1\tTop3Error\tMiss\tChangedTop1\t"
+        "Improved\tWorsened"
+    )
+
+    for weight in weights:
+        results = evaluate_cases(weight, verbose=False)
+        summary = summarize_results(results)
+        print(
+            f"{weight:.2f}\t"
+            f"{summary['top1']}\t"
+            f"{summary['top3_error']}\t"
+            f"{summary['miss']}\t"
+            f"{summary['changed_top1']}\t"
+            f"{summary['improved']}\t"
+            f"{summary['worsened']}"
+        )
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--rerank-weight",
+        type=float,
+        default=DEFAULT_MODEL_RERANK_WEIGHT,
+        help="Weight applied to model_rerank_score.",
+    )
+    parser.add_argument(
+        "--compare-rerank-weights",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Run compact comparison for multiple rerank weights.",
+    )
+    return parser.parse_args(argv)
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.compare_rerank_weights:
+        print_weight_comparison(args.compare_rerank_weights)
+        return
+
+    results = evaluate_cases(args.rerank_weight, verbose=True)
+    print_summary(results, rerank_weight=args.rerank_weight)
 
 
 if __name__ == "__main__":

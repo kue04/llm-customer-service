@@ -1,0 +1,262 @@
+{
+  "run_id": "2026-05-10_21-09-51",
+  "created_at": "2026-05-10T21:09:51+08:00",
+  "script": "scripts/evaluate_chat_grounding.py",
+  "use_local_judge": true,
+  "report_count": 10,
+  "summary": {
+    "total": 10,
+    "manual_review_count": 0,
+    "judge_status_counts": {
+      "succeeded": 9,
+      "failed": 1,
+      "not_run": 0
+    },
+    "judgment_counts": {
+      "direct_answer": {
+        "yes": 1,
+        "partial": 0,
+        "no": 8,
+        "empty": 1
+      },
+      "grounded": {
+        "yes": 1,
+        "partial": 8,
+        "no": 0,
+        "empty": 1
+      },
+      "useful": {
+        "yes": 9,
+        "partial": 0,
+        "no": 0,
+        "empty": 1
+      }
+    }
+  },
+  "reports": [
+    {
+      "query": "退款多久到账",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "我会先帮您按订单问题来判断，并尽量给出可以立即操作的处理方式。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "no",
+        "grounded": "partial",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服先表示会按订单问题判断，后续未具体说明如何操作或提供可执行步骤。"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"no\",\n  \"grounded\": \"partial\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服先表示会按订单问题判断，后续未具体说明如何操作或提供可执行步骤。\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    },
+    {
+      "query": "外卖超时了怎么办",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "我会先帮您按订单问题来判断，并尽量给出可以立即操作的处理方式。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "no",
+        "grounded": "partial",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服先表示会按订单问题判断，后续应具体说明是否可以立即操作或需要平台核实。"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"no\",\n  \"grounded\": \"partial\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服先表示会按订单问题判断，后续应具体说明是否可以立即操作或需要平台核实。\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    },
+    {
+      "query": "餐品有异物可以赔吗",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "我会先帮您按订单问题来判断，并尽量给出可以立即操作的处理方式。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "",
+        "grounded": "",
+        "useful": "",
+        "notes": ""
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"可以申请售后或平台核实赔付，具体以页面提示为准。\",\n  \"grounded\": \"客服回复的关键信息包括订单问题、可以申请售后或平台核实赔付，这些可以在参考资料中找到支持。\",\n  \"useful\": \"客服回答了用户关于餐品异物是否可以理赔的问题，并提供了可以立即操作的处理方式。\",\n  \"risk_notes\": \"空\",\n  \"reason\": \"客服回答了用户问题，关键信息能被参考资料支撑，给出了可以立即操作的处理方式。\"\n}",
+      "judge_status": "failed",
+      "judge_error": "Invalid judge score for direct_answer: 可以申请售后或平台核实赔付，具体以页面提示为准。"
+    },
+    {
+      "query": "骑手让我私下转配送费可以吗",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "不建议您私下转账。为了保障支付安全和售后权益，建议您通过订单页结算费用，并保留对方收款凭证。如有疑问，可以继续在订单页反馈。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "no",
+        "grounded": "partial",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服回复部分符合不建议私下转账原则，但未明确表示是否可以申请售后或赔付。"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"no\",\n  \"grounded\": \"partial\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服回复部分符合不建议私下转账原则，但未明确表示是否可以申请售后或赔付。\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    },
+    {
+      "query": "商家拒绝退款怎么办",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "我会先帮您按订单问题来判断，并尽量给出可以立即操作的处理方式。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "no",
+        "grounded": "partial",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服先表示会按订单问题判断，后续应具体说明如何操作。"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"no\",\n  \"grounded\": \"partial\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服先表示会按订单问题判断，后续应具体说明如何操作。\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    },
+    {
+      "query": "优惠券为什么不能用",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "抱歉给您带来困扰。请您提供优惠券名称和使用状态，方便我帮您排查是否已过期或未生效。 您可以先根据订单页面提示操作，并保留相关截图以备后续处理。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "no",
+        "grounded": "partial",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服回复说明需要补充完整凭证信息后才能判断，未明确告知是否可以继续使用"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"no\",\n  \"grounded\": \"partial\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服回复说明需要补充完整凭证信息后才能判断，未明确告知是否可以继续使用\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    },
+    {
+      "query": "骑手联系不上怎么办",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "我会先帮您按订单问题来判断，并尽量给出可以立即操作的处理方式。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "no",
+        "grounded": "partial",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服先表示会按订单问题判断，后续应具体说明如何操作。"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"no\",\n  \"grounded\": \"partial\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服先表示会按订单问题判断，后续应具体说明如何操作。\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    },
+    {
+      "query": "订单取消后钱多久退回来",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "我会先帮您按订单问题来判断，并尽量给出可以立即操作的处理方式。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "no",
+        "grounded": "partial",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服先表示会按订单问题判断，后续未具体说明退款时间。"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"no\",\n  \"grounded\": \"partial\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服先表示会按订单问题判断，后续未具体说明退款时间。\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    },
+    {
+      "query": "平台客服可以看我的手机号吗",
+      "retrieved_documents": [],
+      "retrieved_document_count": 0,
+      "reply": "不推荐您提供验证码、银行卡号、密码、短信验证码、人脸信息或预留联系地址等敏感信息。请您优先通过订单页或官方客服提交问题，并尽量描述清楚；如果已经提供了这类敏感信息，建议尽快检查账户和安全。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "no",
+        "grounded": "partial",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服回复没有明确表示是否可以查看手机号，仅提示不要提供敏感信息。"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"no\",\n  \"grounded\": \"partial\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服回复没有明确表示是否可以查看手机号，仅提示不要提供敏感信息。\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    },
+    {
+      "query": "餐洒了怎么申请售后",
+      "retrieved_documents": [
+        "您好，您可以进入订单详情页，选择需要处理的问题类型，例如退款、少送漏送、餐品问题或配送异常，然后按页面提示提交凭证。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。",
+        "建议您上传餐品到达时的包装、袋内撒漏、骑手送达照片或监控截图等证据。平台会结合配送过程和凭证综合判断。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。",
+        "订单完成后通常仍有一定售后期限，具体以订单详情页展示为准。若仍有售后入口，您可以按问题类型提交申请。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+      ],
+      "retrieved_document_count": 3,
+      "reply": "很抱歉，餐洒后无法直接确认是否影响食品安全。请您先根据订单页面提示操作，并保留餐品到达时的包装、袋内撒漏、骑手送达照片或监控截图等证据。平台会结合配送过程和凭证综合判断。",
+      "risky_promises": [],
+      "needs_manual_review": false,
+      "review_questions": [
+        "回复是否直接回答了用户问题？",
+        "回复中的关键说法是否能被参考资料支撑？",
+        "回复是否给出了安全、可执行的下一步？"
+      ],
+      "manual_judgment": {
+        "direct_answer": "yes",
+        "grounded": "yes",
+        "useful": "yes",
+        "notes": "风险提示： 判断理由：客服回复直接回答了用户关于餐洒后如何申请售后的问题，并提供了订单内处理方式和保留证据的建议。"
+      },
+      "raw_judge_response": "{\n  \"direct_answer\": \"yes\",\n  \"grounded\": \"yes\",\n  \"useful\": \"yes\",\n  \"risk_notes\": \"\",\n  \"reason\": \"客服回复直接回答了用户关于餐洒后如何申请售后的问题，并提供了订单内处理方式和保留证据的建议。\"\n}",
+      "judge_status": "succeeded",
+      "judge_error": ""
+    }
+  ]
+}

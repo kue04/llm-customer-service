@@ -445,6 +445,160 @@ Use this prompt in a new window:
 ```text
 请阅读 HANDOFF.md 和 STUDY.md，继续带我学习下一阶段。当前项目已经完成向量检索 RAG、hybrid search、/retrieval/search API 和 React 前端调试台。请先帮我扩展向量检索评估集，从 3 条扩展到 8-12 条，并解释每个 case 的 expected_intents、error_type 和 notes 应该怎么设计。
 ```
+
+## 2026-05-10 当前交接更新：FAISS 持久化、Grounding 可观测性与 Bad Case 收口
+
+### 当前阶段
+
+当前项目已经从“检索调试”推进到：
+
+```text
+FAISS 持久化向量库
+-> chat grounding 自动评估
+-> retrieval metadata 可观测性
+-> bad case 分类
+-> 高频问题业务规则兜底
+```
+
+### 本阶段已完成
+
+1. `utils/vector_retriever.py` 已接入 FAISS `IndexFlatIP`，并将向量索引持久化到：
+   - `data/faiss_store/real_vector.index`
+   - `data/faiss_store/real_vector_docs.json`
+2. FAISS 持久化增加兼容性检查：
+   - 索引数量和 docs 数量不一致会重建。
+   - 向量维度不一致会重建。
+   - 当前知识库内容和磁盘 docs 不一致会重建。
+3. `/chat/prompt` 现在返回：
+   - `reply`
+   - `confidence_score`
+   - `retrieved_documents`
+   - `retrieved_items`
+4. `retrieved_items` 包含真实检索 metadata：
+   - `rank`
+   - `category`
+   - `intent`
+   - `question`
+   - `score`
+   - `vector_score`
+   - `rerank_score`
+   - `model_rerank_score`
+   - `keyword_bonus`
+   - `direction_penalty`
+5. `scripts/evaluate_chat_grounding.py` 已扩展为 10 条固定评估问题，并保存 `retrieved_items`。
+6. 新增 `scripts/analyze_grounding_report.py`，默认只展示 bad case。
+7. 分析脚本会优先读取真实 `retrieved_items`，旧报告没有 metadata 时才 fallback 到关键词猜测。
+8. 新增 `services/reply_rules.py`，对高频高风险场景做最小业务规则后处理：
+   - 私下转账：必须包含“不建议私下转账 / 平台订单结算页 / 官方渠道”。
+   - 优惠券不可用：必须包含“使用门槛 / 有效期 / 适用品类 / 适用商家 / 支付方式”。
+   - 骑手联系不上：必须包含“订单详情页 / 配送异常 / 未收到餐反馈”。
+   - 餐洒申请售后：必须包含“订单详情页 / 餐品问题 / 包装破损 / 撒漏 / 照片凭证”。
+9. 知识库新增明确 QA：
+   - `餐洒了怎么申请售后？`
+   - `外卖汤洒了，包装也破了，我要怎么申请售后？`
+10. `models/prompt.py` 已补充更明确的回答要求，减少只说“根据页面提示操作”的泛化回复。
+
+### 当前关键文件
+
+- `utils/vector_retriever.py`：FAISS 持久化、向量检索、hybrid 分数、rerank、retrieved metadata。
+- `services/chat_service.py`：RAG 编排、生成回复、应用业务规则后处理。
+- `services/reply_rules.py`：高频意图的回答骨架兜底。
+- `models/prompt.py`：RAG 生成 prompt。
+- `scripts/evaluate_chat_grounding.py`：生成 grounding 报告和本地 judge 评分。
+- `scripts/analyze_grounding_report.py`：分析 bad case，输出检索 metadata 和 judge reason。
+- `data/takeout_customer_service_seed.jsonl`：知识库。
+
+### 当前验证命令
+
+运行后端测试：
+
+```powershell
+cd D:\llm\llm-customer-service
+.\venv\Scripts\python.exe -B -m unittest discover tests
+```
+
+当前预期：
+
+```text
+Ran 41 tests
+OK
+```
+
+运行 chat grounding：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_chat_grounding.py --use-local-judge --save-report
+```
+
+分析 bad case：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\analyze_grounding_report.py reports\chat_grounding\新报告.json
+```
+
+查看全部 case：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\analyze_grounding_report.py reports\chat_grounding\新报告.json --show-all
+```
+
+运行向量检索评估：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_vector_retrieval.py
+```
+
+### 当前重要理解
+
+- FAISS 不是保存“用户问题和答案缓存”，而是保存知识库文本的向量索引。
+- 用户 query 不会提前建索引；运行时只对 query 做一次 embedding，然后去 FAISS 中搜索相似知识库向量。
+- FAISS 主要加速向量近邻搜索，不负责保证检索质量。
+- 当前数据量只有 500 条，速度瓶颈主要不是 FAISS，而是 embedding 模型、reranker、Qwen 生成和本地 judge。
+- RAG 效果排查应按层定位：
+
+```text
+知识库是否覆盖
+-> 检索是否命中
+-> rerank 是否排序正确
+-> prompt 是否约束到位
+-> 生成是否利用资料
+-> judge 是否评分合理
+```
+
+### 推荐下一步学习
+
+建议下一阶段学习：
+
+```text
+RAG 生产化 API 与配置化
+```
+
+优先做两件事：
+
+1. 配置化检索和模型参数：
+   - FAISS 路径
+   - embedding 模型名
+   - reranker 模型名
+   - rerank weight
+   - min_score
+   - 是否启用业务规则后处理
+2. 增加 `/retrieval/config` 或 `/debug/config`：
+   - 返回当前 RAG 配置。
+   - 让前端和报告能记录“这次评估使用了什么参数”。
+
+这一步比继续调 prompt 更适合学习企业开发，因为它把当前实验型代码推进到“可复现、可配置、可排查”的工程状态。
+
+### 新窗口继续提示词
+
+```text
+请先阅读 D:\llm\llm-customer-service\HANDOFF.md、STUDY.md 和 docs\API_INTEGRATION.md，然后继续带我学习当前外卖客服 RAG 项目。
+
+当前后端在 D:\llm\llm-customer-service，前端在 D:\llm\front。
+
+目前已经完成：keyword retrieval、vector retrieval、hybrid search、bge reranker、FAISS 持久化、prompt preview、chat retrieved_documents、chat retrieved_items、grounding report、本地 Qwen LLM-as-judge、judge 失败处理、bad case 分析脚本、retrieval metadata 可观测性，以及高频问题业务规则后处理。
+
+请继续下一步：带我学习 RAG 配置化和可复现实验。目标是把 embedding 模型、reranker 模型、rerank weight、min_score、FAISS 存储路径、是否启用 reply rules 等参数集中到一个配置模块，并增加一个调试接口或脚本输出当前配置。请先解释为什么企业 RAG 系统必须记录配置和实验参数，再小步实现。
+```
 ## 2026-05-06 Current Handoff Update
 
 ### Current Stage

@@ -1,15 +1,26 @@
+from __future__ import annotations
 
-from sentence_transformers import SentenceTransformer,CrossEncoder
+import json
+from pathlib import Path
+
+import faiss
+import numpy as np
+from sentence_transformers import CrossEncoder, SentenceTransformer
+
 from utils.retriever import iter_knowledge_items, is_similar_answer
 
 
 _TOY_VECTOR_INDEX: list[dict] | None = None
+_RERANKER_MODEL: CrossEncoder | None = None
+_EMBEDDING_MODEL: SentenceTransformer | None = None
+_REAL_VECTOR_DOCS: list[dict] | None = None
+_REAL_FAISS_INDEX: faiss.IndexFlatIP | None = None
 
-_RERANKER_MODEL = None
-
-_EMBEDDING_MODEL = None
-
-_REAL_VECTOR_INDEX: list[dict] | None = None
+DEFAULT_MODEL_RERANK_WEIGHT = 0.01
+DEFAULT_MIN_VECTOR_SCORE = 0.40
+VECTOR_STORE_DIR = Path(__file__).resolve().parents[1] / "data" / "faiss_store"
+FAISS_INDEX_PATH = VECTOR_STORE_DIR / "real_vector.index"
+FAISS_DOCS_PATH = VECTOR_STORE_DIR / "real_vector_docs.json"
 
 
 def get_reranker_model() -> CrossEncoder:
@@ -20,6 +31,7 @@ def get_reranker_model() -> CrossEncoder:
 
     return _RERANKER_MODEL
 
+
 def get_toy_vector_index() -> list[dict]:
     global _TOY_VECTOR_INDEX
 
@@ -27,6 +39,7 @@ def get_toy_vector_index() -> list[dict]:
         _TOY_VECTOR_INDEX = build_toy_vector_index()
 
     return _TOY_VECTOR_INDEX
+
 
 def get_embedding_model() -> SentenceTransformer:
     global _EMBEDDING_MODEL
@@ -36,36 +49,10 @@ def get_embedding_model() -> SentenceTransformer:
 
     return _EMBEDDING_MODEL
 
-def build_real_vector_index() -> list[dict]:
-    index = []
-
-    for document in load_vector_documents():
-        index.append(
-            {
-                "id": document["id"],
-                "vector": build_embedding(document["text"]),
-                "answer": document["answer"],
-                "text": document["text"],
-                "source": document["source"],
-            }
-        )
-
-    return index
-
-
-def get_real_vector_index() -> list[dict]:
-    global _REAL_VECTOR_INDEX
-
-    if _REAL_VECTOR_INDEX is None:
-        _REAL_VECTOR_INDEX = build_real_vector_index()
-
-    return _REAL_VECTOR_INDEX
-
 
 def build_embedding(text: str) -> list[float]:
     model = get_embedding_model()
     vector = model.encode(text, normalize_embeddings=True)
-
     return vector.tolist()
 
 
@@ -94,6 +81,127 @@ def load_vector_documents() -> list[dict]:
 
     return documents
 
+
+def current_vector_document_signature() -> list[dict]:
+    return [
+        {
+            "answer": document["answer"],
+            "source": {
+                "question": document["source"].get("question", ""),
+                "category": document["source"].get("category", ""),
+                "intent": document["source"].get("intent", ""),
+            },
+        }
+        for document in load_vector_documents()
+    ]
+
+
+def stored_vector_document_signature() -> list[dict]:
+    return [
+        {
+            "answer": document["answer"],
+            "source": {
+                "question": document["source"].get("question", ""),
+                "category": document["source"].get("category", ""),
+                "intent": document["source"].get("intent", ""),
+            },
+        }
+        for document in _REAL_VECTOR_DOCS or []
+    ]
+
+
+def get_real_vector_documents() -> list[dict]:
+    global _REAL_VECTOR_DOCS
+
+    if _REAL_VECTOR_DOCS is None:
+        _REAL_VECTOR_DOCS = load_vector_documents()
+
+    return _REAL_VECTOR_DOCS
+
+
+def build_real_vector_index() -> faiss.IndexFlatIP:
+    documents = get_real_vector_documents()
+    vectors = np.array(
+        [build_embedding(document["text"]) for document in documents],
+        dtype="float32",
+    )
+    index = faiss.IndexFlatIP(vectors.shape[1])
+    index.add(vectors)
+    return index
+
+
+def get_real_vector_index() -> faiss.IndexFlatIP:
+    global _REAL_FAISS_INDEX
+
+    if _REAL_FAISS_INDEX is None:
+        _REAL_FAISS_INDEX = build_real_vector_index()
+
+    return _REAL_FAISS_INDEX
+
+
+def save_real_vector_store() -> None:
+    global _REAL_FAISS_INDEX
+
+    VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
+    index = build_real_vector_index()
+    faiss.write_index(index, str(FAISS_INDEX_PATH))
+    FAISS_DOCS_PATH.write_text(
+        json.dumps(get_real_vector_documents(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _REAL_FAISS_INDEX = index
+
+
+def load_real_vector_store() -> bool:
+    global _REAL_FAISS_INDEX, _REAL_VECTOR_DOCS
+
+    if not FAISS_INDEX_PATH.exists() or not FAISS_DOCS_PATH.exists():
+        return False
+
+    _REAL_FAISS_INDEX = faiss.read_index(str(FAISS_INDEX_PATH))
+    _REAL_VECTOR_DOCS = json.loads(FAISS_DOCS_PATH.read_text(encoding="utf-8"))
+    return True
+
+
+def _stored_vector_store_is_compatible() -> bool:
+    if _REAL_FAISS_INDEX is None or _REAL_VECTOR_DOCS is None:
+        return False
+
+    if _REAL_FAISS_INDEX.ntotal != len(_REAL_VECTOR_DOCS):
+        return False
+
+    if stored_vector_document_signature() != current_vector_document_signature():
+        return False
+
+    sample_vector = build_embedding(_REAL_VECTOR_DOCS[0]["text"])
+    return _REAL_FAISS_INDEX.d == len(sample_vector)
+
+
+def ensure_real_vector_store() -> faiss.IndexFlatIP:
+    if load_real_vector_store() and _stored_vector_store_is_compatible():
+        return get_real_vector_index()
+
+    global _REAL_FAISS_INDEX, _REAL_VECTOR_DOCS
+    _REAL_FAISS_INDEX = None
+    _REAL_VECTOR_DOCS = None
+    save_real_vector_store()
+    return get_real_vector_index()
+
+
+def build_toy_embedding(text: str) -> list[float]:
+    dimensions = [
+        ["退款", "退钱", "到账", "取消"],
+        ["配送", "超时", "骑手", "外卖"],
+        ["优惠券", "红包", "会员"],
+        ["食品", "异物", "安全", "变质"],
+    ]
+
+    return [
+        float(sum(1 for keyword in keywords if keyword in text))
+        for keywords in dimensions
+    ]
+
+
 def build_toy_vector_index() -> list[dict]:
     index = []
 
@@ -121,31 +229,16 @@ def cosine_similarity(vector_a: list[float], vector_b: list[float]) -> float:
     return dot_product / (norm_a * norm_b)
 
 
-def build_toy_embedding(text: str) -> list[float]:
-    dimensions = [
-        ["退款", "退钱", "到账", "取消"],
-        ["配送", "超时", "骑手", "外卖"],
-        ["优惠券", "红包", "会员"],
-        ["食品", "异物", "安全", "变质"],
-    ]
-
-    return [
-        float(sum(1 for keyword in keywords if keyword in text))
-        for keywords in dimensions
-    ]
-
-
 def retrieve_by_toy_vector(query: str, limit: int = 3) -> list[dict]:
     query_vector = build_toy_embedding(query)
     candidates = []
-
 
     for document in load_vector_documents():
         document_vector = build_toy_embedding(document["text"])
         similarity = cosine_similarity(query_vector, document_vector)
         if similarity <= 0:
-             continue
-        
+            continue
+
         candidates.append(
             {
                 "score": similarity,
@@ -180,6 +273,7 @@ def retrieve_by_toy_index(query: str, limit: int = 3) -> list[dict]:
     candidates.sort(key=lambda item: item["score"], reverse=True)
     return candidates[:limit]
 
+
 def build_rerank_text(candidate: dict) -> str:
     source = candidate.get("source", {})
     parts = [
@@ -191,43 +285,28 @@ def build_rerank_text(candidate: dict) -> str:
     return "\n".join(parts)
 
 
-
 def calculate_model_rerank_score(query: str, candidate: dict) -> float:
-    """Placeholder for a future model reranker.
-
-    The real implementation will compare the user query with the candidate
-    text and return a relevance score.
-    """
     return 0.0
+
 
 def calculate_model_rerank_scores(
     query: str,
     candidates: list[dict],
 ) -> list[float]:
-    """Placeholder batch interface for a future model reranker."""
     if not candidates:
         return []
 
-    pairs = [
-        [query, build_rerank_text(candidate)]
-        for candidate in candidates
-    ]
-
+    pairs = [[query, build_rerank_text(candidate)] for candidate in candidates]
     model = get_reranker_model()
     scores = model.predict(pairs)
-
     return [float(score) for score in scores]
 
 
-
-def rerank_candidates(query: str, candidates: list[dict]) -> list[dict]:
-    """Rule-based reranker for the current learning stage.
-
-    The vector/hybrid step is responsible for recalling candidates from the
-    knowledge base. This function only re-scores those recalled candidates.
-    Later it can be replaced or extended with a model reranker such as
-    bge-reranker.
-    """
+def rerank_candidates(
+    query: str,
+    candidates: list[dict],
+    model_rerank_weight: float = DEFAULT_MODEL_RERANK_WEIGHT,
+) -> list[dict]:
     reranked_candidates = []
     model_rerank_scores = calculate_model_rerank_scores(query, candidates)
     if len(model_rerank_scores) != len(candidates):
@@ -236,72 +315,60 @@ def rerank_candidates(query: str, candidates: list[dict]) -> list[dict]:
     for index, candidate in enumerate(candidates):
         reranked_candidate = candidate.copy()
         model_rerank_score = model_rerank_scores[index]
-        rerank_score = candidate["score"] + model_rerank_score * 0.01
+        rerank_score = candidate["score"] + model_rerank_score * model_rerank_weight
         source = candidate.get("source", {})
         intent = source.get("intent", "")
         question = source.get("question", "")
 
-        # A weak rule signal: process-oriented questions often prefer
-        # follow-up style answers, but the small weight avoids overriding
-        # strong vector/hybrid evidence.
         if "怎么办" in query and ("追问" in intent or "追问" in question):
             rerank_score += 0.02
-
-        
 
         reranked_candidate["rerank_score"] = rerank_score
         reranked_candidate["model_rerank_score"] = model_rerank_score
         reranked_candidates.append(reranked_candidate)
-        
+
     reranked_candidates.sort(
         key=lambda candidate: candidate["rerank_score"],
         reverse=True,
     )
-
     return reranked_candidates
 
 
+def _search_real_faiss(query: str, top_k: int) -> list[tuple[int, float]]:
+    query_vector = np.array([build_embedding(query)], dtype="float32")
+    index = ensure_real_vector_store()
+    scores, indices = index.search(query_vector, top_k)
+    results = []
 
-
-def retrieve_by_real_vector(
-    query: str,
-    limit: int = 3,
-    min_score: float = 0.62,
-    use_hybrid: bool = True,
-) -> list[dict]:
-    query_vector = build_embedding(query)
-    index = get_real_vector_index()
-    raw_candidates = []
-
-    for item in index:
-        similarity = cosine_similarity(query_vector, item["vector"])
-
-        if similarity < min_score:
+    for doc_index, score in zip(indices[0], scores[0]):
+        if doc_index < 0:
             continue
+        results.append((int(doc_index), float(score)))
 
-        bonus = calculate_keyword_bonus(query, item["source"]) if use_hybrid else 0.0
-        penalty = calculate_direction_penalty(query, item["source"]) if use_hybrid else 0.0
-        final_score = similarity + bonus - penalty
-
-        raw_candidates.append(
-            {
-                "score": final_score,
-                "vector_score": similarity,
-                "keyword_bonus": bonus,
-                "answer": item["answer"],
-                "text": item["text"],
-                "source": item["source"],
-                "direction_penalty": penalty,
-            }
-        )
-
-    raw_candidates = rerank_candidates(query, raw_candidates)
+    return results
 
 
-    candidates = []
+def _build_raw_candidate(query: str, document: dict, similarity: float, use_hybrid: bool) -> dict:
+    bonus = calculate_keyword_bonus(query, document["source"]) if use_hybrid else 0.0
+    penalty = calculate_direction_penalty(query, document["source"]) if use_hybrid else 0.0
+    final_score = similarity + bonus - penalty
+
+    return {
+        "score": final_score,
+        "vector_score": similarity,
+        "keyword_bonus": bonus,
+        "answer": document["answer"],
+        "text": document["text"],
+        "source": document["source"],
+        "direction_penalty": penalty,
+    }
+
+
+def _dedupe_candidates(candidates: list[dict], limit: int) -> list[dict]:
+    deduped = []
     seen_answers = set()
 
-    for item in raw_candidates:
+    for item in candidates:
         if item["answer"] in seen_answers:
             continue
 
@@ -309,17 +376,103 @@ def retrieve_by_real_vector(
             continue
 
         seen_answers.add(item["answer"])
-        candidates.append(item)
+        deduped.append(item)
 
-        if len(candidates) >= limit:
+        if len(deduped) >= limit:
             break
 
-    return candidates
+    return deduped
+
+
+def retrieve_by_real_vector(
+    query: str,
+    limit: int = 3,
+    min_score: float = DEFAULT_MIN_VECTOR_SCORE,
+    use_hybrid: bool = True,
+    rerank_weight: float = DEFAULT_MODEL_RERANK_WEIGHT,
+) -> list[dict]:
+    top_k = max(limit * 5, 20)
+    faiss_hits = _search_real_faiss(query, top_k=top_k)
+    documents = get_real_vector_documents()
+    raw_candidates = []
+
+    for doc_index, similarity in faiss_hits:
+        if similarity < min_score:
+            continue
+
+        document = documents[doc_index]
+        raw_candidates.append(_build_raw_candidate(query, document, similarity, use_hybrid))
+
+    raw_candidates = rerank_candidates(
+        query,
+        raw_candidates,
+        model_rerank_weight=rerank_weight,
+    )
+
+    return _dedupe_candidates(raw_candidates, limit)
+
+
+def retrieve_rag_documents(
+    query: str,
+    limit: int = 3,
+    min_score: float = DEFAULT_MIN_VECTOR_SCORE,
+) -> list[str]:
+    return [candidate["answer"] for candidate in retrieve_rag_items(query, limit, min_score)]
+
+
+def retrieve_rag_items(
+    query: str,
+    limit: int = 3,
+    min_score: float = DEFAULT_MIN_VECTOR_SCORE,
+) -> list[dict]:
+    candidates = retrieve_by_real_vector(
+        query,
+        limit=limit,
+        min_score=min_score,
+        use_hybrid=True,
+    )
+    items = []
+    for rank, candidate in enumerate(candidates, start=1):
+        source = candidate.get("source", {})
+        items.append(
+            {
+                "rank": rank,
+                "answer": candidate["answer"],
+                "category": source.get("category", ""),
+                "intent": source.get("intent", ""),
+                "question": source.get("question", ""),
+                "score": candidate.get("score", 0.0),
+                "rerank_score": candidate.get("rerank_score", 0.0),
+                "model_rerank_score": candidate.get("model_rerank_score", 0.0),
+                "vector_score": candidate.get("vector_score", 0.0),
+                "keyword_bonus": candidate.get("keyword_bonus", 0.0),
+                "direction_penalty": candidate.get("direction_penalty", 0.0),
+            }
+        )
+    return items
 
 
 def calculate_direction_penalty(query: str, source: dict) -> float:
+    category = source.get("category", "")
     intent = source.get("intent", "")
     question = source.get("question", "")
+
+    food_safety_query = any(
+        word in query
+        for word in ["餐品", "异物", "食品", "变质", "吃坏", "赔"]
+    )
+    clearly_unrelated_food_intents = [
+        "发票",
+        "优惠",
+        "赠品",
+        "会员",
+        "金额",
+    ]
+    if food_safety_query and any(
+        word in f"{category}{intent}{question}"
+        for word in clearly_unrelated_food_intents
+    ):
+        return 0.15
 
     has_timeout = "超时" in query
     has_cancel_intent = any(
@@ -345,8 +498,6 @@ def calculate_direction_penalty(query: str, source: dict) -> float:
     return 0.0
 
 
-
-
 def calculate_keyword_bonus(query: str, source: dict) -> float:
     field_weights = {
         "intent": 0.04,
@@ -363,6 +514,14 @@ def calculate_keyword_bonus(query: str, source: dict) -> float:
         "退钱": 1.0,
         "钱": 0.6,
         "多久": 0.5,
+        "餐品": 1.0,
+        "异物": 1.2,
+        "食品": 1.0,
+        "安全": 1.0,
+        "变质": 1.0,
+        "售后": 0.8,
+        "投诉": 0.8,
+        "赔": 0.6,
     }
 
     bonus = 0.0

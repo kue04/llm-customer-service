@@ -11,6 +11,8 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     confidence_score: float
+    retrieved_documents: list[str]
+    retrieved_items: list[dict] = []
 
 @router.post("/prompt", response_model=ChatResponse)
 async def generate_answer(request: ChatRequest):

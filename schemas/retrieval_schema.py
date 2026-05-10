@@ -10,7 +10,7 @@ class RetrievalSearchRequest(BaseModel):
     query: str = Field(min_length=1)
     mode: RetrievalMode = "hybrid"
     limit: int = Field(default=5, ge=1, le=20)
-    min_score: float = Field(default=0.62, ge=0.0, le=1.0)
+    min_score: float = Field(default=0.40, ge=0.0, le=1.0)
 
 
 class RetrievalResultItem(BaseModel):
@@ -31,4 +31,12 @@ class RetrievalSearchResponse(BaseModel):
     query: str
     mode: RetrievalMode
     count: int
+    results: list[RetrievalResultItem]
+
+
+class PromptPreviewResponse(BaseModel):
+    query: str
+    mode: RetrievalMode
+    count: int
+    prompt: str
     results: list[RetrievalResultItem]
