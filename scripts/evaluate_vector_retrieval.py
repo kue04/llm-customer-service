@@ -1,13 +1,17 @@
 import argparse
 from contextlib import redirect_stdout
 from io import StringIO
+import json
+from datetime import datetime
 from pathlib import Path
 import sys
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
+DEFAULT_REPORT_DIR = PROJECT_ROOT / "reports" / "retrieval_eval"
 
+from config.rag_config import get_rag_config_dict
 from utils.vector_retriever import DEFAULT_MODEL_RERANK_WEIGHT, retrieve_by_real_vector
 
 
@@ -172,6 +176,28 @@ def summarize_rerank_top1_changes(results: list[dict]) -> dict[str, int]:
     }
 
 
+def build_result_items(results: list[dict]) -> list[dict]:
+    items = []
+    for index, item in enumerate(results, start=1):
+        source = item.get("source", {})
+        items.append(
+            {
+                "rank": index,
+                "score": item.get("score", 0.0),
+                "rerank_score": item.get("rerank_score", item.get("score", 0.0)),
+                "model_rerank_score": item.get("model_rerank_score", 0.0),
+                "vector_score": item.get("vector_score", 0.0),
+                "keyword_bonus": item.get("keyword_bonus", 0.0),
+                "direction_penalty": item.get("direction_penalty", 0.0),
+                "category": source.get("category", ""),
+                "intent": source.get("intent", ""),
+                "question": source.get("question", ""),
+                "answer": item.get("answer", ""),
+            }
+        )
+    return items
+
+
 def print_query_result(
     case: dict,
     rerank_weight: float = DEFAULT_MODEL_RERANK_WEIGHT,
@@ -181,6 +207,7 @@ def print_query_result(
         limit=3,
         rerank_weight=rerank_weight,
     )
+    result_items = build_result_items(results)
     top_intents = collect_top_intents(results)
     judgement = judge_result(top_intents, case["expected_intents"])
     rerank_analysis = analyze_rerank_top1_change(
@@ -223,6 +250,7 @@ def print_query_result(
         "rerank_impact": rerank_analysis["impact"],
         "original_top_intent": rerank_analysis["original_top_intent"],
         "reranked_top_intent": rerank_analysis["reranked_top_intent"],
+        "results": result_items,
         "rerank_changed_count": sum(
             1
             for item in results
@@ -248,6 +276,7 @@ def summarize_results(results: list[dict]) -> dict:
     rerank_top1_summary = summarize_rerank_top1_changes(results)
 
     return {
+        "rag_config": get_rag_config_dict(),
         "total": len(results),
         "top1": sum(
             1 for result in results
@@ -273,10 +302,41 @@ def summarize_results(results: list[dict]) -> dict:
     }
 
 
+def save_report(
+    results: list[dict],
+    rerank_weight: float,
+    output_dir: str | Path = DEFAULT_REPORT_DIR,
+) -> Path:
+    created_at = datetime.now().astimezone()
+    run_id = created_at.strftime("%Y-%m-%d_%H-%M-%S")
+    payload = {
+        "run_id": run_id,
+        "created_at": created_at.isoformat(timespec="seconds"),
+        "script": "scripts/evaluate_vector_retrieval.py",
+        "rerank_weight": rerank_weight,
+        "rag_config": get_rag_config_dict(),
+        "summary": summarize_results(results),
+        "cases": results,
+    }
+
+    output_path = Path(output_dir) / f"{run_id}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    counter = 1
+    while output_path.exists():
+        output_path = Path(output_dir) / f"{run_id}-{counter}.json"
+        counter += 1
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return output_path
+
+
 def print_summary(
     results: list[dict],
     rerank_weight: float = DEFAULT_MODEL_RERANK_WEIGHT,
 ) -> None:
+    rag_config = get_rag_config_dict()
     total = len(results)
     top1_count = sum(1 for result in results if result["judgement"] == "Top1 命中")
     top3_ranking_error_count = sum(
@@ -292,6 +352,11 @@ def print_summary(
     error_counts = summarize_error_types(results)
 
     print(f"Rerank model weight: {rerank_weight}")
+    print(f"Embedding model: {rag_config['embedding_model_name']}")
+    print(f"Reranker model: {rag_config['reranker_model_name']}")
+    print(f"Min vector score: {rag_config['min_vector_score']}")
+    print(f"Reply rules enabled: {rag_config['reply_rules_enabled']}")
+    print(f"FAISS store dir: {rag_config['faiss_store_dir']}")
     print("=" * 60)
     print("向量检索评估汇总：")
     print(f"总问题数：{total}")
@@ -369,6 +434,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Run compact comparison for multiple rerank weights.",
     )
+    parser.add_argument(
+        "--save-report",
+        action="store_true",
+        help="Save evaluation results to a timestamped JSON report.",
+    )
     return parser.parse_args(argv)
 
 
@@ -381,6 +451,10 @@ def main() -> None:
 
     results = evaluate_cases(args.rerank_weight, verbose=True)
     print_summary(results, rerank_weight=args.rerank_weight)
+    if args.save_report:
+        output_path = save_report(results, rerank_weight=args.rerank_weight)
+        print()
+        print(f"Saved report: {output_path}")
 
 
 if __name__ == "__main__":

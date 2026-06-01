@@ -1,5 +1,119 @@
 # LLM Customer Service Project Handoff
 
+## 2026-05-20 Current Handoff Update: Composer, Judge Calibration, Model A/B
+
+### Current Stage
+
+The project has moved from "RAG can retrieve the right intent" to "RAG answers must be grounded, direct, and reproducibly judged":
+
+```text
+user query
+-> RAG retrieval
+-> local model generation
+-> answer_composer structured rendering from top1 evidence
+-> reply_rules high-risk fallback
+-> grounding diagnostics / judge / bad-case analysis
+```
+
+### Latest Evaluation Snapshot
+
+Latest report:
+
+```text
+reports/chat_grounding/2026-05-20_22-48-35.json
+```
+
+Metrics:
+
+```text
+total_cases = 30
+top1_intent_hit_rate = 1.0
+judge_pass_count = 25/30
+judge_pass_rate = 0.8333
+evidence_keyword_coverage = 0.9344
+forbidden_hit_count = 0
+direct_answer yes = 25
+grounded yes = 25
+useful yes = 25
+```
+
+Compared with the earlier local report `2026-05-20_22-10-44.json`:
+
+```text
+judge_pass_rate: 0.7000 -> 0.8333
+judge_pass_count: 21/30 -> 25/30
+generation_not_grounded: 9 -> 3
+evidence_keyword_coverage: 0.9016 -> 0.9344
+```
+
+### Completed In This Round
+
+1. Upgraded `services/answer_composer.py` from a bad-reply replacer into a structured answer composer.
+2. Composer now uses top1 evidence to assemble short answers from:
+   - conclusion
+   - action step
+   - caveat / page-based limitation
+3. Added required-step safeguards for intents such as cancellation, rider delay, address change, remarks not followed, privacy, and merchant phone.
+4. Calibrated judge logic for clearly unreasonable strictness:
+   - refund-time cases where evidence has no fixed numeric time
+   - verification-code safety wording
+   - private transfer safety wording
+   - privacy-phone wording
+5. Added merchant-phone knowledge evidence.
+6. Tried online API generation as an A/B experiment, but current result was slightly worse than local generation.
+7. Kept local Qwen generation as the default path.
+
+### Current Conclusion
+
+Retrieval is not the current bottleneck:
+
+```text
+top1_intent_hit_rate = 1.0
+```
+
+The next quality bottleneck is answer rendering:
+
+```text
+same evidence
+-> more direct first sentence
+-> no generic tail
+-> no duplicate action sentence
+-> stable required steps
+```
+
+### Remaining Bad Cases
+
+The latest run still has 5 non-pass cases:
+
+```text
+我取消订单后为什么只退了一部分钱
+骑手一直停在一个地方不动怎么办
+我的地址写错了骑手已经到原地址了怎么办
+备注了不要辣结果还是很辣怎么办
+商家电话在哪里看
+```
+
+Main causes:
+
+- Composer sometimes repeats overlapping sentences.
+- Some replies are supported but the first sentence is not direct enough.
+- Some required steps need stronger intent-specific wording.
+- Merchant phone is partly a judge wording problem, but the answer can still be more explicit.
+
+### Recommended Next Learning Step
+
+Continue with answer composer refinement:
+
+```text
+top1 evidence
+-> extract conclusion/action/caveat
+-> deduplicate overlapping sentences
+-> force direct first sentence for known intents
+-> render fixed short answer
+```
+
+Do this before changing models again. The A/B result showed that a stronger model does not automatically improve grounding if the answer assembly layer still allows generic or duplicated wording.
+
 ## Project Overview
 
 This is a learning-oriented LLM customer-service project for a takeout platform scenario.
@@ -22,7 +136,206 @@ Current system goal:
 Current stage:
 
 ```text
-Vector retrieval RAG + hybrid search + frontend debugging workbench
+RAG configuration + reproducible evaluation + grounding observability
+```
+
+## 2026-05-11 Current Handoff Update: Config Snapshots, Final Prompt Tracing, Prompt Template Tightening
+
+### Current Stage
+
+The project has moved from "RAG can run" to "RAG can be inspected and reproduced":
+
+```text
+retrieval
+-> rerank
+-> prompt preview
+-> chat evidence
+-> grounding report
+-> rag_config snapshot
+-> final_prompt tracing
+-> prompt-template iteration
+```
+
+### Completed In This Round
+
+1. Added centralized RAG config in `config/rag_config.py`.
+2. Moved these parameters into config:
+   - embedding model name
+   - reranker model name
+   - rerank weight
+   - min vector score
+   - FAISS store dir
+   - reply rules enabled
+3. Added `GET /retrieval/config` to expose current runtime RAG config.
+4. `scripts/evaluate_chat_grounding.py` now saves `run_config.rag_config` into each grounding report.
+5. `scripts/evaluate_vector_retrieval.py` now supports `--save-report` and writes JSON reports to:
+   - `reports/retrieval_eval/`
+6. Retrieval evaluation reports now include:
+   - `rag_config`
+   - `rerank_weight`
+   - `summary`
+   - per-case TopK `results`
+7. Grounding reports now save `final_prompt`.
+8. `services/chat_service.py:get_answer_from_rag()` now returns the real `final_prompt`.
+9. `/chat/prompt` response model now includes `final_prompt`.
+10. `models/prompt.py` was rewritten into a shorter, more task-oriented customer-service prompt template to reduce instruction-echo and empty/meta replies.
+
+### Current Backend Chat Path
+
+```text
+POST /chat/prompt
+-> routers/chat.py
+-> services/chat_service.py:get_answer_from_rag(query)
+-> utils/vector_retriever.py:retrieve_rag_items(query)
+-> models/prompt.py:create_prompt(query, documents)
+-> services/chat_service.py:generate_reply(prompt)
+-> services/reply_rules.py:apply_reply_rules(...)
+-> return reply + final_prompt + retrieved_documents + retrieved_items
+```
+
+### Current Evaluation Artifacts
+
+Grounding report:
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_chat_grounding.py --use-local-judge --save-report
+```
+
+Saved under:
+
+```text
+reports/chat_grounding/
+```
+
+Each case now includes:
+
+- `query`
+- `retrieved_documents`
+- `retrieved_items`
+- `final_prompt`
+- `reply`
+- `manual_judgment`
+- `raw_judge_response`
+- `judge_status`
+- `judge_error`
+
+Retrieval evaluation report:
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_vector_retrieval.py --save-report
+```
+
+Saved under:
+
+```text
+reports/retrieval_eval/
+```
+
+Top-level fields include:
+
+- `run_id`
+- `created_at`
+- `script`
+- `rerank_weight`
+- `rag_config`
+- `summary`
+- `cases`
+
+Each retrieval case includes:
+
+- `query`
+- `judgement`
+- `top_intents`
+- `error_type`
+- `notes`
+- `rerank_impact`
+- `original_top_intent`
+- `reranked_top_intent`
+- `rerank_changed_count`
+- `results` (TopK structured candidates)
+
+### Current Important Files
+
+- `config/rag_config.py`: single source of truth for RAG runtime defaults
+- `utils/vector_retriever.py`: retrieval, rerank, FAISS persistence, config usage
+- `services/chat_service.py`: chat orchestration, final prompt tracing, reply rules switch
+- `models/prompt.py`: current compact customer-service RAG prompt template
+- `routers/retrieval.py`: `/retrieval/search`, `/retrieval/prompt-preview`, `/retrieval/config`
+- `scripts/evaluate_vector_retrieval.py`: retrieval evaluation + JSON report export
+- `scripts/evaluate_chat_grounding.py`: grounding evaluation + final prompt + config snapshot
+- `scripts/analyze_grounding_report.py`: grounding bad-case analysis
+
+### Current Test Baseline
+
+```powershell
+cd D:\llm\llm-customer-service
+.\venv\Scripts\python.exe -B -m unittest discover tests
+```
+
+Expected result:
+
+```text
+Ran 47 tests
+OK
+```
+
+### What The User Is Learning Now
+
+The current focus is no longer "add more RAG features quickly". It is:
+
+```text
+How to run enterprise-style LLM experiments with:
+- controlled config
+- saved evaluation artifacts
+- prompt visibility
+- bad-case analysis
+- single-variable iteration
+```
+
+### Recommended Next Learning Step
+
+Next recommended task:
+
+```text
+Add a retrieval-eval analysis script, similar to analyze_grounding_report.py
+```
+
+Goal:
+
+- read `reports/retrieval_eval/*.json`
+- print config snapshot and rerank weight
+- print Top1 / Top3 / miss summary
+- list bad cases
+- show each bad case's TopK candidates and score breakdown
+
+Why this is the right next step:
+
+- grounding evaluation already has an analysis script
+- retrieval evaluation can already save reports
+- what is still missing is a clean way to read and compare those retrieval reports
+- this closes the loop for retrieval-side experimentation
+
+### Suggested Next Conversation Start
+
+Use this prompt in a new window:
+
+```text
+请先阅读 D:\llm\llm-customer-service\HANDOFF.md、STUDY.md 和 docs\API_INTEGRATION.md，然后继续带我学习当前外卖客服 RAG 项目。
+
+当前后端在 D:\llm\llm-customer-service，前端在 D:\llm\front。
+
+当前项目已经完成：
+1. keyword retrieval、vector retrieval、hybrid search、bge reranker、FAISS 持久化
+2. /retrieval/search、/retrieval/prompt-preview、/retrieval/config
+3. /chat/prompt 返回 reply、final_prompt、retrieved_documents、retrieved_items
+4. grounding report 会保存 run_config.rag_config、final_prompt、reply、judge 结果
+5. retrieval evaluation 支持 --save-report，并把 rag_config、rerank_weight、summary、每个 case 的 TopK results 落盘
+6. 已有 analyze_grounding_report.py 用于 bad case 分析
+7. 当前 prompt 模板已经收紧为更短、更任务化的客服模板
+
+我这阶段的学习目标不是继续堆功能，而是学习企业 RAG 的实验方法：如何保存参数、读取报告、比较 bad case，并区分 retrieval、prompt、generation、judge 哪一层出了问题。
+
+请继续下一步：带我实现 retrieval evaluation 的分析脚本。目标是新增一个类似 analyze_grounding_report.py 的脚本，读取 reports/retrieval_eval/*.json，输出配置快照、rerank_weight、Top1/Top3/miss 汇总，并列出 bad cases 及其 TopK 候选和分数拆解。先解释为什么 retrieval report 也需要独立分析脚本，再小步实现。
 ```
 
 ## 2026-05-09 当前交接更新：本地 LLM-as-Judge 初版跑通
@@ -969,3 +1282,202 @@ npm run build
 
 请继续下一步：带我把 scripts/evaluate_chat_grounding.py 从单条固定样例升级为 3 到 5 条固定评估集。先解释为什么 RAG 评估要区分 retrieval relevance、groundedness 和 usefulness，再用小步方式让我参与 5-10 行的小改动。不要一次性写完整复杂系统。
 ```
+## 2026-05-13 当前交接更新：Retrieval 对比、Answer Plan 学习链路、Chat Trace/降级
+
+### 当前阶段
+
+项目已经从“RAG 可以被观察”推进到“RAG 可以被拆成 retrieval / plan / generation / degrade 分层”：
+
+```text
+retrieval report
+-> grounding report
+-> issue typing
+-> structured answer plan
+-> debug render vs user render
+-> chat trace
+-> degrade strategy
+```
+
+### 本轮已完成
+
+1. 新增 `scripts/analyze_retrieval_report.py`。
+2. retrieval report 分析现已支持：
+   - 单报告摘要
+   - `ranking_error_count`
+   - `miss_count`
+   - bad case 的 TopK 分数拆解
+3. retrieval report 分析现已支持 `--compare-to`：
+   - base/target 摘要
+   - 配置 diff
+   - improved / worsened / unchanged case 对比
+4. 在 `scripts/analyze_grounding_report.py` 中新增 grounding bad case 类型划分：
+   - `retrieval_bad`
+   - `generation_not_direct`
+   - `generation_not_grounded`
+   - `safety_overclaim`
+   - `judge_or_other`
+5. 新增 `scripts/debug_answer_plan.py`，作为结构化中间状态学习链路。
+6. 将 planner 生成与正常 reply 生成拆开：
+   - `generate_reply(prompt)`
+   - `generate_answer_plan(prompt)`
+7. 将 answer plan 的 schema 重构为更偏中间层的结构：
+   - `user_intent`
+   - `answer_type`
+   - `direct_answer_brief`
+   - `key_evidence`
+   - `action_suggestion`
+   - `needs_caution`
+   - `caution_reason`
+8. 为 answer plan JSON 增加 parser / validator / normalizer / repair 流程。
+9. 将 answer plan 的渲染拆成：
+   - `render_plan_debug(plan)`
+   - `render_user_reply(plan)`
+10. `/chat/prompt` 现在会返回轻量 `trace`：
+    - `retrieval_count`
+    - `used_fallback_prompt`
+    - `reply_rules_applied`
+    - `answer_source`
+    - `degraded`
+    - `failure_stage`
+    - `fallback_reason`
+11. 在 `services/chat_service.py` 中加入降级策略：
+    - retrieval failure -> fallback prompt
+    - generation failure -> 固定安全兜底回复
+    - reply-rules failure -> 保留原始模型回复
+
+### 这一阶段教会了什么
+
+这一轮新增了两个重要认识：
+
+```text
+JSON 既可以是：
+- 评估产物
+- 运行时中间状态
+```
+
+以及：
+
+```text
+服务链路不能只建模成 success-or-crash。
+它应该支持：
+- trace
+- degrade
+- fallback reason
+```
+
+### 当前关键文件
+
+- `scripts/analyze_retrieval_report.py`
+- `scripts/analyze_grounding_report.py`
+- `scripts/debug_answer_plan.py`
+- `services/chat_service.py`
+- `schemas/chat_schema.py`
+- `tests/test_analyze_retrieval_report.py`
+- `tests/test_analyze_grounding_report.py`
+- `tests/test_debug_answer_plan.py`
+- `tests/test_chat_service_degrade.py`
+
+### 当前推荐调试顺序
+
+在线 `/chat/prompt` 请求：
+
+```text
+trace
+-> retrieved_items
+-> final_prompt
+-> reply
+```
+
+结构化 answer-plan 学习链路：
+
+```text
+retrieval
+-> raw answer_plan JSON
+-> parsed/normalized plan
+-> debug render
+-> user render
+```
+
+### 推荐下一学习阶段
+
+下一阶段建议进入：
+
+```text
+把项目分层成：
+- formal service capability
+- debug capability
+- offline evaluation capability
+- learning-script capability
+```
+
+## 2026-05-19 新窗口交接记录
+
+### 当前状态
+
+项目路径：`D:\llm\llm-customer-service`
+
+最近两天完成的主线是：把外卖客服 RAG 从“能回答”推进到“能评估、能归因、能知道该改哪一层”。
+
+已完成：
+
+1. 30 条 grounding 专业 case 评估集已建立。
+2. `scripts/analyze_grounding_report.py` 已输出 `issue_type_counts`、`suggested_layer_counts`、`failure_attribution_counts`、`failure_attribution_table`。
+3. 三类失败归因已实现：`retrieval_failure`、`evidence_insufficient`、`generation_not_using_evidence`。
+4. forbidden 误伤已修复：否定语境如“不支持直接取消”不会再算违规。
+5. 少量知识库证据已补强：验证码、地址写错且骑手到原地址、支付超时退款。
+6. 最新报告为 `reports/chat_grounding/2026-05-19_21-27-59.json`。
+
+最新指标：
+
+```text
+top1_intent_hit_rate = 1.0
+evidence_keyword_coverage = 0.9508
+forbidden_hit_count = 0
+judge_pass_rate = 0.7667
+failure_attribution_counts = {'pass': 23, 'generation_not_using_evidence': 7}
+```
+
+### 重要判断
+
+当前不要优先改 retrieval，因为 Top1 intent 已经 100%。
+
+当前不要继续堆 reply rules，因为规则堆叠会变成维护负担。
+
+当前不要大规模补知识库，因为归因表没有显示 `evidence_insufficient`。
+
+下一步应该分析剩余 7 条 `generation_not_using_evidence`，再细分：
+
+```text
+judge_too_strict
+reply_not_direct_enough
+reply_missing_required_step
+evidence_wording_mismatch
+```
+
+### 建议下一步命令
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\analyze_grounding_report.py reports\chat_grounding\2026-05-19_21-27-59.json --show-all
+```
+
+重点看这 7 条：
+
+- 订单取消后钱多久退回来
+- 骑手已经取餐了我还能取消吗
+- 骑手一直停在一个地方不动怎么办
+- 我的地址写错了骑手已经到原地址了怎么办
+- 商家电话在哪里看
+- 骑手让我私下转配送费可以吗
+- 骑手让我发验证码给他可以吗
+
+### 测试记录
+
+已跑过：
+
+```powershell
+.\venv\Scripts\python.exe -B -m unittest tests.test_analyze_grounding_report
+.\venv\Scripts\python.exe -B -m unittest tests.test_evaluate_chat_grounding
+.\venv\Scripts\python.exe -B -m unittest tests.test_reply_rules
+```
+
+结果均通过。

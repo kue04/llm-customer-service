@@ -14,6 +14,13 @@ class RetrievalSearchRequest(BaseModel):
 
 
 class RetrievalResultItem(BaseModel):
+    role: str = ""
+    evidence_strength: str = "normal"
+    display_title: str = ""
+    evidence_summary: str = ""
+    prompt_instruction: str = ""
+    source_question: str = ""
+    source_answer: str = ""
     rank: int
     score: float
     rerank_score: float
@@ -39,4 +46,16 @@ class PromptPreviewResponse(BaseModel):
     mode: RetrievalMode
     count: int
     prompt: str
+    prompt_context_items: list[RetrievalResultItem]
     results: list[RetrievalResultItem]
+
+
+class RagConfigResponse(BaseModel):
+    embedding_model_name: str
+    reranker_model_name: str
+    model_rerank_weight: float
+    min_vector_score: float
+    faiss_store_dir: str
+    faiss_index_path: str
+    faiss_docs_path: str
+    reply_rules_enabled: bool

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import faiss
 import numpy as np
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
+from config.rag_config import get_rag_config
 from utils.retriever import iter_knowledge_items, is_similar_answer
 
 
@@ -16,18 +16,20 @@ _EMBEDDING_MODEL: SentenceTransformer | None = None
 _REAL_VECTOR_DOCS: list[dict] | None = None
 _REAL_FAISS_INDEX: faiss.IndexFlatIP | None = None
 
-DEFAULT_MODEL_RERANK_WEIGHT = 0.01
-DEFAULT_MIN_VECTOR_SCORE = 0.40
-VECTOR_STORE_DIR = Path(__file__).resolve().parents[1] / "data" / "faiss_store"
+DEFAULT_MODEL_RERANK_WEIGHT = get_rag_config().model_rerank_weight
+DEFAULT_MIN_VECTOR_SCORE = get_rag_config().min_vector_score
+VECTOR_STORE_DIR = get_rag_config().faiss_store_dir
 FAISS_INDEX_PATH = VECTOR_STORE_DIR / "real_vector.index"
 FAISS_DOCS_PATH = VECTOR_STORE_DIR / "real_vector_docs.json"
+INTENT_HINT_BONUS = 0.08
+INTENT_HINT_SUPPLEMENT_SCORE = 0.76
 
 
 def get_reranker_model() -> CrossEncoder:
     global _RERANKER_MODEL
 
     if _RERANKER_MODEL is None:
-        _RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-base")
+        _RERANKER_MODEL = CrossEncoder(get_rag_config().reranker_model_name)
 
     return _RERANKER_MODEL
 
@@ -45,7 +47,7 @@ def get_embedding_model() -> SentenceTransformer:
     global _EMBEDDING_MODEL
 
     if _EMBEDDING_MODEL is None:
-        _EMBEDDING_MODEL = SentenceTransformer("BAAI/bge-small-zh-v1.5")
+        _EMBEDDING_MODEL = SentenceTransformer(get_rag_config().embedding_model_name)
 
     return _EMBEDDING_MODEL
 
@@ -302,12 +304,162 @@ def calculate_model_rerank_scores(
     return [float(score) for score in scores]
 
 
+def detect_intent_hint(query: str) -> str:
+    rider_unreachable = (
+        any(word in query for word in ["骑手", "配送员"])
+        and any(word in query for word in ["联系不上", "联系不到", "打不通", "电话不接", "无法联系"])
+    )
+    if rider_unreachable:
+        return "配送异常追问"
+
+    coupon_unavailable = (
+        any(word in query for word in ["优惠券", "红包", "券"])
+        and any(word in query for word in ["不能用", "用不了", "不可用", "无法使用", "结算时不能用"])
+    )
+    if coupon_unavailable:
+        return "优惠券不可用"
+
+    asks_refund_amount_review = (
+        (
+            any(word in query for word in ["不是问骑手", "不是问商家", "我想问", "重点是"])
+            and any(word in query for word in ["扣费", "扣钱", "配送费", "没全退", "只退", "少退"])
+        )
+        or (
+            any(word in query for word in ["没收到", "没拿到", "没吃上", "没用餐"])
+            and any(word in query for word in ["扣费", "扣钱", "配送费", "没全退", "只退", "少退"])
+        )
+    )
+    if asks_refund_amount_review:
+        return "退款金额咨询"
+
+    asks_refund_time_priority = (
+        any(word in query for word in ["钱什么时候退", "钱啥时候退", "钱多久退", "多久到账", "退回来"])
+        and any(word in query for word in ["重点", "主要", "想问", "问的是", "取消", "超时"])
+    )
+    if asks_refund_time_priority:
+        return "退款进度"
+
+    delivered_but_not_received = (
+        any(word in query for word in ["显示送达", "显示送到了", "已送达", "送到了"])
+        and any(word in query for word in ["没收到", "没拿到", "没有餐", "真没拿到", "门口没有"])
+    )
+    if delivered_but_not_received:
+        return "未收到餐"
+
+    wrong_item_delivered = any(
+        word in query
+        for word in ["送错", "送错了", "给错餐", "不是我点的", "收到的是别", "收到别的"]
+    )
+    if wrong_item_delivered:
+        return "错送餐品"
+
+    has_real_phone_privacy = any(
+        word in query
+        for word in ["真实手机号", "看到我的手机号", "看到我手机号", "知道我的手机号", "完整手机号"]
+    )
+    if has_real_phone_privacy:
+        return "隐私保护咨询"
+
+    if "平台客服" in query and "手机号" in query:
+        return "隐私保护咨询"
+
+    asks_platform_contact_merchant = (
+        any(word in query for word in ["帮我打给", "直接帮我打", "帮我联系", "客服联系"])
+        and any(word in query for word in ["商家", "店家"])
+    )
+    if asks_platform_contact_merchant:
+        return "联系商家咨询"
+
+    rider_arrival_location_mismatch = (
+        "骑手" in query
+        and any(word in query for word in ["说到了", "显示到了", "说已到"])
+        and any(word in query for word in ["定位", "位置"])
+    )
+    if rider_arrival_location_mismatch:
+        return "配送异常追问"
+
+    unaccepted_order_cancel = (
+        any(word in query for word in ["商家", "店家"])
+        and any(word in query for word in ["不接单", "未接单", "没接单"])
+        and any(word in query for word in ["取消", "不想要"])
+    )
+    if unaccepted_order_cancel:
+        return "取消订单"
+
+    accepted_or_started_order_cancel = (
+        any(word in query for word in ["商家", "店家"])
+        and any(word in query for word in ["接单", "开始做", "已经做", "制作"])
+        and any(word in query for word in ["不想要", "取消", "退全款", "全款"])
+    )
+    if accepted_or_started_order_cancel:
+        return "接单后取消"
+
+    has_merchant = any(word in query for word in ["商家", "店家"])
+    has_phone = any(word in query for word in ["手机号", "联系电话", "电话"])
+    if has_merchant and has_phone:
+        return "商家电话咨询"
+
+    has_refund_context = any(
+        word in query
+        for word in ["没吃上", "没收到", "没用餐", "取消", "只退", "少退"]
+    )
+    has_money_dispute = any(
+        word in query
+        for word in ["扣钱", "扣我钱", "扣了钱", "没全退", "只退", "少退"]
+    )
+    if has_refund_context and has_money_dispute:
+        return "退款金额咨询"
+
+    return ""
+
+
+def supplement_candidates_by_intent_hint(
+    candidates: list[dict],
+    intent_hint: str,
+    limit: int = 3,
+) -> list[dict]:
+    if not intent_hint:
+        return candidates
+
+    existing_questions = {
+        candidate.get("source", {}).get("question", "")
+        for candidate in candidates
+    }
+    supplemented = list(candidates)
+
+    for document in get_real_vector_documents():
+        source = document.get("source", {})
+        if source.get("intent") != intent_hint:
+            continue
+        if source.get("question", "") in existing_questions:
+            continue
+
+        supplemented.append(
+            {
+                "score": INTENT_HINT_SUPPLEMENT_SCORE,
+                "vector_score": 0.0,
+                "keyword_bonus": 0.0,
+                "answer": document["answer"],
+                "text": document["text"],
+                "source": source,
+                "direction_penalty": 0.0,
+                "_retrieval_origin": "intent_hint_supplement",
+            }
+        )
+        existing_questions.add(source.get("question", ""))
+        if len(supplemented) - len(candidates) >= limit:
+            break
+
+    return supplemented
+
+
 def rerank_candidates(
     query: str,
     candidates: list[dict],
     model_rerank_weight: float = DEFAULT_MODEL_RERANK_WEIGHT,
 ) -> list[dict]:
     reranked_candidates = []
+    intent_hint = detect_intent_hint(query)
     model_rerank_scores = calculate_model_rerank_scores(query, candidates)
     if len(model_rerank_scores) != len(candidates):
         raise ValueError("Model rerank scores count must match candidates count.")
@@ -322,6 +474,9 @@ def rerank_candidates(
 
         if "怎么办" in query and ("追问" in intent or "追问" in question):
             rerank_score += 0.02
+
+        if intent_hint and intent == intent_hint:
+            rerank_score += INTENT_HINT_BONUS
 
         reranked_candidate["rerank_score"] = rerank_score
         reranked_candidate["model_rerank_score"] = model_rerank_score
@@ -401,8 +556,14 @@ def retrieve_by_real_vector(
             continue
 
         document = documents[doc_index]
-        raw_candidates.append(_build_raw_candidate(query, document, similarity, use_hybrid))
+        candidate = _build_raw_candidate(query, document, similarity, use_hybrid)
+        candidate["_retrieval_origin"] = "faiss"
+        raw_candidates.append(candidate)
 
+    raw_candidates = supplement_candidates_by_intent_hint(
+        raw_candidates,
+        detect_intent_hint(query),
+    )
     raw_candidates = rerank_candidates(
         query,
         raw_candidates,
@@ -447,6 +608,7 @@ def retrieve_rag_items(
                 "vector_score": candidate.get("vector_score", 0.0),
                 "keyword_bonus": candidate.get("keyword_bonus", 0.0),
                 "direction_penalty": candidate.get("direction_penalty", 0.0),
+                "retrieval_origin": candidate.get("_retrieval_origin", "faiss"),
             }
         )
     return items

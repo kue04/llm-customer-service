@@ -1,53 +1,64 @@
 import unittest
 
-from services.reply_rules import apply_reply_rules
+from services.reply_rules import apply_reply_rules, apply_reply_rules_with_trace
 
 
 class ReplyRulesTest(unittest.TestCase):
-    def test_private_transfer_rule_returns_required_safety_points(self) -> None:
+    def test_normal_intent_keeps_model_reply(self) -> None:
         reply = apply_reply_rules(
+            query="退款多久到账",
+            reply="model reply",
+            retrieved_items=[{"category": "退款售后", "intent": "退款进度"}],
+        )
+
+        self.assertEqual(reply, "model reply")
+
+    def test_trace_records_pass_through_rule_match(self) -> None:
+        reply, trace = apply_reply_rules_with_trace(
+            query="商家电话在哪里看",
+            reply="model reply",
+            retrieved_items=[{"category": "常见问答", "intent": "商家电话咨询"}],
+        )
+
+        self.assertEqual(reply, "model reply")
+        self.assertTrue(trace["matched"])
+        self.assertEqual(trace["mode"], "pass_through")
+        self.assertEqual(trace["primary_intent"], "商家电话咨询")
+
+    def test_private_transfer_rule_still_forces_safety_reply(self) -> None:
+        reply, trace = apply_reply_rules_with_trace(
             query="骑手让我私下转配送费可以吗",
-            reply="请在订单内处理。",
+            reply="model reply",
             retrieved_items=[{"category": "平台安全", "intent": "私下收费风险"}],
         )
 
+        self.assertNotEqual(reply, "model reply")
         self.assertIn("不建议私下转账", reply)
-        self.assertIn("平台订单结算页", reply)
-        self.assertIn("官方渠道", reply)
+        self.assertIn("保留聊天记录", reply)
+        self.assertIn("资金纠纷", reply)
+        self.assertEqual(trace["mode"], "force")
 
-    def test_coupon_rule_returns_common_restrictions(self) -> None:
+    def test_verification_code_rule_still_forces_safety_reply(self) -> None:
         reply = apply_reply_rules(
-            query="优惠券为什么不能用",
-            reply="请看页面。",
-            retrieved_items=[{"category": "优惠券和促销类问题", "intent": "优惠券不可用"}],
+            query="骑手让我发验证码给他可以吗",
+            reply="model reply",
+            retrieved_items=[{"category": "平台安全", "intent": "验证码诈骗提醒"}],
         )
 
-        for keyword in ["使用门槛", "有效期", "适用品类", "适用商家", "支付方式"]:
-            self.assertIn(keyword, reply)
+        self.assertNotEqual(reply, "model reply")
+        self.assertIn("不可以", reply)
+        self.assertIn("隐私", reply)
 
-    def test_rider_unreachable_rule_returns_exception_flow(self) -> None:
-        reply = apply_reply_rules(
-            query="骑手联系不上怎么办",
-            reply="请稍等。",
-            retrieved_items=[{"category": "配送进度", "intent": "催单"}],
+    def test_unknown_intent_keeps_original_reply(self) -> None:
+        reply, trace = apply_reply_rules_with_trace(
+            query="未知问题",
+            reply="original reply",
+            retrieved_items=[{"category": "未知", "intent": "未知意图"}],
         )
 
-        self.assertIn("订单详情页", reply)
-        self.assertIn("配送异常", reply)
-        self.assertIn("未收到餐反馈", reply)
-
-    def test_spilled_food_rule_returns_after_sales_flow(self) -> None:
-        reply = apply_reply_rules(
-            query="餐洒了怎么申请售后",
-            reply="请按页面提示操作。",
-            retrieved_items=[{"category": "售后流程", "intent": "餐品撒漏售后"}],
-        )
-
-        self.assertIn("订单详情页", reply)
-        self.assertIn("餐品问题", reply)
-        self.assertIn("包装破损", reply)
-        self.assertIn("撒漏", reply)
-        self.assertIn("照片", reply)
+        self.assertEqual(reply, "original reply")
+        self.assertFalse(trace["matched"])
+        self.assertEqual(trace["mode"], "pass_through")
 
 
 if __name__ == "__main__":

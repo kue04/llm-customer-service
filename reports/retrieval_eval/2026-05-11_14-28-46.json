@@ -1,0 +1,712 @@
+{
+  "run_id": "2026-05-11_14-28-46",
+  "created_at": "2026-05-11T14:28:46+08:00",
+  "script": "scripts/evaluate_vector_retrieval.py",
+  "rerank_weight": 0.01,
+  "rag_config": {
+    "embedding_model_name": "BAAI/bge-small-zh-v1.5",
+    "reranker_model_name": "BAAI/bge-reranker-base",
+    "model_rerank_weight": 0.01,
+    "min_vector_score": 0.4,
+    "faiss_store_dir": "D:\\llm\\llm-customer-service\\data\\faiss_store",
+    "reply_rules_enabled": true,
+    "faiss_index_path": "D:\\llm\\llm-customer-service\\data\\faiss_store\\real_vector.index",
+    "faiss_docs_path": "D:\\llm\\llm-customer-service\\data\\faiss_store\\real_vector_docs.json"
+  },
+  "summary": {
+    "rag_config": {
+      "embedding_model_name": "BAAI/bge-small-zh-v1.5",
+      "reranker_model_name": "BAAI/bge-reranker-base",
+      "model_rerank_weight": 0.01,
+      "min_vector_score": 0.4,
+      "faiss_store_dir": "D:\\llm\\llm-customer-service\\data\\faiss_store",
+      "reply_rules_enabled": true,
+      "faiss_index_path": "D:\\llm\\llm-customer-service\\data\\faiss_store\\real_vector.index",
+      "faiss_docs_path": "D:\\llm\\llm-customer-service\\data\\faiss_store\\real_vector_docs.json"
+    },
+    "total": 12,
+    "top1": 12,
+    "top3_error": 0,
+    "miss": 0,
+    "rerank_changed_count": 36,
+    "changed_top1": 0,
+    "improved": 0,
+    "worsened": 0,
+    "unchanged": 12,
+    "changed_neutral": 0
+  },
+  "cases": [
+    {
+      "query": "会员退款多久到账",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "退款进度",
+        "会员退款",
+        "退款金额咨询"
+      ],
+      "error_type": "",
+      "notes": "同时覆盖会员服务和退款售后两个相邻业务域，用来观察检索是否能优先理解“多久到账”。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "退款进度",
+      "reranked_top_intent": "退款进度",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.928747181892395,
+          "rerank_score": 0.9386521399021148,
+          "model_rerank_score": 0.9904958009719849,
+          "vector_score": 0.798747181892395,
+          "keyword_bonus": 0.13,
+          "direction_penalty": 0.0,
+          "category": "退款售后",
+          "intent": "退款进度",
+          "question": "我想咨询一下，退款什么时候到账？",
+          "answer": "退款到账时间取决于支付渠道。平台审核通过后通常会原路退回，银行卡或部分第三方支付可能存在处理延迟，您可以在订单详情页查看进度。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        },
+        {
+          "rank": 2,
+          "score": 0.7569362688064575,
+          "rerank_score": 0.7587958441674709,
+          "model_rerank_score": 0.18595753610134125,
+          "vector_score": 0.6769362688064575,
+          "keyword_bonus": 0.08,
+          "direction_penalty": 0.0,
+          "category": "会员服务",
+          "intent": "会员退款",
+          "question": "这个问题我有点不太明白，外卖会员能退吗？我不想用了。可以帮我看一下吗？",
+          "answer": "会员是否支持退款取决于购买时间、使用情况和平台规则。您可以在会员中心查看退款入口；如果已经使用过权益，可能无法全额退款。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        },
+        {
+          "rank": 3,
+          "score": 0.7401223945617675,
+          "rerank_score": 0.7402990417182446,
+          "model_rerank_score": 0.01766471564769745,
+          "vector_score": 0.6601223945617676,
+          "keyword_bonus": 0.08,
+          "direction_penalty": 0.0,
+          "category": "退款售后",
+          "intent": "退款金额咨询",
+          "question": "多轮对话：用户先问“我取消订单后为什么只退了一部分钱？”，客服初步回复后，用户继续追问“我还能继续申请平台介入吗？”",
+          "answer": "部分退款可能与商家是否已制作、配送是否已开始、优惠券抵扣和平台规则有关。您可以在退款详情页查看扣除原因，如有疑问可提交售后复核。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "外卖超时怎么办",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "超时取消追问",
+        "催单",
+        "超时取消"
+      ],
+      "error_type": "意图粒度相近",
+      "notes": "用户只说超时怎么办，可能是催单、配送延迟咨询，也可能进一步转向超时取消。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "超时取消追问",
+      "reranked_top_intent": "超时取消追问",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.6950408220291138,
+          "rerank_score": 0.7247301733493805,
+          "model_rerank_score": 0.9689351320266724,
+          "vector_score": 0.6950408220291138,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "复杂对话",
+          "intent": "超时取消追问",
+          "question": "这个问题我有点不太明白，多轮场景：我已经等了一个小时，现在不想吃了。能不能给我一个解决办法？",
+          "answer": "抱歉让您等待这么久。若订单明显超时，您可以在订单详情页申请取消或提交配送延迟售后。平台会根据订单状态和超时情况处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 2,
+          "score": 0.6681222915649414,
+          "rerank_score": 0.6978610134124756,
+          "model_rerank_score": 0.973872184753418,
+          "vector_score": 0.6681222915649414,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "配送进度",
+          "intent": "催单",
+          "question": "多轮对话：用户先问“我的外卖怎么还没到？已经超过预计时间了。”，客服初步回复后，用户继续追问“那现在我应该先做什么？”",
+          "answer": "很抱歉让您久等了。建议您先在订单详情页查看实时配送状态；如果订单已经明显超时，您可以提交配送延迟反馈，平台会根据订单情况协助处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 3,
+          "score": 0.6649185252189637,
+          "rerank_score": 0.6749063259363175,
+          "model_rerank_score": 0.9987800717353821,
+          "vector_score": 0.7449185252189636,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.08,
+          "category": "订单取消",
+          "intent": "超时取消",
+          "question": "这个问题我有点不太明白，外卖已经超时了，我不想要了。这个要怎么处理？",
+          "answer": "如果订单已经超时，您可以在订单详情页查看是否支持取消或申请售后。若餐品已在配送途中，具体退款结果需要结合订单状态和平台规则判断。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "骑手联系不上怎么办",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "配送异常追问",
+        "催单",
+        "地址修改追问"
+      ],
+      "error_type": "角色方向相反",
+      "notes": "用户联系不上骑手，不等于骑手联系不到用户。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "配送异常追问",
+      "reranked_top_intent": "配送异常追问",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.7523237466812134,
+          "rerank_score": 0.7822526091337204,
+          "model_rerank_score": 0.9928862452507019,
+          "vector_score": 0.7523237466812134,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "复杂对话",
+          "intent": "配送异常追问",
+          "question": "客服你好，多轮场景：刚才说的订单还没送到，现在骑手电话也打不通。",
+          "answer": "理解您的着急。如果订单已超时且骑手无法联系，建议您立即在订单详情页提交配送异常或未收到餐反馈，平台会优先核实骑手位置和订单状态。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 2,
+          "score": 0.7474981546401978,
+          "rerank_score": 0.7772293382883072,
+          "model_rerank_score": 0.9731183648109436,
+          "vector_score": 0.7474981546401978,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "配送进度",
+          "intent": "催单",
+          "question": "多轮对话：用户先问“骑手一直停在一个地方不动，是不是不送了？”，客服初步回复后，用户继续追问“如果对方一直不处理怎么办？”",
+          "answer": "抱歉给您带来不安。骑手位置长时间未更新可能是网络延迟、等待商家出餐或路况影响。建议您先尝试联系骑手；如果无法联系，我可以协助您反馈配送异常并继续跟进。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        },
+        {
+          "rank": 3,
+          "score": 0.7202911376953125,
+          "rerank_score": 0.7489428037405014,
+          "model_rerank_score": 0.8651666045188904,
+          "vector_score": 0.7202911376953125,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "复杂对话",
+          "intent": "地址修改追问",
+          "question": "多轮对话：用户先问“多轮场景：我刚才说地址错了，现在骑手已经到原地址了。”，客服初步回复后，用户继续追问“如果对方一直不处理怎么办？”",
+          "answer": "如果骑手已经到达原地址，建议您立即联系骑手说明情况。若新地址较远或超出配送范围，可能无法改送，您可以与骑手和平台客服协商处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "饭里吃出异物怎么办",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "食品安全投诉",
+        "食品安全投诉",
+        "食品安全补充材料"
+      ],
+      "error_type": "安全投诉粒度",
+      "notes": "食品异物属于高风险售后，应优先命中食品安全投诉，而不是普通餐品撒漏或错送。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "食品安全投诉",
+      "reranked_top_intent": "食品安全投诉",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.7979714736938477,
+          "rerank_score": 0.8077388957738877,
+          "model_rerank_score": 0.9767422080039978,
+          "vector_score": 0.7619714736938477,
+          "keyword_bonus": 0.036000000000000004,
+          "direction_penalty": 0.0,
+          "category": "用户投诉",
+          "intent": "食品安全投诉",
+          "question": "饭里有异物，太恶心了。",
+          "answer": "非常抱歉出现这样的情况。请立即停止食用，拍照保留异物、餐品和包装，并通过订单售后提交食品安全投诉，平台会优先核实处理。"
+        },
+        {
+          "rank": 2,
+          "score": 0.5574885606765747,
+          "rerank_score": 0.5784003955125809,
+          "model_rerank_score": 0.09118348360061646,
+          "vector_score": 0.5574885606765747,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "用户投诉",
+          "intent": "食品安全投诉",
+          "question": "多轮对话：用户先问“吃完外卖后肚子不舒服，怎么办？”，客服初步回复后，用户继续追问“需要我上传什么凭证吗？”",
+          "answer": "如果您身体不适，请优先就医并保留诊断记录、餐品照片和订单信息。您可以通过订单售后提交食品安全反馈，平台会协助核实。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 3,
+          "score": 0.5704976673126221,
+          "rerank_score": 0.577809560418129,
+          "model_rerank_score": 0.7311893105506897,
+          "vector_score": 0.5584976673126221,
+          "keyword_bonus": 0.012,
+          "direction_penalty": 0.0,
+          "category": "复杂对话",
+          "intent": "食品安全补充材料",
+          "question": "请问一下，多轮场景：我刚才投诉食品安全，现在平台要我补充信息。",
+          "answer": "食品安全问题建议补充餐品照片、异物或变质证据、包装小票、食用时间和身体不适情况。请尽量客观描述，便于平台核实。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "优惠券结算时不能用",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "优惠券不可用",
+        "优惠叠加咨询",
+        "优惠券未退回"
+      ],
+      "error_type": "优惠规则相近",
+      "notes": "优惠问题容易在券不可用、叠加规则、活动未生效之间混淆。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "优惠券不可用",
+      "reranked_top_intent": "优惠券不可用",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.8430616855621338,
+          "rerank_score": 0.8530591267347336,
+          "model_rerank_score": 0.9997441172599792,
+          "vector_score": 0.8430616855621338,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "优惠券和促销类问题",
+          "intent": "优惠券不可用",
+          "question": "您好，我有优惠券，为什么结算时不能用？",
+          "answer": "优惠券通常会有使用门槛、有效期、适用品类、适用商家和支付方式限制。您可以点开优惠券详情查看不可用原因。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 2,
+          "score": 0.6997788548469543,
+          "rerank_score": 0.7068899005651474,
+          "model_rerank_score": 0.7111045718193054,
+          "vector_score": 0.6997788548469543,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "优惠券和促销类问题",
+          "intent": "优惠叠加咨询",
+          "question": "优惠券能不能和满减一起用吗？可以帮我看一下吗？",
+          "answer": "是否可以叠加使用取决于活动规则。有些优惠券可与满减同享，有些不可叠加，您可以在结算页查看最终优惠明细。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        },
+        {
+          "rank": 3,
+          "score": 0.6850124597549438,
+          "rerank_score": 0.6853970231115818,
+          "model_rerank_score": 0.03845633566379547,
+          "vector_score": 0.6850124597549438,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "优惠券和促销类问题",
+          "intent": "优惠券未退回",
+          "question": "这单取消后优惠券没退回来。可以帮我看一下吗？",
+          "answer": "优惠券是否退回取决于券规则、订单取消原因和有效期。您可以在券包中查看状态，如认为异常可截图反馈平台客服。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "取消订单后钱多久退回来",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "退款进度",
+        "支付超时取消",
+        "退款金额咨询"
+      ],
+      "error_type": "取消和退款跨域",
+      "notes": "问题里有取消订单，但真正要问的是退款到账时间，适合检查 hybrid 是否能抓住退款主意图。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "退款进度",
+      "reranked_top_intent": "退款进度",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.7741481418609619,
+          "rerank_score": 0.7821963382959366,
+          "model_rerank_score": 0.804819643497467,
+          "vector_score": 0.7621481418609619,
+          "keyword_bonus": 0.012,
+          "direction_penalty": 0.0,
+          "category": "退款售后",
+          "intent": "退款进度",
+          "question": "退钱什么时候到账？现在我该怎么办？",
+          "answer": "退款到账时间取决于支付渠道。平台审核通过后通常会原路退回，银行卡或部分第三方支付可能存在处理延迟，您可以在订单详情页查看进度。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        },
+        {
+          "rank": 2,
+          "score": 0.7727417106628418,
+          "rerank_score": 0.7818200833797455,
+          "model_rerank_score": 0.9078372716903687,
+          "vector_score": 0.7607417106628418,
+          "keyword_bonus": 0.012,
+          "direction_penalty": 0.0,
+          "category": "订单支付问题",
+          "intent": "支付超时取消",
+          "question": "麻烦问下，支付超时订单被取消了，钱会退吗？",
+          "answer": "如果订单未支付成功，通常不会扣款；如果已经扣款但订单因支付状态异常取消，款项一般会原路退回，请查看支付记录和退款进度。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        },
+        {
+          "rank": 3,
+          "score": 0.7725223655700684,
+          "rerank_score": 0.7766503242850303,
+          "model_rerank_score": 0.41279587149620056,
+          "vector_score": 0.7605223655700684,
+          "keyword_bonus": 0.012,
+          "direction_penalty": 0.0,
+          "category": "退款售后",
+          "intent": "退款金额咨询",
+          "question": "您好，我取消订单后为什么只退了一部分钱？",
+          "answer": "部分退款可能与商家是否已制作、配送是否已开始、优惠券抵扣和平台规则有关。您可以在退款详情页查看扣除原因，如有疑问可提交售后复核。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "外卖已经超时了我不想要了",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "超时取消",
+        "超时取消追问",
+        "催单"
+      ],
+      "error_type": "配送转取消",
+      "notes": "这类问题从配送异常转向取消订单，用来测试检索能否理解用户的下一步诉求。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "超时取消",
+      "reranked_top_intent": "超时取消",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.7420052289962769,
+          "rerank_score": 0.7519987291097641,
+          "model_rerank_score": 0.9993500113487244,
+          "vector_score": 0.7420052289962769,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "订单取消",
+          "intent": "超时取消",
+          "question": "麻烦问下，外卖已经超时了，我不想要了。",
+          "answer": "如果订单已经超时，您可以在订单详情页查看是否支持取消或申请售后。若餐品已在配送途中，具体退款结果需要结合订单状态和平台规则判断。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 2,
+          "score": 0.6736874580383301,
+          "rerank_score": 0.683296976685524,
+          "model_rerank_score": 0.9609518647193909,
+          "vector_score": 0.6736874580383301,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "复杂对话",
+          "intent": "超时取消追问",
+          "question": "这个问题我有点不太明白，多轮场景：我已经等了一个小时，现在不想吃了。能不能给我一个解决办法？",
+          "answer": "抱歉让您等待这么久。若订单明显超时，您可以在订单详情页申请取消或提交配送延迟售后。平台会根据订单状态和超时情况处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 3,
+          "score": 0.6526002287864685,
+          "rerank_score": 0.6610917007923126,
+          "model_rerank_score": 0.8491472005844116,
+          "vector_score": 0.6526002287864685,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "配送进度",
+          "intent": "催单",
+          "question": "您好，我的外卖怎么还没到？已经超过预计时间了。",
+          "answer": "很抱歉让您久等了。建议您先在订单详情页查看实时配送状态；如果订单已经明显超时，您可以提交配送延迟反馈，平台会根据订单情况协助处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "商家一直不接单我想取消",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "取消订单",
+        "接单后取消",
+        "取消订单"
+      ],
+      "error_type": "取消原因粒度",
+      "notes": "核心诉求是取消订单，商家不接单只是取消原因，不应优先命中商家投诉。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "取消订单",
+      "reranked_top_intent": "取消订单",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.7831295132637024,
+          "rerank_score": 0.7931268936395646,
+          "model_rerank_score": 0.9997380375862122,
+          "vector_score": 0.7831295132637024,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "订单取消",
+          "intent": "取消订单",
+          "question": "店家一直不接单，我想取消这单。能不能给我一个解决办法？",
+          "answer": "如果商家长时间未接单，您可以在订单详情页发起取消申请。系统会根据订单状态处理退款；如果页面无法取消，可以联系平台客服进一步处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 2,
+          "score": 0.7608275413513184,
+          "rerank_score": 0.7700794434547424,
+          "model_rerank_score": 0.9251902103424072,
+          "vector_score": 0.7608275413513184,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "订单取消",
+          "intent": "接单后取消",
+          "question": "麻烦问下，商家已经接单了还能取消吗？",
+          "answer": "商家接单后是否能取消取决于是否已经开始制作。如果还未制作，通常可以申请取消；如果已经制作，可能需要商家确认，退款金额以页面显示为准。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        },
+        {
+          "rank": 3,
+          "score": 0.7327308654785156,
+          "rerank_score": 0.7426097649335861,
+          "model_rerank_score": 0.9878899455070496,
+          "vector_score": 0.7327308654785156,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "订单取消",
+          "intent": "取消订单",
+          "question": "我刚下错单了，能不能取消吗？可以帮我看一下吗？",
+          "answer": "可以尝试取消。若商家还未接单或未开始制作，通常可以直接取消；如果商家已经开始制作，可能需要商家确认后才能取消。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "我的账号被别人下单了怎么办",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "账号异常",
+        "商家状态咨询",
+        "站外交易风险"
+      ],
+      "error_type": "账号安全",
+      "notes": "账号被他人下单属于平台安全问题，不是普通历史订单查询。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "账号异常",
+      "reranked_top_intent": "账号异常",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.8198140859603882,
+          "rerank_score": 0.8298132359981537,
+          "model_rerank_score": 0.9999150037765503,
+          "vector_score": 0.8198140859603882,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "平台安全",
+          "intent": "账号异常",
+          "question": "我的账号被别人下单了咋办？这个要怎么处理？",
+          "answer": "请立即修改账号密码，并检查绑定手机号和支付方式。如果存在异常扣款或订单，请尽快联系平台客服冻结风险并核实处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 2,
+          "score": 0.6343082785606384,
+          "rerank_score": 0.6560364910960198,
+          "model_rerank_score": 0.1728212535381317,
+          "vector_score": 0.6343082785606384,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "常见问答",
+          "intent": "商家状态咨询",
+          "question": "多轮对话：用户先问“这家店为什么突然不能下单了？”，客服初步回复后，用户继续追问“这个会影响退款吗？”",
+          "answer": "商家可能处于休息、爆单、售罄、临时调整营业时间或超出配送范围状态。您可以稍后再试，或选择其他营业中的商家。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        },
+        {
+          "rank": 3,
+          "score": 0.6286779642105103,
+          "rerank_score": 0.6527026736736298,
+          "model_rerank_score": 0.4024709463119507,
+          "vector_score": 0.6286779642105103,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "平台安全",
+          "intent": "站外交易风险",
+          "question": "多轮对话：用户先问“商家让我加微信退款，可以吗？”，客服初步回复后，用户继续追问“这个会影响退款吗？”",
+          "answer": "不建议通过平台外渠道处理退款。为了保障资金安全，请在订单售后入口申请退款或补偿，不要私下转账或提供验证码。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "我不想让骑手知道我的真实号码",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "隐私保护咨询",
+        "修改联系方式",
+        "隐私保护咨询"
+      ],
+      "error_type": "隐私保护",
+      "notes": "这是隐私保护诉求，容易和修改联系方式、联系骑手等配送沟通问题混淆。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "隐私保护咨询",
+      "reranked_top_intent": "隐私保护咨询",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.7660434246063232,
+          "rerank_score": 0.7760404121875762,
+          "model_rerank_score": 0.9996987581253052,
+          "vector_score": 0.7660434246063232,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "平台安全",
+          "intent": "隐私保护咨询",
+          "question": "我不想让骑手知道我的真实号码。",
+          "answer": "您可以优先使用平台提供的虚拟号或在线联系功能。请不要在备注或聊天中主动填写完整手机号，以减少隐私泄露风险。"
+        },
+        {
+          "rank": 2,
+          "score": 0.6274046301841736,
+          "rerank_score": 0.6367765605449677,
+          "model_rerank_score": 0.9371930360794067,
+          "vector_score": 0.6274046301841736,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "订单信息修改",
+          "intent": "修改联系方式",
+          "question": "多轮对话：用户先问“手机号填错了，骑手联系不到我怎么办？”，客服初步回复后，用户继续追问“那现在我应该先做什么？”",
+          "answer": "建议您尽快在订单详情页联系骑手或平台客服说明情况。为保护隐私，请不要在非官方渠道公开完整手机号。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 3,
+          "score": 0.5993400812149048,
+          "rerank_score": 0.6084695363044739,
+          "model_rerank_score": 0.9129455089569092,
+          "vector_score": 0.5993400812149048,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "平台安全",
+          "intent": "隐私保护咨询",
+          "question": "多轮对话：用户先问“我想知道平台怎么保护我的手机号。”，客服初步回复后，用户继续追问“如果对方一直不处理怎么办？”",
+          "answer": "平台通常会通过隐私号等方式保护用户和骑手手机号。请尽量通过平台内联系功能沟通，不要在聊天中主动发送完整手机号、地址或验证码。 您可以先根据订单页面提示操作，相关结果以页面展示和平台处理为准。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "地址填错了骑手已经到原地址",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "地址修改追问",
+        "修改地址",
+        "修改联系方式"
+      ],
+      "error_type": "多轮追问",
+      "notes": "包含地址错误和骑手已到达两个条件，优先命中复杂对话里的追问更合理。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "地址修改追问",
+      "reranked_top_intent": "地址修改追问",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.8225768804550171,
+          "rerank_score": 0.8325748664140701,
+          "model_rerank_score": 0.999798595905304,
+          "vector_score": 0.8225768804550171,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "复杂对话",
+          "intent": "地址修改追问",
+          "question": "麻烦问下，多轮场景：我刚才说地址错了，现在骑手已经到原地址了。",
+          "answer": "如果骑手已经到达原地址，建议您立即联系骑手说明情况。若新地址较远或超出配送范围，可能无法改送，您可以与骑手和平台客服协商处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 2,
+          "score": 0.7374140024185181,
+          "rerank_score": 0.7472673463821411,
+          "model_rerank_score": 0.9853343963623047,
+          "vector_score": 0.7374140024185181,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "订单信息修改",
+          "intent": "修改地址",
+          "question": "这个问题我有点不太明白，地址填错了，能帮我改一下吗？能不能给我一个解决办法？",
+          "answer": "如果订单还未开始配送，可以尝试联系商家或骑手修改地址；若已配送或新地址超出范围，可能无法修改。请避免在聊天中发送完整隐私信息。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 3,
+          "score": 0.7285805940628052,
+          "rerank_score": 0.7323790881037712,
+          "model_rerank_score": 0.3798494040966034,
+          "vector_score": 0.7285805940628052,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "订单信息修改",
+          "intent": "修改联系方式",
+          "question": "您好，手机号填错了，骑手联系不到我怎么办？",
+          "answer": "建议您尽快在订单详情页联系骑手或平台客服说明情况。为保护隐私，请不要在非官方渠道公开完整手机号。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        }
+      ],
+      "rerank_changed_count": 3
+    },
+    {
+      "query": "骑手让我私下转配送费可以吗",
+      "judgement": "Top1 命中",
+      "top_intents": [
+        "私下收费风险",
+        "骑手打赏咨询",
+        "私下收费风险"
+      ],
+      "error_type": "平台安全风险",
+      "notes": "用户问是否可以私下转账，应该归入安全风险，而不是配送费咨询。",
+      "rerank_impact": "unchanged",
+      "original_top_intent": "私下收费风险",
+      "reranked_top_intent": "私下收费风险",
+      "results": [
+        {
+          "rank": 1,
+          "score": 0.7897320985794067,
+          "rerank_score": 0.7997306501865387,
+          "model_rerank_score": 0.9998551607131958,
+          "vector_score": 0.7897320985794067,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "平台安全",
+          "intent": "私下收费风险",
+          "question": "我想咨询一下，骑手说要我私下转配送费。",
+          "answer": "请不要私下转账。配送费应以平台订单结算页为准，任何额外费用都应通过官方渠道确认和处理。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。"
+        },
+        {
+          "rank": 2,
+          "score": 0.7794122695922852,
+          "rerank_score": 0.7893984758853912,
+          "model_rerank_score": 0.9986206293106079,
+          "vector_score": 0.7794122695922852,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "常见问答",
+          "intent": "骑手打赏咨询",
+          "question": "我想给配送员小费，能不能通过平台给吗？这种情况平台怎么处理？",
+          "answer": "是否支持骑手打赏以平台页面展示为准。如果没有官方打赏入口，不建议私下转账，避免产生资金纠纷。 感谢您的反馈，您也可以在订单评价中继续补充体验，帮助平台和商家改进服务。"
+        },
+        {
+          "rank": 3,
+          "score": 0.7634616494178772,
+          "rerank_score": 0.7734602153301239,
+          "model_rerank_score": 0.9998565912246704,
+          "vector_score": 0.7634616494178772,
+          "keyword_bonus": 0.0,
+          "direction_penalty": 0.0,
+          "category": "平台安全",
+          "intent": "私下收费风险",
+          "question": "骑手说要我私下转配送费。",
+          "answer": "请不要私下转账。配送费应以平台订单结算页为准，任何额外费用都应通过官方渠道确认和处理。"
+        }
+      ],
+      "rerank_changed_count": 3
+    }
+  ]
+}

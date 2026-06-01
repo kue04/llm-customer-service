@@ -1330,3 +1330,394 @@ manual_judgment
 ```
 
 这样你会学到真实 LLM 应用工程里的一个重点：模型输出永远可能不稳定，工程系统必须保留证据、暴露错误、允许人工复核。
+## 2026-05-11 Study Update: RAG Config, Reproducible Evaluation, Final Prompt Tracing
+
+### Completed In This Round
+
+- Added centralized RAG config in `config/rag_config.py`.
+- Retrieval and chat runtime defaults now come from the config module.
+- Added `GET /retrieval/config`.
+- Grounding reports now save `run_config.rag_config`.
+- Grounding reports now save `final_prompt`.
+- `get_answer_from_rag()` now returns the real `final_prompt`.
+- `/chat/prompt` now returns `final_prompt`.
+- Retrieval evaluation now supports `--save-report`.
+- Retrieval evaluation reports now save:
+  - `rag_config`
+  - `rerank_weight`
+  - `summary`
+  - `cases`
+  - per-case TopK `results`
+- `models/prompt.py` was rewritten into a shorter and more task-oriented customer-service prompt template.
+
+### What This Stage Teaches
+
+The key lesson is:
+
+```text
+In enterprise RAG, you do not just save the final answer.
+You save:
+config
+-> retrieved_items
+-> final_prompt
+-> reply
+-> judge result
+```
+
+Without that chain, a bad case cannot be reproduced or localized.
+
+### Current Best-Practice Debug Order
+
+```text
+retrieved_items
+-> final_prompt
+-> reply
+-> judge_reason
+```
+
+Use this order to decide whether the issue comes from retrieval, prompt construction, generation, or evaluation.
+
+### Recommended Next Step
+
+The next learning step should be:
+
+```text
+Add a retrieval evaluation analysis script for reports/retrieval_eval/*.json
+```
+
+That script should:
+
+- print config snapshot and rerank weight
+- print Top1 / Top3 / miss summary
+- list bad cases
+- show TopK candidates and score breakdown for each bad case
+## 2026-05-13 学习更新：Retrieval 对比、结构化 Answer Plan、Chat Trace 与降级
+
+### 本轮已完成
+
+- 新增 `scripts/analyze_retrieval_report.py`
+- 新增 retrieval compare 模式 `--compare-to`
+- 学会区分 `ranking_error` 和 `miss`
+- 在 `scripts/analyze_grounding_report.py` 中加入 grounding bad-case 类型划分
+- 新增结构化 answer-plan 学习脚本 `scripts/debug_answer_plan.py`
+- 将 planner 生成与正常 reply 生成拆开：
+  - `generate_reply()`
+  - `generate_answer_plan()`
+- 将 answer-plan schema 重构为更偏中间层的结构
+- 为 answer-plan JSON 加入 parser + validator + normalizer + repair
+- 将 answer-plan 渲染拆成：
+  - debug renderer
+  - user renderer
+- 给 `/chat/prompt` 增加 `trace` 字段和 degrade 策略
+
+### 我现在理解到的东西
+
+我现在理解，LLM 项目里的 JSON 至少有两种完全不同的角色：
+
+1. **评估/报告 JSON**
+   - retrieval report
+   - grounding report
+   - judge result
+   - 用于运行后分析
+
+2. **运行时工作流 JSON**
+   - answer plan
+   - 用于运行时的中间状态
+   - 可以驱动渲染或后续工作流步骤
+
+我也理解，一个更完整的 LLM 应用链路不只是：
+
+```text
+query -> prompt -> reply
+```
+
+它还可以变成：
+
+```text
+query
+-> retrieval
+-> rerank
+-> plan(JSON)
+-> normalize/repair
+-> render
+-> reply
+-> trace
+-> report
+```
+
+### 关键学习点
+
+#### 1. retrieval compare 和 grounding compare 解决的问题不同
+
+- retrieval compare 关注：
+  - 正确 intent 有没有进入 TopK
+  - rerank 是变好还是变坏
+- grounding compare 关注：
+  - reply 是否 direct
+  - 是否 grounded
+  - 是否 useful
+
+#### 2. 结构化 answer plan 不等于最终 reply
+
+- answer plan = 中间状态 / 结构 / 提纲
+- final reply = 给用户看的自然语言
+
+所以同一个 plan 可以支持：
+- debug render
+- user render
+
+#### 3. 不能直接相信模型输出
+
+即使模型大体遵守 schema，它仍然可能：
+- 某个字段留空
+- 输出太长
+- 带多余表述
+
+所以链路需要：
+- parser
+- validator
+- normalizer
+- repair
+
+#### 4. 服务链路必须支持 degrade path
+
+当前已经学习到三层 degrade：
+
+- retrieval failure -> fallback prompt
+- generation failure -> 固定安全兜底回复
+- reply-rules failure -> 保留原始模型回复
+
+#### 5. `trace` 是在线可观测，不是离线评估
+
+`trace` 用来回答：
+- 这次请求有没有 degrade？
+- 有没有用 fallback？
+- 检索返回了几条？
+- reply rules 有没有真的改 reply？
+
+它和 report 不同，report 更偏离线评估。
+
+### 当前学习进度
+
+我现在理解的链路大致是：
+
+1. keyword retrieval baseline
+2. vector retrieval
+3. hybrid search 与 rerank
+4. retrieval evaluation 与 compare
+5. prompt preview
+6. chat evidence
+7. grounding report 与 judge
+8. grounding issue typing
+9. structured answer plan
+10. parser / validator / normalizer / repair
+11. debug render vs user render
+12. online trace 与 degrade strategy
+
+### 当前推荐调试顺序
+
+在线请求：
+
+```text
+trace
+-> retrieved_items
+-> final_prompt
+-> reply
+```
+
+结构化 answer-plan 学习链路：
+
+```text
+retrieval
+-> raw plan JSON
+-> parsed/normalized plan
+-> debug render
+-> user render
+```
+
+### 推荐下一学习步
+
+下一步不应该继续快速堆功能，而应该进入：
+
+```text
+Project layering:
+- what belongs in formal service
+- what belongs in debug API
+- what belongs in offline evaluation
+- what belongs in learning scripts
+```
+
+## 2026-05-18/19 学习记录：RAG 评估闭环与失败归因
+
+### 这两天做了什么
+
+这两天主要从“能跑 RAG”推进到“能定位 RAG 为什么错”。核心不是继续堆 prompt，而是建立一套可复盘的评估闭环：
+
+1. 把 grounding 评估集扩展到 30 条外卖客服专业 case，覆盖退款、取消、配送、售后、投诉、安全、优惠、发票等场景。
+2. 优化中文 reply rules，并处理源码中中文可读性问题，避免用 Unicode 转义和乱码维护规则。
+3. 修复 `prompt_context_items` 与 `retrieved_items` 的职责区分：Top1 是 primary evidence，其余是 supporting evidence。
+4. 在线 `/chat` 响应增加 grounding diagnostic 字段，包含 `expected_intent`、证据关键词、forbidden 命中、`issue_type`、`suggested_layer` 等。
+5. 修复 forbidden 误伤：例如“不支持直接取消”不应被判为违规的“直接取消”。
+6. 补了少量知识库证据，而不是盲目堆 reply rules：验证码风险、地址写错且骑手已到原地址、支付超时取消退款。
+7. 新增三类失败归因表：`retrieval_failure`、`evidence_insufficient`、`generation_not_using_evidence`。
+
+### 当前最新指标
+
+最新报告：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\analyze_grounding_report.py reports\chat_grounding\2026-05-19_21-27-59.json --show-all
+```
+
+关键结果：
+
+```text
+top1_intent_hit_rate: 1.0
+evidence_keyword_coverage: 0.9508
+forbidden_hit_count: 0
+judge_pass_rate: 0.7667
+failure_attribution_counts: {'pass': 23, 'generation_not_using_evidence': 7}
+```
+
+结论：
+
+- 当前不是检索问题，Top1 意图已经全中。
+- 当前不是 forbidden 问题，误伤已清零。
+- 当前也不应继续大补知识库，因为没有明显 `evidence_insufficient`。
+- 剩下 7 条主要是“生成/判分层没有吃好证据”，其中有一部分更像 judge 偏严。
+
+### 学到的 RAG 工程方法
+
+1. 先看检索，再看证据，再看生成，不要一失败就改 prompt。
+2. Top1 意图错，优先改召回、重排、query rewrite 或意图规则。
+3. Top1 对但资料没有关键证据，优先补知识库。
+4. 资料里有证据但回复没用好，才改生成 prompt、answer plan 或 reply rules。
+5. judge 给 `grounded=no` 不一定代表回复错，要对照 retrieved evidence 和 judge_reason 判断是否 judge 偏严。
+
+### 下一步学习方向
+
+下一步不要继续调 retrieval，也不要继续堆 reply rules。建议进入更细的二级归因：
+
+```text
+generation_not_using_evidence
+-> judge_too_strict
+-> reply_not_direct_enough
+-> reply_missing_required_step
+-> evidence_wording_mismatch
+```
+
+目标是把剩余 7 条 bad case 拆清楚：哪些该改 judge，哪些该改 answer plan/prompt，哪些只是证据措辞和评估关键词不一致。
+## 2026-05-20 学习记录：Answer Composer、Judge 校准与模型 A/B
+
+### 这阶段学到什么
+
+这轮重点不是继续堆检索，而是学习企业级 RAG 里更真实的一层：答案组装与评估闭环。
+
+当前链路可以理解成：
+
+```text
+用户问题
+-> RAG 检索
+-> 模型生成
+-> answer_composer 基于 top1 evidence 结构化组装
+-> reply_rules 对高风险场景兜底
+-> grounding report / judge / bad-case analysis
+```
+
+关键认知：
+
+1. `top1_intent_hit_rate = 1.0` 说明检索意图已经不是主要瓶颈。
+2. 模型强不等于最终效果强，在线 API A/B 没有超过本地模型。
+3. 当前问题主要在生成层：回答不够直接、泛化尾巴、重复步骤、没有稳定吃透证据。
+4. `answer_composer` 的职责不是“坏回复替换器”，而是“结构化回答组装器”。
+5. judge 也需要校准，不能要求知识库没有提供的固定数值，例如退款多久到账的具体天数。
+
+### 最新统计
+
+最新报告：
+
+```text
+reports/chat_grounding/2026-05-20_22-48-35.json
+```
+
+核心指标：
+
+```text
+total_cases = 30
+top1_intent_hit_rate = 1.0
+judge_pass_count = 25/30
+judge_pass_rate = 0.8333
+evidence_keyword_coverage = 0.9344
+forbidden_hit_count = 0
+direct_answer yes = 25
+grounded yes = 25
+useful yes = 25
+```
+
+对比上一版本地模型报告 `2026-05-20_22-10-44.json`：
+
+```text
+judge_pass_rate: 0.7000 -> 0.8333
+judge_pass_count: 21/30 -> 25/30
+generation_not_grounded: 9 -> 3
+evidence_keyword_coverage: 0.9016 -> 0.9344
+```
+
+结论：这次是明显提升，主要收益来自 composer、judge 校准和补知识库，而不是换更强模型。
+
+### 已完成能力清单
+
+- FastAPI 基础接口、router/service/schema 分层
+- JSONL 知识库读取
+- keyword retrieval
+- vector retrieval
+- hybrid search
+- bge reranker
+- FAISS 持久化
+- prompt preview
+- `retrieved_items` / `final_prompt` / `trace`
+- 30 条 grounding evaluation 固定评估集
+- `analyze_grounding_report.py` bad-case 归因
+- `reply_rules` 高风险兜底
+- `answer_composer` 基于 top1 evidence 组装回答
+- judge calibration 处理明显不合理误判
+- online API A/B 实验
+
+### 还没解决的问题
+
+剩余 5 个主要 bad case：
+
+```text
+我取消订单后为什么只退了一部分钱
+骑手一直停在一个地方不动怎么办
+我的地址写错了骑手已经到原地址了怎么办
+备注了不要辣结果还是很辣怎么办
+商家电话在哪里看
+```
+
+问题类型：
+
+- composer 有时会重复相近动作句。
+- 部分回答第一句还不够直接。
+- 某些意图的必要步骤还不够稳定。
+- 商家电话 case 仍有 judge 偏严格和答案表达不够明确的问题。
+
+### 下一步学习
+
+下一步继续学：
+
+```text
+answer composer refinement
+-> sentence dedupe
+-> direct first sentence
+-> intent-specific required steps
+-> fixed short answer rendering
+```
+
+学习重点不是“怎么让 case 过”，而是理解为什么生产级 RAG 需要分层：
+
+- retrieval 负责找对证据
+- model 负责语言生成
+- composer 负责把证据变成稳定答案
+- reply_rules 负责高风险兜底
+- judge/evaluation 负责反馈质量问题

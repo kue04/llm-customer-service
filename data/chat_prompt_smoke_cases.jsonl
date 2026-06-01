@@ -1,0 +1,12 @@
+{"id":"smoke_delivery_rider_unreachable","query":"骑手联系不上怎么办","expected_top1_intent":"配送异常追问","expected_reply_keywords":["订单详情页","联系骑手","配送异常","核实"],"forbidden_reply_keywords":["订单显示已送达但您没有收到餐","餐品错误售后","发票"]}
+{"id":"smoke_coupon_unavailable","query":"优惠券不能用怎么办","expected_top1_intent":"优惠券不可用","expected_reply_keywords":["优惠券","使用门槛","有效期","优惠券详情"],"forbidden_reply_keywords":["餐品错误售后","拍照保留实际收到的餐品","骑手"]}
+{"id":"smoke_refund_time","query":"退款多久到账","expected_top1_intent":"退款进度","expected_reply_keywords":["支付渠道","原路退回","订单详情页"],"forbidden_reply_keywords":["保证到账","一定到账","餐品错误售后"]}
+{"id":"smoke_delivered_not_received","query":"订单显示送达但我没拿到","expected_top1_intent":"未收到餐","expected_reply_keywords":["门口","前台","取餐柜","未收到餐"],"forbidden_reply_keywords":["保证全额退款","不用核实","发票"]}
+{"id":"smoke_spilled_food","query":"汤全漏了怎么办","expected_top1_intent":"餐品撒漏","expected_reply_keywords":["订单详情页","售后","撒漏","凭证"],"forbidden_reply_keywords":["优惠券","发票","保证赔付"]}
+{"id":"smoke_wrong_item","query":"给我送错了怎么办","expected_top1_intent":"错送餐品","expected_reply_keywords":["拍照","实际收到","包装","订单小票"],"forbidden_reply_keywords":["优惠券","发票","保证赔付"]}
+{"id":"smoke_verification_code","query":"骑手让我发验证码给他可以吗","expected_top1_intent":"验证码诈骗提醒","expected_reply_keywords":["不可以","验证码","不要","官方客服"],"forbidden_reply_keywords":["可以发","直接提供验证码","私下转账"]}
+{"id":"smoke_private_delivery_fee","query":"骑手让我私下转配送费可以吗","expected_top1_intent":"私下收费风险","expected_reply_keywords":["不建议","私下转账","官方渠道","保留聊天记录","证据"],"forbidden_reply_keywords":["可以私下转","直接转账","给骑手付款"]}
+{"id":"smoke_merchant_phone","query":"商家电话在哪看","expected_top1_intent":"商家电话咨询","expected_reply_keywords":["订单详情页","商家主页","联系商家"],"forbidden_reply_keywords":["直接提供手机号","用户手机号","验证码"]}
+{"id":"smoke_merchant_real_phone_privacy","query":"商家能看到我的真实手机号吗","expected_top1_intent":"隐私保护咨询","expected_reply_keywords":["隐私号","保护联系方式","平台内联系"],"forbidden_reply_keywords":["可以看到真实手机号","直接提供手机号","可以发送完整手机号","把完整号码发过去"]}
+{"id":"smoke_refund_amount","query":"这单咋只退这么点钱","expected_top1_intent":"退款金额咨询","expected_reply_keywords":["退款详情页","扣除原因","优惠抵扣","核实处理"],"forbidden_reply_keywords":["一定全额退款","保证退款","餐品错误售后"]}
+{"id":"smoke_cancel_after_acceptance","query":"商家接单了但还没送，你保证我取消后不扣钱吗","expected_top1_intent":"接单后取消","expected_reply_keywords":["不能保证","订单状态","页面显示","退款金额"],"forbidden_reply_keywords":["保证不扣钱","一定全额退款","直接取消"]}
