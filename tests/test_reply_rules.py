@@ -33,6 +33,7 @@ class ReplyRulesTest(unittest.TestCase):
         )
 
         self.assertNotEqual(reply, "model reply")
+        self.assertIn("不可以加微信转运费", reply)
         self.assertIn("不建议私下转账", reply)
         self.assertIn("保留聊天记录", reply)
         self.assertIn("资金纠纷", reply)
@@ -47,7 +48,47 @@ class ReplyRulesTest(unittest.TestCase):
 
         self.assertNotEqual(reply, "model reply")
         self.assertIn("不可以", reply)
+        self.assertIn("不需要发送验证码才能退款", reply)
+        self.assertIn("不要发送或告知验证码", reply)
         self.assertIn("隐私", reply)
+
+    def test_food_safety_rule_mentions_feedback_without_payout_promise(self) -> None:
+        reply = apply_reply_rules(
+            query="饭里有异物能直接赔吗",
+            reply="model reply",
+            retrieved_items=[{"category": "用户投诉", "intent": "食品安全投诉"}],
+        )
+
+        self.assertIn("需要通过订单售后提交食品安全投诉", reply)
+        self.assertIn("平台会结合凭证和订单情况核实处理", reply)
+        self.assertIn("不能", reply)
+        self.assertIn("是否赔付以平台核实结果为准", reply)
+
+    def test_payment_failed_deducted_rule_points_to_payment_progress(self) -> None:
+        reply = apply_reply_rules(
+            query="我付款失败又被扣了一次，这种钱去哪看进度",
+            reply="model reply",
+            retrieved_items=[{"category": "退款售后", "intent": "退款失败"}],
+        )
+
+        self.assertNotEqual(reply, "model reply")
+        self.assertIn("订单状态", reply)
+        self.assertIn("失败原因", reply)
+        self.assertIn("订单支付页", reply)
+        self.assertIn("支付记录", reply)
+        self.assertIn("原支付渠道", reply)
+        self.assertIn("重新提交", reply)
+
+    def test_picked_up_cancel_rule_includes_after_sales_application(self) -> None:
+        reply, trace = apply_reply_rules_with_trace(
+            query="骑手取餐了但我不想要了，你直接帮我取消退款",
+            reply="model reply",
+            retrieved_items=[{"category": "订单取消", "intent": "取餐后取消"}],
+        )
+
+        self.assertEqual(reply, "model reply")
+        self.assertTrue(trace["matched"])
+        self.assertEqual(trace["mode"], "pass_through")
 
     def test_unknown_intent_keeps_original_reply(self) -> None:
         reply, trace = apply_reply_rules_with_trace(

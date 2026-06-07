@@ -21,8 +21,8 @@ DEFAULT_MIN_VECTOR_SCORE = get_rag_config().min_vector_score
 VECTOR_STORE_DIR = get_rag_config().faiss_store_dir
 FAISS_INDEX_PATH = VECTOR_STORE_DIR / "real_vector.index"
 FAISS_DOCS_PATH = VECTOR_STORE_DIR / "real_vector_docs.json"
-INTENT_HINT_BONUS = 0.08
-INTENT_HINT_SUPPLEMENT_SCORE = 0.76
+INTENT_HINT_BONUS = 0.10
+INTENT_HINT_SUPPLEMENT_SCORE = 0.80
 
 
 def get_reranker_model() -> CrossEncoder:
@@ -152,6 +152,14 @@ def save_real_vector_store() -> None:
         encoding="utf-8",
     )
     _REAL_FAISS_INDEX = index
+
+
+def reset_vector_store_cache() -> None:
+    global _TOY_VECTOR_INDEX, _REAL_VECTOR_DOCS, _REAL_FAISS_INDEX
+
+    _TOY_VECTOR_INDEX = None
+    _REAL_VECTOR_DOCS = None
+    _REAL_FAISS_INDEX = None
 
 
 def load_real_vector_store() -> bool:
@@ -305,6 +313,150 @@ def calculate_model_rerank_scores(
 
 
 def detect_intent_hint(query: str) -> str:
+    wrong_item_delivered = any(
+        word in query
+        for word in ["送错", "送错了", "给错餐", "不是我点的", "收到的是别", "收到别的"]
+    )
+    if wrong_item_delivered:
+        return "错送餐品"
+
+    asks_verification_code = any(word in query for word in ["验证码", "验正码", "校验码"])
+    if asks_verification_code:
+        return "验证码诈骗提醒"
+
+    unaccepted_order_cancel = (
+        any(word in query for word in ["商家", "店家"])
+        and any(word in query for word in ["不接单", "未接单", "没接单", "没接", "半小时没接单"])
+        and any(word in query for word in ["取消", "不想要"])
+    )
+    if unaccepted_order_cancel:
+        return "取消订单"
+
+    asks_private_fee = (
+        any(word in query for word in ["骑手", "骑首", "配送员"])
+        and any(word in query for word in ["加微信", "微信", "私下", "转钱", "转运费", "转配送费", "转费用"])
+    )
+    if asks_private_fee:
+        return "私下收费风险"
+
+    asks_refund_progress_with_pressure = (
+        any(word in query for word in ["退我", "退款", "退钱", "把钱退", "钱退"])
+        and any(word in query for word in ["保证", "现在", "马上", "投诉", "多久到账", "进度"])
+    )
+    if asks_refund_progress_with_pressure:
+        return "退款进度"
+
+    asks_spill_after_sales = (
+        any(word in query for word in ["洒", "撒", "漏", "洒烂", "撒漏"])
+        and (
+            any(word in query for word in ["赔", "售后", "举证", "凭证", "照片"])
+            or any(word in query for word in ["汤", "餐", "饭", "包装"])
+        )
+    )
+    if asks_spill_after_sales:
+        return "餐品撒漏售后"
+
+    delivered_but_not_received = (
+        (
+            any(word in query for word in ["显示送达", "显示送到了", "已送达", "送到了"])
+            and any(word in query for word in ["没收到", "没拿到", "没有餐", "真没拿到", "门口没有"])
+        )
+        or (
+            any(word in query for word in ["放前台", "放门口", "放取餐柜"])
+            and any(word in query for word in ["没看到", "没找到", "没有", "找不到"])
+        )
+    )
+    if delivered_but_not_received:
+        return "未收到餐"
+
+    delivery_eta_keeps_slipping = (
+        any(word in query for word in ["预计时间", "送达时间", "时间"])
+        and any(word in query for word in ["往后跳", "一直变", "一直往后", "越来越晚"])
+    )
+    if delivery_eta_keeps_slipping:
+        return "配送异常追问"
+
+    payment_failed_but_charged = (
+        any(word in query for word in ["付款失败", "支付失败", "没支付成功"])
+        and any(word in query for word in ["扣", "扣款", "被扣", "扣了一次", "去哪看进度"])
+    )
+    if payment_failed_but_charged:
+        return "退款失败"
+
+    merchant_unresponsive_contact = (
+        any(word in query for word in ["商家", "店家"])
+        and any(word in query for word in ["不回复", "不回", "没回复", "一直不回复"])
+        and any(word in query for word in ["平台介入", "催一下", "联系", "协助"])
+    )
+    if merchant_unresponsive_contact:
+        return "联系商家咨询"
+
+    address_change_follow_up = (
+        any(word in query for word in ["地址写错", "地址填错", "地址写搓", "地址写搓了", "写成公司", "旧地址", "原地址", "老地址"])
+        and any(word in query for word in ["骑手", "配送员"])
+        and any(word in query for word in ["改送", "改地址", "到家", "回家", "快到", "已经到", "不在那"])
+    )
+    if address_change_follow_up:
+        return "地址修改追问"
+
+    asks_delay_compensation = (
+        any(word in query for word in ["超时", "迟到", "晚了", "承诺时间"])
+        and any(word in query for word in ["赔", "赔钱", "赔偿", "补偿"])
+    )
+    if asks_delay_compensation:
+        return "延误补偿"
+
+    asks_missing_item = (
+        any(word in query for word in ["少送", "漏送", "少了一份", "少送了一份", "缺少", "没送到"])
+        and not any(word in query for word in ["发票", "优惠券", "红包"])
+    )
+    if asks_missing_item:
+        return "少送漏送"
+
+    asks_food_safety_without_evidence = (
+        any(word in query for word in ["没拍照", "没有拍照", "没包装", "没有包装", "没留证据"])
+        and any(word in query for word in ["赔", "赔偿", "能赔", "一定能赔"])
+    )
+    if asks_food_safety_without_evidence:
+        return "食品安全投诉"
+
+    asks_rider_attitude_complaint = (
+        any(word in query for word in ["骑手", "配送员"])
+        and any(word in query for word in ["态度差", "态度不好", "说话太冲", "发脾气"])
+    )
+    if asks_rider_attitude_complaint:
+        return "骑手态度投诉"
+
+    asks_missing_food_refund_guarantee = (
+        any(word in query for word in ["没收到餐", "没有收到餐", "没拿到餐", "没拿到"])
+        and any(word in query for word in ["退全款", "全额退款", "全款", "退款"])
+    )
+    if asks_missing_food_refund_guarantee:
+        return "未收到餐"
+
+    asks_refund_progress_after_merchant_cancel = (
+        any(word in query for word in ["商家取消", "店家取消", "商家取消了", "店家取消了"])
+        and any(word in query for word in ["退款", "退钱", "退回", "全额退款", "承诺"])
+    )
+    if asks_refund_progress_after_merchant_cancel:
+        return "退款进度"
+
+    accepted_or_started_order_cancel = (
+        any(word in query for word in ["商家", "店家"])
+        and any(word in query for word in ["接单", "开始做", "已经做", "制作", "还没送"])
+        and any(word in query for word in ["不想要", "取消", "退全款", "全款", "全额退", "强制全额", "不扣钱", "强制取消"])
+        and not any(word in query for word in ["不接单", "未接单", "没接单"])
+    )
+    if accepted_or_started_order_cancel:
+        return "接单后取消"
+
+    asks_refund_amount_guarantee = (
+        any(word in query for word in ["全款", "全额", "扣除", "扣钱", "只退", "少退"])
+        and any(word in query for word in ["一定", "保证", "承诺", "直接说", "截图"])
+    )
+    if asks_refund_amount_guarantee:
+        return "退款金额咨询"
+
     rider_unreachable = (
         any(word in query for word in ["骑手", "配送员"])
         and any(word in query for word in ["联系不上", "联系不到", "打不通", "电话不接", "无法联系"])
@@ -314,7 +466,7 @@ def detect_intent_hint(query: str) -> str:
 
     coupon_unavailable = (
         any(word in query for word in ["优惠券", "红包", "券"])
-        and any(word in query for word in ["不能用", "用不了", "不可用", "无法使用", "结算时不能用"])
+        and any(word in query for word in ["不能用", "用不了", "没用上", "不可用", "无法使用", "结算时不能用", "不能抵", "没抵", "不抵", "抵不了"])
     )
     if coupon_unavailable:
         return "优惠券不可用"
@@ -339,20 +491,6 @@ def detect_intent_hint(query: str) -> str:
     if asks_refund_time_priority:
         return "退款进度"
 
-    delivered_but_not_received = (
-        any(word in query for word in ["显示送达", "显示送到了", "已送达", "送到了"])
-        and any(word in query for word in ["没收到", "没拿到", "没有餐", "真没拿到", "门口没有"])
-    )
-    if delivered_but_not_received:
-        return "未收到餐"
-
-    wrong_item_delivered = any(
-        word in query
-        for word in ["送错", "送错了", "给错餐", "不是我点的", "收到的是别", "收到别的"]
-    )
-    if wrong_item_delivered:
-        return "错送餐品"
-
     has_real_phone_privacy = any(
         word in query
         for word in ["真实手机号", "看到我的手机号", "看到我手机号", "知道我的手机号", "完整手机号"]
@@ -364,7 +502,7 @@ def detect_intent_hint(query: str) -> str:
         return "隐私保护咨询"
 
     asks_platform_contact_merchant = (
-        any(word in query for word in ["帮我打给", "直接帮我打", "帮我联系", "客服联系"])
+        any(word in query for word in ["帮我打给", "直接帮我打", "直接私下打给", "私下打给", "私下替我打给", "帮我联系", "客服联系"])
         and any(word in query for word in ["商家", "店家"])
     )
     if asks_platform_contact_merchant:
@@ -377,22 +515,6 @@ def detect_intent_hint(query: str) -> str:
     )
     if rider_arrival_location_mismatch:
         return "配送异常追问"
-
-    unaccepted_order_cancel = (
-        any(word in query for word in ["商家", "店家"])
-        and any(word in query for word in ["不接单", "未接单", "没接单"])
-        and any(word in query for word in ["取消", "不想要"])
-    )
-    if unaccepted_order_cancel:
-        return "取消订单"
-
-    accepted_or_started_order_cancel = (
-        any(word in query for word in ["商家", "店家"])
-        and any(word in query for word in ["接单", "开始做", "已经做", "制作"])
-        and any(word in query for word in ["不想要", "取消", "退全款", "全款"])
-    )
-    if accepted_or_started_order_cancel:
-        return "接单后取消"
 
     has_merchant = any(word in query for word in ["商家", "店家"])
     has_phone = any(word in query for word in ["手机号", "联系电话", "电话"])
@@ -477,6 +599,12 @@ def rerank_candidates(
 
         if intent_hint and intent == intent_hint:
             rerank_score += INTENT_HINT_BONUS
+            if (
+                intent_hint == "优惠券不可用"
+                and "优惠券" in query
+                and "满减" in query
+            ):
+                rerank_score += 0.02
 
         reranked_candidate["rerank_score"] = rerank_score
         reranked_candidate["model_rerank_score"] = model_rerank_score

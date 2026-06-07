@@ -8,6 +8,9 @@ class ChatRequest(BaseModel):
 
 class ChatTrace(BaseModel):
     retrieval_count: int
+    request_id: str = ""
+    latency_ms: float = 0.0
+    top1_intent: str = ""
     used_fallback_prompt: bool
     reply_rules_applied: bool
     answer_source: str = Field(description="rag or fallback")

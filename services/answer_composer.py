@@ -92,6 +92,8 @@ REQUIRED_ACTIONS_BY_INTENT = {
     "商家电话咨询": "建议您优先通过平台内电话或在线联系功能沟通。",
     "联系商家咨询": "平台客服可根据问题类型协助联系商家核实，建议您优先通过订单详情页的联系商家入口沟通并保留平台内聊天记录。",
     "优惠券不可用": "请先点开优惠券详情或结算页查看不可用原因；如果确认满足条件仍不可用，可以截图后通过订单页或官方客服反馈核实。",
+    "发票开具咨询": "请先进入订单详情页查看是否有申请发票入口；如果页面没有入口，可以联系商家或平台客服确认。",
+    "取餐后取消": "建议您先联系骑手确认配送情况，并在订单详情页查看是否还有取消入口；如果因特殊原因无法收餐，可以在订单内提交售后申请。",
 }
 
 REQUIRED_CAVEATS_BY_INTENT = {
@@ -108,6 +110,8 @@ REQUIRED_CAVEATS_BY_INTENT = {
     "隐私保护咨询": "平台通常会通过隐私号等方式保护用户和骑手手机号，具体展示以平台规则和订单页面为准。",
     "商家电话咨询": "如果页面没有展示电话，说明商家可能未开放电话联系或使用平台虚拟号。",
     "联系商家咨询": "具体能否协助联系和处理结果以订单页面展示及平台核实为准。",
+    "发票开具咨询": "是否支持开票以商家、订单类型和订单页面展示为准。",
+    "取餐后取消": "取消、退款或售后结果以订单状态和平台核实处理为准。",
 }
 
 REQUIRED_CONCLUSIONS_BY_INTENT = {
@@ -123,6 +127,11 @@ REQUIRED_CONCLUSIONS_BY_INTENT = {
     "接单后取消": "商家已接单或已开始制作后，能否取消及是否全额退款需要以订单状态、是否制作和页面展示为准。",
     "商家电话咨询": "商家电话一般在订单详情页或商家主页的“联系商家”入口查看，有电话时会在该入口展示。",
     "优惠券不可用": "优惠券不能使用通常与使用门槛、有效期、适用品类、适用商家或支付方式限制有关。",
+    "发票开具咨询": "发票一般需要在订单详情页查看是否有申请发票入口，是否支持取决于商家和订单类型。",
+    "延误补偿": "恶劣天气或配送超时能否补偿需要以承诺送达时间、订单页面补偿入口和平台核实结果为准。",
+    "少送漏送": "少送或漏送时，可以在订单内按少送漏送提交售后处理。",
+    "骑手态度投诉": "骑手态度问题可以在订单详情页提交骑手服务投诉。",
+    "取餐后取消": "骑手取餐后通常不支持直接取消，能否取消或退款需要以订单状态和平台核实结果为准。",
 }
 
 
@@ -253,7 +262,7 @@ def extract_answer_parts(query: str, primary_answer: str) -> AnswerParts:
 
 
 def query_requests_unsupported_guarantee(query: str) -> bool:
-    return any(term in query for term in ["一定", "保证", "承诺", "直接说"])
+    return any(term in query for term in ["一定", "保证", "承诺", "直接说", "直接让", "马上"])
 
 
 def apply_required_steps(parts: AnswerParts, query: str, primary_item: dict) -> AnswerParts:
@@ -268,9 +277,45 @@ def apply_required_steps(parts: AnswerParts, query: str, primary_item: dict) -> 
         conclusion = required_conclusion
 
     if intent == "未收到餐" and query_requests_unsupported_guarantee(query):
-        conclusion = "不能直接承诺一定全额退款，需要先由平台核实骑手送达情况和订单状态。"
+        conclusion = "不能直接承诺全额退款，需要先由平台核实骑手送达情况和订单状态。"
         action = "如果您仍未找到餐品或无法立即取回餐品，请先确认门口、前台、取餐柜或指定收餐点，并在订单详情页提交未收到餐反馈。"
         caveat = "退款或售后结果以平台核实处理为准。"
+        return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
+
+    if intent == "退款进度" and query_requests_unsupported_guarantee(query):
+        conclusion = "不能直接承诺全额退款或具体到账时间，退款需要以订单状态和平台核实结果为准。"
+        action = "建议您先在订单详情页查看退款状态；如已支付，退款通常会按支付渠道原路退回。"
+        caveat = "到账时间可能受支付渠道处理影响，具体以订单页面和平台处理结果为准。"
+        return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
+
+    if intent == "退款金额咨询" and query_requests_unsupported_guarantee(query):
+        conclusion = "不能直接承诺平台全额退款，退款金额需要结合订单状态、配送进度和平台规则核实。"
+        action = "建议您先查看退款详情页的扣除原因；如果认为金额不合理，可以在订单内提交售后复核或申请平台介入。"
+        caveat = "具体退款结果以退款详情页和平台核实处理为准。"
+        return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
+
+    if intent == "延误补偿" and query_requests_unsupported_guarantee(query):
+        conclusion = "不能保证超时后都会赔钱，是否补偿需要看承诺送达时间、订单页面入口和平台核实结果。"
+        action = "如果超过承诺送达时间，您可以在订单详情页查看是否有补偿入口，或提交配送延迟反馈。"
+        caveat = "具体补偿或处理结果以页面展示和平台核实为准。"
+        return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
+
+    if intent == "少送漏送" and query_requests_unsupported_guarantee(query):
+        conclusion = "不能直接承诺由商家立即补送，少送漏送需要先提交售后并由平台核实。"
+        action = "建议您拍照保留实际收到的餐品和小票，并在订单详情页选择少送或漏送提交售后。"
+        caveat = "平台会根据凭证协助处理，具体补送、退款或其他方案以核实结果为准。"
+        return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
+
+    if intent == "食品安全投诉" and query_requests_unsupported_guarantee(query):
+        conclusion = "需要通过订单售后提交食品安全投诉，平台会结合凭证和订单情况核实处理，但不能在没有凭证和核实结果前承诺赔付。"
+        action = "建议您先停止食用；如果仍能补充证据，请尽量拍照保留餐品、包装、异物照片或就医记录。"
+        caveat = "是否赔付以平台核实处理结果为准。"
+        return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
+
+    if intent == "骑手态度投诉" and query_requests_unsupported_guarantee(query):
+        conclusion = "不能保证处罚骑手或赔偿，平台需要先根据投诉内容核实处理。"
+        action = "您可以在订单详情页选择骑手服务投诉，并描述具体情况、时间和沟通过程。"
+        caveat = "具体处理结果以平台核实为准。"
         return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
 
     if intent == "接单后取消" and query_requests_unsupported_guarantee(query):
@@ -289,13 +334,33 @@ def apply_required_steps(parts: AnswerParts, query: str, primary_item: dict) -> 
         caveat = "平台会结合订单状态和凭证核实处理。"
 
     if intent == "退款金额咨询" and "refund_dispute" in query_needs and "配送费" in query:
-        conclusion = "餐没拿到但仍被扣配送费或只退部分金额时，需要以退款详情页的扣除原因和平台核实结果为准。"
+        if "合理吗" in query:
+            conclusion = "不能直接判断扣配送费是否合理，需要先看退款详情页的扣除原因和平台核实结果。"
+        else:
+            conclusion = "餐没拿到但仍被扣配送费或只退部分金额时，需要以退款详情页的扣除原因和平台核实结果为准。"
         action = "建议您先查看退款详情页，如页面原因不清楚，可以在订单内提交售后复核。"
         caveat = "平台会结合配送进度、订单状态和凭证核实处理。"
+
+    if intent == "优惠券不可用" and any(term in query for term in ["补我", "补偿", "赔"]):
+        conclusion = "不能直接判断平台会补偿，也不能直接赔一张券；优惠券或满减未生效需要先核实使用条件和结算页原因。"
+        action = "请先点开优惠券详情或结算页查看使用门槛、有效期、适用品类、适用商家和支付方式限制；确认满足条件仍不可用时，可以截图后通过订单页或官方客服反馈。"
+        caveat = "是否补偿或调整以平台核实处理结果为准。"
+        return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
+
+    if intent == "发票开具咨询":
+        conclusion = "发票可以先在订单详情页查看申请发票入口，是否支持取决于商家和订单类型。"
+        action = "如果页面没有入口，可以联系商家或平台客服确认。"
+        caveat = "是否支持开票以商家、订单类型和订单页面展示为准。"
+        return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
 
     if intent == "备注未满足" and any(term in query for term in ["过敏", "花生"]):
         conclusion = "如果已备注过敏但餐品仍放入相关食材，建议先停止食用，并按未按备注制作或餐品问题提交售后。"
         action = "建议您上传餐品照片、订单备注截图和相关沟通记录，说明过敏备注未被满足。"
+        caveat = "平台会结合订单备注、餐品情况和凭证核实处理。"
+
+    elif intent == "备注未满足" and "葱" in query:
+        conclusion = "如果已备注不要葱但餐品仍放了葱，可以按未按备注制作提交售后。"
+        action = "建议您上传餐品照片、订单备注截图和相关沟通记录，反馈商家未按备注制作。"
         caveat = "平台会结合订单备注、餐品情况和凭证核实处理。"
 
     elif intent == "备注未满足" and "香菜" in query:
@@ -308,8 +373,11 @@ def apply_required_steps(parts: AnswerParts, query: str, primary_item: dict) -> 
         action = "建议您上传餐品照片、订单备注截图和相关沟通记录。"
         caveat = "平台会结合订单备注、餐品情况和凭证核实处理。"
 
-    if intent == "联系商家咨询" and any(term in query for term in ["帮我打", "直接打", "打给店家", "打给商家"]):
-        conclusion = "平台客服不能直接代您私下打给店家，但可以根据问题类型协助联系商家核实。"
+    if intent == "联系商家咨询" and any(term in query for term in ["帮我打", "直接打", "私下打", "打给店家", "打给商家"]):
+        if any(term in query for term in ["退款", "退钱", "全款"]):
+            conclusion = "平台客服不能绕过平台直接联系商家要求退款，但可以根据问题类型协助联系商家核实。"
+        else:
+            conclusion = "平台客服不能绕过平台直接代打给店家，但可以根据问题类型协助联系商家核实。"
         action = "建议您优先通过订单详情页的联系商家入口沟通，并保留平台内聊天记录；需要客服协助时可在订单内提交问题。"
         caveat = "具体能否协助联系和处理结果以订单页面展示及平台核实为准。"
         return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
@@ -336,7 +404,10 @@ def apply_required_steps(parts: AnswerParts, query: str, primary_item: dict) -> 
         caveat = "具体号码展示方式以平台规则和订单页面为准。"
         return AnswerParts(conclusion=conclusion, action=action, caveat=caveat)
 
-    if intent == "商家电话咨询" and "safety_or_privacy_boundary" in query_needs and "yes_no_request" in query_needs:
+    if intent == "商家电话咨询" and (
+        ("safety_or_privacy_boundary" in query_needs and "yes_no_request" in query_needs)
+        or any(term in query for term in ["直接发", "店主电话"])
+    ):
         conclusion = "不能直接提供页面未展示的店家手机号。"
         action = "您可以在订单详情页或商家主页查看“联系商家”入口，并优先通过平台内电话或在线联系功能沟通。"
         caveat = "如果页面没有展示电话，说明商家可能未开放电话联系或使用平台虚拟号，具体以页面展示为准。"

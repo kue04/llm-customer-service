@@ -151,11 +151,95 @@ pip install -r requirements.txt
 .\venv\Scripts\python.exe -m uvicorn main:app --reload
 ```
 
+健康检查：
+
+```text
+http://127.0.0.1:8000/health
+```
+
 访问接口文档：
 
 ```text
 http://127.0.0.1:8000/docs
 ```
+
+环境变量配置参考 `.env.example`。默认走本地模型；如果要切到在线模型，将 `RAG_GENERATION_PROVIDER` 设为 `online` 并配置对应 API key。
+
+## 落地闭环最小版
+
+项目现在补充了面试落地版的业务闭环：
+
+```text
+用户提问
+-> RAG 回复并生成 trace
+-> 后端保存会话 request_id / query / reply / trace
+-> 前端提交有帮助或没帮助反馈
+-> 后端保存 bad case
+-> 前端查看最近 bad case
+-> 导出 eval case 草稿
+```
+
+新增接口：
+
+```text
+POST /feedback
+GET /feedback/recent
+POST /feedback/export-eval-case
+GET /ops/metrics
+```
+
+默认 SQLite 存储位置：
+
+```text
+data/ops_feedback.db
+```
+
+轻量运维指标包括请求量、失败数、平均延迟、P95 延迟、检索为空次数、reply rules 命中次数和 fallback 次数。日志会对手机号、验证码和疑似订单号做基础脱敏。当前不包含登录权限、真实订单系统、灰度发布和生产 SLA，这些属于生产上线版能力。
+
+## 知识库管理 v1
+
+新增知识库运营入口，采用“草稿审核 + 手动发布”模式：
+
+```text
+新增/修改/下架/审核知识
+-> 保存到 SQLite
+-> 审核通过后仍不自动影响 RAG
+-> 手动发布 approved 知识
+-> 备份正式 JSONL
+-> 合并到 data/takeout_customer_service_seed.jsonl
+-> 重建 FAISS
+-> 记录发布历史，可回滚最近发布
+```
+
+新增接口：
+
+```text
+GET /knowledge/items
+POST /knowledge/items
+PUT /knowledge/items/{id}
+POST /knowledge/items/{id}/archive
+POST /knowledge/items/{id}/review
+GET /knowledge/export-approved
+POST /knowledge/publish-approved
+GET /knowledge/publish-history
+POST /knowledge/rollback-latest
+```
+
+默认 SQLite 存储位置：
+
+```text
+data/knowledge_ops.db
+```
+
+`approved` 条目可以继续导出为 JSONL 草稿，也可以手动发布到正式知识库。发布会修改正式 JSONL 并重建 FAISS；发布前会备份到 `data/knowledge_backups/`，发布成功后条目状态变为 `published`，避免重复合并。前端已轻拆为业务模块：客服/RAG 位于 `D:\llm\front\src\features\support`，知识运营位于 `D:\llm\front\src\features\knowledge`。
+
+Docker 本地冒烟：
+
+```powershell
+docker compose up --build
+```
+
+容器不会打包 `local_models/` 和 LoRA 权重，运行时通过 volume 挂载本地目录。
 
 ## 本地模型
 
@@ -239,6 +323,12 @@ GET /model/info
 .\venv\Scripts\python.exe -B scripts\evaluate_chat_grounding.py --use-local-judge --save-report
 ```
 
+生成 blind eval 报告：
+
+```powershell
+.\venv\Scripts\python.exe -B scripts\evaluate_chat_grounding.py --blind --use-local-judge --save-report
+```
+
 分析报告：
 
 ```powershell
@@ -259,7 +349,7 @@ GET /model/info
 
 ## 当前评测能力
 
-当前 10 条 chat grounding 回归集已经加入：
+chat grounding 回归集和 blind eval 都会记录：
 
 - `expected_intent`
 - `expected_evidence_keywords`
@@ -267,46 +357,61 @@ GET /model/info
 - `matched_evidence_keywords`
 - `missing_evidence_keywords`
 - `forbidden_keyword_hits`
+- `retrieved_items`
+- `prompt_context_items`
+- `final_prompt`
+- `trace`
 
 这使评测不完全依赖 LLM-as-judge，也能做一部分确定性检查。
 
 ## 当前评测快照
 
-最近一次 10 条 chat grounding 回归集主要结果：
+固定 90 条 grounding 集已经收敛：
 
 ```text
-judge_status_counts:
-  succeeded: 10
-  failed: 0
-
-judge_failure_type_counts:
-  empty_response: 0
-  not_json: 0
-  missing_field: 0
-  invalid_enum: 0
-  empty_reason: 0
-  other: 0
-
-suggested_layer_counts:
-  pass: 8
-  judge: 2
+report = reports/chat_grounding/2026-06-01_23-22-29.json
+total_cases = 90
+top1_intent_hit_rate = 0.9667
+judge_pass_count = 90/90
+judge_pass_rate = 1.0
+evidence_keyword_coverage = 0.9475
+forbidden_hit_count = 0
 ```
 
-这说明当前系统在固定回归集上已经具备比较稳定的 RAG 链路和 judge 输出格式。剩余问题主要集中在 judge 对“没有具体时间/金额但资料本身也未提供具体值”的评判偏严，而不是 retrieval 或 generation 链路失效。
+为了避免只刷固定集，新增了 30 条 blind eval，覆盖口语、错别字、强情绪、多意图和高风险诱导。第一次真实链路盲测结果：
+
+```text
+report = reports/chat_grounding/2026-06-02_01-04-51.json
+total_cases = 30
+top1_intent_hit_count = 18/30
+top1_intent_hit_rate = 0.6
+judge_pass_count = 13/30
+judge_pass_rate = 0.4333
+evidence_keyword_coverage = 0.6667
+forbidden_hit_count = 0
+
+suggested_layer_counts:
+  pass: 13
+  generation_or_reply_rules: 11
+  context_builder_or_reply_rules: 1
+  judge: 5
+```
+
+结论：固定集已经稳定，但盲测暴露了真实泛化缺口。主要问题不是模型输出格式，而是口语/错别字下的意图召回、answer_composer 的固定措辞、部分安全边界回复不够直接，以及少量 judge/标注口径偏严。
 
 示例分析输出：
 
 ```text
-issue_type_counts: {'generation_not_grounded': 2}
-suggested_layer_counts: {'pass': 8, 'judge': 2}
-judge_failure_type_counts: {
-  'empty_response': 0,
-  'not_json': 0,
-  'missing_field': 0,
-  'invalid_enum': 0,
-  'empty_reason': 0,
-  'other': 0
-}
+failure_attribution_counts:
+  pass: 13
+  retrieval_failure: 9
+  generation_not_using_evidence: 7
+  evidence_insufficient: 1
+
+generation_sub_attribution_counts:
+  reply_not_direct_enough: 4
+  reply_missing_required_step: 2
+  evidence_wording_mismatch: 1
 ```
 
 ## 前端调试台
@@ -380,13 +485,35 @@ D:\llm\front
 
 ## 后续规划
 
-- 将 10 条 grounding 回归集扩展到 30-50 条。
-- 增加 `intent_hit_rate`、`evidence_keyword_coverage`、`forbidden_hit_count` 等汇总指标。
+- 基于 blind eval 分层修复，不再继续只刷当前 90 条固定评估集。
+- 优先修复 9 个 retrieval/query rewrite/intent hint 问题。
+- 然后修复 answer_composer 的固定措辞和必要步骤缺失。
+- 校准少量 judge/标注口径，避免把正确安全回复误判为失败。
 - 将 `suggested_layer`、`missing_evidence_keywords` 展示到前端调试台。
-- 优化知识库答案结构，使 answer 更适合直接进入生成。
-- 尝试 answer planner：先生成结构化回答计划，再渲染成客服话术。
-- 完善 Docker、配置文件、日志和部署说明。
-## Current Snapshot: 2026-05-20
+- 增加结构化日志、请求 trace id、限流和基础鉴权。
+- 补充生产环境部署说明和模型/索引版本管理。
+
+## 企业级能力现状
+
+当前项目已具备面试作品级企业雏形：
+
+- 可观测：`/chat/prompt` 返回 `trace`，包含 `request_id`、`top1_intent`、`latency_ms`、降级状态和失败阶段。
+- 可解释：接口返回检索证据、prompt context、final prompt 和 grounding 诊断字段。
+- 可评测：支持固定 grounding 集、blind eval、bad case 分层分析。
+- 可部署雏形：提供 `.env.example`、`/health`、Dockerfile 和 docker-compose。
+
+轻量观测字段说明：
+
+```text
+request_id: 单次请求追踪 ID
+top1_intent: 当前 Top1 检索意图
+latency_ms: /chat/prompt 端到端处理耗时
+degraded: 是否发生降级
+failure_stage: none / retrieval / generation / answer_composer / reply_rules
+answer_source: rag / fallback
+```
+
+## Current Snapshot: 2026-06-02
 
 This project is now a learning-oriented Chinese takeout customer-service RAG backend. The current quality work focuses on grounded answer rendering, not just retrieval.
 
@@ -403,36 +530,51 @@ user query
 -> reply + retrieved_items + final_prompt + trace
 ```
 
-Latest grounding report:
+Latest fixed grounding report:
 
 ```text
-reports/chat_grounding/2026-05-20_22-48-35.json
+reports/chat_grounding/2026-06-01_23-22-29.json
 ```
 
-Latest metrics:
+Fixed-set metrics:
+
+```text
+total_cases = 90
+top1_intent_hit_rate = 0.9667
+judge_pass_count = 90/90
+judge_pass_rate = 1.0
+evidence_keyword_coverage = 0.9475
+forbidden_hit_count = 0
+```
+
+Latest blind eval report:
+
+```text
+reports/chat_grounding/2026-06-02_01-04-51.json
+```
+
+Blind metrics:
 
 ```text
 total_cases = 30
-top1_intent_hit_rate = 1.0
-judge_pass_count = 25/30
-judge_pass_rate = 0.8333
-evidence_keyword_coverage = 0.9344
+top1_intent_hit_rate = 0.6
+judge_pass_count = 13/30
+judge_pass_rate = 0.4333
 forbidden_hit_count = 0
 ```
 
 Recent learning conclusion:
 
-- Retrieval is currently strong enough for the 30-case evaluation set.
-- The main bottleneck is answer composition: directness, deduplication, and stable required steps.
-- Online API generation was tested, but did not outperform the local model in this chain.
-- Local model remains the default generator.
+- 当前固定 90 条 grounding 集已经收敛，但这不代表真实泛化完美。
+- blind eval 已经跑过真实链路，暴露出检索泛化、口语错别字、模板硬编码和 judge 口径问题。
+- `forbidden_hit_count = 0` 说明目前没有生成明显禁用承诺。
+- 下一步应该先按 blind eval 归因修复 retrieval/intent hint，再处理 answer_composer 和 judge。
 
-Recommended next task:
+Engineering notes:
 
 ```text
-Improve answer_composer:
-1. remove duplicate / overlapping sentences
-2. make first sentence more direct
-3. strengthen required steps for remaining bad cases
-4. rerun grounding evaluation
+- Runtime config can be overridden through environment variables. See .env.example.
+- /health is a lightweight readiness endpoint and does not require model generation.
+- Dockerfile and docker-compose.yml are provided for local container smoke runs.
+- /chat/prompt and /model/info load chat_service lazily to avoid model loading on app import.
 ```

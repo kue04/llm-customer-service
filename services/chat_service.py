@@ -1,12 +1,18 @@
 # app/services/chat_service.py
+import logging
 from pathlib import Path
+import time
+from uuid import uuid4
 
 from config.rag_config import get_rag_config
 from models.prompt import create_prompt
 from peft import PeftModel
 from services.answer_composer import compose_answer_if_needed
+from services.feedback_service import save_chat_session
 from services.grounding_diagnostics import build_chat_grounding_diagnostics
 from services.online_generation import generate_online_chat_completion
+from services.ops_metrics import record_chat_metrics
+from services.privacy import mask_sensitive_text
 from services.reply_rules import apply_reply_rules_with_trace
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -33,6 +39,7 @@ FALLBACK_REPLY = (
     "抱歉，这个问题我暂时无法稳定判断。建议您先在订单页面查看最新状态，"
     "如仍有疑问，请通过官方客服渠道进一步核实处理。"
 )
+logger = logging.getLogger(__name__)
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
 model = AutoModelForCausalLM.from_pretrained(
@@ -116,6 +123,9 @@ def build_trace(
     degraded: bool,
     failure_stage: str,
     fallback_reason: str,
+    request_id: str = "",
+    latency_ms: float = 0.0,
+    top1_intent: str = "",
 ) -> dict:
     config = get_rag_config()
     return {
@@ -132,6 +142,9 @@ def build_trace(
         "degraded": degraded,
         "failure_stage": failure_stage,
         "fallback_reason": fallback_reason,
+        "request_id": request_id,
+        "latency_ms": latency_ms,
+        "top1_intent": top1_intent,
     }
 
 
@@ -185,7 +198,53 @@ def attach_grounding_diagnostics(result: dict, query: str) -> dict:
     return result
 
 
+def build_top1_intent(retrieved_items: list[dict]) -> str:
+    if not retrieved_items:
+        return ""
+    return str(retrieved_items[0].get("intent", ""))
+
+
+def elapsed_ms(started_at: float) -> float:
+    return round((time.perf_counter() - started_at) * 1000, 2)
+
+
+def log_chat_trace(query: str, trace: dict) -> None:
+    safe_query = mask_sensitive_text(query)
+    logger.info(
+        (
+            "chat_request request_id=%s query=%r top1_intent=%s answer_source=%s "
+            "degraded=%s failure_stage=%s latency_ms=%s"
+        ),
+        trace.get("request_id", ""),
+        safe_query,
+        trace.get("top1_intent", ""),
+        trace.get("answer_source", ""),
+        trace.get("degraded", False),
+        trace.get("failure_stage", ""),
+        trace.get("latency_ms", 0.0),
+        extra={
+            "request_id": trace.get("request_id", ""),
+            "query": safe_query,
+            "top1_intent": trace.get("top1_intent", ""),
+            "answer_source": trace.get("answer_source", ""),
+            "degraded": trace.get("degraded", False),
+            "failure_stage": trace.get("failure_stage", ""),
+            "latency_ms": trace.get("latency_ms", 0.0),
+        },
+    )
+
+
+def finalize_chat_result(result: dict, query: str) -> dict:
+    trace = result.get("trace", {})
+    record_chat_metrics(trace)
+    save_chat_session(query=query, reply=result.get("reply", ""), trace=trace)
+    log_chat_trace(query, result.get("trace", {}))
+    return attach_grounding_diagnostics(result, query)
+
+
 def get_answer_from_rag(query: str):
+    request_id = uuid4().hex
+    started_at = time.perf_counter()
     retrieved_items = []
     prompt_context_items = []
     used_fallback_prompt = False
@@ -222,7 +281,7 @@ def get_answer_from_rag(query: str):
         failure_stage = "generation"
         fallback_reason = f"generation_failed: {error}"
         reply = FALLBACK_REPLY
-        return attach_grounding_diagnostics({
+        return finalize_chat_result({
             "reply": reply,
             "confidence_score": 0.2,
             "final_prompt": prompt,
@@ -241,6 +300,9 @@ def get_answer_from_rag(query: str):
                 degraded=degraded,
                 failure_stage=failure_stage,
                 fallback_reason=fallback_reason,
+                request_id=request_id,
+                latency_ms=elapsed_ms(started_at),
+                top1_intent=build_top1_intent(retrieved_items),
             ),
         }, query)
 
@@ -276,7 +338,7 @@ def get_answer_from_rag(query: str):
             failure_stage = "reply_rules"
             fallback_reason = f"reply_rules_failed: {error}"
 
-    return attach_grounding_diagnostics({
+    return finalize_chat_result({
         "reply": reply,
         "confidence_score": confidence_score,
         "final_prompt": prompt,
@@ -295,6 +357,9 @@ def get_answer_from_rag(query: str):
             degraded=degraded,
             failure_stage=failure_stage,
             fallback_reason=fallback_reason,
+            request_id=request_id,
+            latency_ms=elapsed_ms(started_at),
+            top1_intent=build_top1_intent(retrieved_items),
         ),
     }, query)
 

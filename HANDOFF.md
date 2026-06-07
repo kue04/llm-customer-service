@@ -1,5 +1,255 @@
 # LLM Customer Service Project Handoff
 
+## 2026-06-07 Current Handoff Update: Knowledge Publish Loop + Frontend Light Split
+
+### Completed
+
+Knowledge ops now supports manual activation after review:
+
+```text
+POST /knowledge/publish-approved
+GET /knowledge/publish-history
+POST /knowledge/rollback-latest
+```
+
+Publishing appends `approved` items into `data/takeout_customer_service_seed.jsonl`, creates a backup under `data/knowledge_backups/`, rebuilds FAISS through `save_real_vector_store()`, clears runtime vector caches, records publish history, and marks merged items as `published`. Rolling back restores the latest successful publish backup, rebuilds FAISS, records a rollback history row, and moves those item statuses back to `approved`.
+
+Frontend has been lightly split:
+
+```text
+D:\llm\front\src\features\support\SupportView.tsx
+D:\llm\front\src\features\knowledge\KnowledgeOpsView.tsx
+D:\llm\front\src\components\EmptyState.tsx
+D:\llm\front\src\components\Score.tsx
+```
+
+No React Router or global state library was introduced. Orders/storefront behavior remains in `App.tsx`.
+
+### Notes
+
+Review approval still does not auto-publish. After publishing real knowledge, run a small retrieval/chat smoke test before any fixed/blind eval.
+
+## 2026-06-06 Current Handoff Update: Knowledge Ops V1
+
+### Completed
+
+Added a knowledge-ops draft/review layer:
+
+```text
+GET /knowledge/items
+POST /knowledge/items
+PUT /knowledge/items/{id}
+POST /knowledge/items/{id}/archive
+POST /knowledge/items/{id}/review
+GET /knowledge/export-approved
+```
+
+Knowledge changes are stored in SQLite at `data/knowledge_ops.db`. Review approval alone does not modify `data/takeout_customer_service_seed.jsonl`, does not rebuild FAISS, and does not affect the current RAG retrieval chain. Manual publish is now available in the newer 2026-06-07 update above.
+
+Frontend now has a lightweight “知识运营” view for creating drafts, editing into a new version, approving/rejecting, archiving, filtering, and copying approved JSONL.
+
+## 2026-06-06 Current Handoff Update: Landing Loop MVP
+
+### Completed
+
+Added the interview-grade landing loop:
+
+```text
+/chat/prompt session trace
+-> SQLite feedback storage
+-> recent bad case API
+-> eval case draft export
+-> in-memory ops metrics
+-> basic log masking
+```
+
+New endpoints:
+
+```text
+POST /feedback
+GET /feedback/recent
+POST /feedback/export-eval-case
+GET /ops/metrics
+```
+
+Frontend support view can submit helpful/unhelpful feedback, show recent bad cases, copy eval case drafts, and display lightweight ops metrics.
+
+### Explicitly Out Of Scope
+
+Enterprise-system layer is intentionally not included in this pass: no login, RBAC, admin console, real order-system integration, grey release, alerting platform, or SLA disaster recovery.
+
+## 2026-06-06 Current Handoff Update: Lightweight Enterprise Observability
+
+### Completed
+
+Added lightweight observability for interview-grade enterprise presentation:
+
+```text
+/chat/prompt trace
+-> request_id
+-> top1_intent
+-> latency_ms
+-> degraded / failure_stage / answer_source
+```
+
+Backend now logs one structured `chat_request` record per chat request using standard-library logging. The frontend diagnostics panel displays the new trace fields and copied debug reports include them through the existing trace JSON block.
+
+### Recommended Next Step
+
+Run the full fixed evaluation and blind eval outside this implementation pass, then update README/HANDOFF with the new post-fix metrics.
+
+## 2026-06-02 Current Handoff Update: Blind Eval Reality Check
+
+### What Changed
+
+Added a blind grounding evaluation path so the project no longer only optimizes the fixed 90-case set:
+
+```text
+scripts/evaluate_chat_grounding.py --blind
+-> data/chat_grounding_blind_cases.jsonl
+-> real /chat RAG chain
+-> local judge
+-> saved report
+-> analyze_grounding_report.py attribution
+```
+
+The blind set contains 30 cases with oral phrasing, typos, strong emotion, mixed intents, privacy/security requests, and unsafe refund/compensation guarantees.
+
+### Latest Blind Eval Snapshot
+
+Latest blind report:
+
+```text
+reports/chat_grounding/2026-06-02_01-04-51.json
+```
+
+Metrics:
+
+```text
+total_cases = 30
+top1_intent_hit_count = 18/30
+top1_intent_hit_rate = 0.6
+judge_pass_count = 13/30
+judge_pass_rate = 0.4333
+evidence_keyword_coverage = 0.6667
+forbidden_hit_count = 0
+direct_answer yes = 13
+grounded yes = 13
+useful yes = 13
+```
+
+Analyzer attribution:
+
+```text
+failure_attribution_counts:
+  pass: 13
+  retrieval_failure: 9
+  generation_not_using_evidence: 7
+  evidence_insufficient: 1
+
+suggested_layer_counts:
+  pass: 13
+  generation_or_reply_rules: 11
+  context_builder_or_reply_rules: 1
+  judge: 5
+```
+
+### Important Conclusion
+
+The fixed 90-case set is still useful as a regression guard, but it is no longer a quality target:
+
+```text
+fixed set: 90/90
+blind set: 13/30
+```
+
+This gap is healthy signal. It shows the system has learned the fixed set but still needs generalization work, especially around typo normalization, query rewrite / intent hints, answer_composer hard-coded wording, and judge calibration.
+
+### Recommended Next Step
+
+Do not tune all 17 blind failures directly. First classify and fix by layer:
+
+1. Retrieval/query rewrite/intent hint: fix the 9 retrieval failures.
+2. Answer composer/reply rules: remove brittle hard-coded wording and add missing required steps.
+3. Knowledge evidence: add only the one clearly insufficient evidence case if needed.
+4. Judge/label calibration: review the 5 cases where the reply appears safer or more correct than the judge result.
+
+## 2026-06-01 Current Handoff Update: 90-Case Grounding Closure + Engineering Baseline
+
+### Current Stage
+
+The project has moved from a 30-case quality loop to a 90-case fixed grounding evaluation set:
+
+```text
+user query
+-> hybrid retrieval + intent hint supplement
+-> bge reranker
+-> primary evidence context
+-> local Qwen generation
+-> answer_composer boundary-aware rendering
+-> reply_rules high-risk fallback
+-> grounding diagnostics / local judge / bad-case analysis
+```
+
+### Latest Evaluation Snapshot
+
+Latest report:
+
+```text
+reports/chat_grounding/2026-06-01_23-22-29.json
+```
+
+Metrics:
+
+```text
+total_cases = 90
+top1_intent_hit_count = 87/90
+top1_intent_hit_rate = 0.9667
+judge_pass_count = 90/90
+judge_pass_rate = 1.0
+evidence_keyword_coverage = 0.9475
+forbidden_hit_count = 0
+direct_answer yes = 90
+grounded yes = 90
+useful yes = 90
+```
+
+Important caveat:
+
+```text
+90/90 means the current fixed evaluation set has converged.
+It does not prove real-world generalization.
+The next quality step should be blind eval, not more tuning on this fixed set.
+```
+
+### Completed In This Round
+
+1. Added intent hints for address-change follow-up, delay compensation, missing item, rider complaint, merchant-cancel refund progress, unsafe refund guarantees, merchant contact induction, and food-safety evidence gaps.
+2. Increased intent hint supplement strength so known high-risk intents can enter Top1 when vector similarity alone under-ranks them.
+3. Added direct boundary answers for unsupported guarantees:
+   - full refund / refund amount promise
+   - delay compensation promise
+   - immediate reship promise
+   - rider punishment / compensation promise
+   - food safety payout without evidence
+   - private merchant call / refund request
+4. Kept `forbidden_hit_count = 0`.
+5. Added environment-driven RAG config with `.env.example`.
+6. Added `/health`.
+7. Made `/chat/prompt` and `/model/info` import `chat_service` lazily, so app import and health checks do not immediately load the local model.
+8. Added pinned direct dependencies, `Dockerfile`, `docker-compose.yml`, and `.dockerignore`.
+
+### Recommended Next Step
+
+Do not keep optimizing the current 90 cases. Create a blind evaluation set:
+
+```text
+20-30 new cases
+-> include typos, oral phrasing, angry users, mixed intents, and high-risk induction
+-> run once without code changes
+-> only then decide whether retrieval, answer_composer, reply_rules, or judge needs work
+```
+
 ## 2026-05-20 Current Handoff Update: Composer, Judge Calibration, Model A/B
 
 ### Current Stage

@@ -31,6 +31,9 @@ class ChatPromptApiTest(unittest.TestCase):
             ],
             "trace": {
                 "retrieval_count": 1,
+                "request_id": "req-test",
+                "latency_ms": 12.3,
+                "top1_intent": "refund_progress",
                 "used_fallback_prompt": False,
                 "reply_rules_applied": False,
                 "answer_source": "rag",
@@ -74,6 +77,9 @@ class ChatPromptApiTest(unittest.TestCase):
         )
         self.assertEqual(body["prompt_context_items"][0]["intent"], "refund_progress")
         self.assertEqual(body["trace"]["retrieval_count"], 1)
+        self.assertEqual(body["trace"]["request_id"], "req-test")
+        self.assertEqual(body["trace"]["top1_intent"], "refund_progress")
+        self.assertEqual(body["trace"]["latency_ms"], 12.3)
         self.assertFalse(body["trace"]["used_fallback_prompt"])
         self.assertEqual(body["trace"]["answer_source"], "rag")
         self.assertFalse(body["trace"]["degraded"])

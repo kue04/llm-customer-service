@@ -7,5 +7,16 @@ __pycache__/
 .env
 .venv/
 .cache/
+.codex_deps/
 eval_outputs/
+reports/
 models/takeout-qwen-lora-*/
+data/faiss_store/
+output/pdf/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.sqlite3
+*.db

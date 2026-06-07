@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.cache/
+.git/
+.vscode/
+venv/
+.venv/
+eval_outputs/
+reports/
+tmp/
+output/
+local_models/
+models/takeout-qwen-lora-*/
+data/faiss_store/

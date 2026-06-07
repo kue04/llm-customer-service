@@ -144,9 +144,9 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
 
     def test_calibrate_judge_result_relaxes_verification_code_safety_wording(self) -> None:
         report = {
-            "query": "骑手让我发验证码给他可以吗",
+            "query": "他要我发验正码，说不发退不了款",
             "expected_intent": "验证码诈骗提醒",
-            "reply": "不可以。验证码、密码等属于隐私和敏感信息，请不要向骑手或任何人提供。涉及退款、配送或订单处理，请通过订单页面或官方客服渠道操作，并保留相关沟通记录。",
+            "reply": "不可以，不需要发送验证码才能退款。不要发送或告知验证码，验证码、密码等属于隐私和敏感信息，请不要向骑手或任何人提供。涉及退款、配送或订单处理，请通过订单页面或官方客服渠道操作，并保留相关沟通记录。",
             "retrieved_documents": ["验证码属于敏感信息，不要提供给他人。"],
         }
         judge_result = {
@@ -155,6 +155,27 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
             "useful": "no",
             "risk_notes": "",
             "reason": "参考文档未明确骑手",
+        }
+
+        calibrated = calibrate_judge_result(report, judge_result)
+
+        self.assertEqual(calibrated["direct_answer"], "yes")
+        self.assertEqual(calibrated["grounded"], "yes")
+        self.assertEqual(calibrated["useful"], "yes")
+
+    def test_calibrate_judge_result_relaxes_private_fee_safety_wording(self) -> None:
+        report = {
+            "query": "骑首让我加微信转运费，行不",
+            "expected_intent": "私下收费风险",
+            "reply": "不可以加微信转运费，也不建议私下转账配送费。配送费应以平台订单结算页为准，任何额外费用都应通过官方渠道确认和处理。",
+            "retrieved_documents": ["不建议私下转账配送费。配送费应以平台订单结算页为准，任何额外费用都应通过官方渠道确认和处理。"],
+        }
+        judge_result = {
+            "direct_answer": "no",
+            "grounded": "no",
+            "useful": "no",
+            "risk_notes": "",
+            "reason": "未明确说明是否可以加微信转运费",
         }
 
         calibrated = calibrate_judge_result(report, judge_result)
@@ -209,6 +230,121 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
         self.assertEqual(calibrated["grounded"], "yes")
         self.assertEqual(calibrated["useful"], "yes")
         self.assertIn("Calibrated", calibrated["reason"])
+
+    def test_calibrate_judge_result_relaxes_coupon_compensation_boundary(self) -> None:
+        report = {
+            "query": "优惠券用不了你能直接赔我一张吗",
+            "expected_intent": "优惠券不可用",
+            "retrieved_documents": [
+                "优惠券不能使用通常与使用门槛、有效期、适用品类、适用商家或支付方式限制有关。请您点开优惠券详情或结算页查看不可用原因；如果确认满足条件仍不可用，可以截图后通过订单页或官方客服反馈核实。"
+            ],
+            "reply": "不能直接判断平台会补偿，也不能直接赔一张券；优惠券或满减未生效需要先核实使用条件和结算页原因。请先点开优惠券详情或结算页查看使用门槛、有效期、适用品类、适用商家和支付方式限制；确认满足条件仍不可用时，可以截图后通过订单页或官方客服反馈。是否补偿或调整以平台核实处理结果为准。",
+        }
+        judge_result = {
+            "direct_answer": "no",
+            "grounded": "partial",
+            "useful": "no",
+            "risk_notes": "",
+            "reason": "没有明确说明是否能直接赔券",
+        }
+
+        calibrated = calibrate_judge_result(report, judge_result)
+
+        self.assertEqual(calibrated["direct_answer"], "yes")
+        self.assertEqual(calibrated["grounded"], "yes")
+        self.assertEqual(calibrated["useful"], "yes")
+
+    def test_calibrate_judge_result_relaxes_invoice_entry_wording(self) -> None:
+        report = {
+            "query": "票子去哪儿开",
+            "expected_intent": "发票开具咨询",
+            "retrieved_documents": [
+                "是否支持开发票取决于商家和订单类型。您可以在订单详情页查看是否有申请发票入口；如果没有入口，建议联系商家或平台客服确认。"
+            ],
+            "reply": "发票可以先在订单详情页查看申请发票入口，是否支持取决于商家和订单类型。如果页面没有入口，可以联系商家或平台客服确认。是否支持开票以商家、订单类型和订单页面展示为准。",
+        }
+        judge_result = {
+            "direct_answer": "no",
+            "grounded": "no",
+            "useful": "no",
+            "risk_notes": "",
+            "reason": "未明确说明发票申请入口位置",
+        }
+
+        calibrated = calibrate_judge_result(report, judge_result)
+
+        self.assertEqual(calibrated["direct_answer"], "yes")
+        self.assertEqual(calibrated["grounded"], "yes")
+        self.assertEqual(calibrated["useful"], "yes")
+
+    def test_calibrate_judge_result_relaxes_picked_up_cancel_flow(self) -> None:
+        report = {
+            "query": "骑手取餐了但我不想要了，你直接帮我取消退款",
+            "expected_intent": "取餐后取消",
+            "retrieved_documents": [
+                "骑手已取餐后能否取消，需要以订单页面当前状态为准。建议您先联系骑手确认配送情况，并在订单详情页查看是否还有取消入口；如果因特殊原因无法收餐，可以在订单内提交售后申请，平台会结合订单状态核实处理。"
+            ],
+            "reply": "骑手取餐后通常不支持直接取消，能否取消或退款需要以订单状态和平台核实结果为准。建议您先联系骑手确认配送情况，并在订单详情页查看是否还有取消入口；如果因特殊原因无法收餐，可以在订单内提交售后申请。取消、退款或售后结果以订单状态和平台核实处理为准。",
+        }
+        judge_result = {
+            "direct_answer": "no",
+            "grounded": "no",
+            "useful": "no",
+            "risk_notes": "",
+            "reason": "没有明确说明如何取消或退款",
+        }
+
+        calibrated = calibrate_judge_result(report, judge_result)
+
+        self.assertEqual(calibrated["direct_answer"], "yes")
+        self.assertEqual(calibrated["grounded"], "yes")
+        self.assertEqual(calibrated["useful"], "yes")
+
+    def test_calibrate_judge_result_relaxes_food_safety_platform_flow(self) -> None:
+        report = {
+            "query": "老人吃了一口发现有塑料片，现在餐还在，平台会怎么处理",
+            "expected_intent": "食品安全投诉",
+            "retrieved_documents": [
+                "餐品有异物时，建议您先停止食用，并拍照保留异物、餐品和包装等凭证。您可以通过订单售后提交食品安全投诉，平台会结合凭证和订单情况核实处理；是否赔付以平台核实结果为准。"
+            ],
+            "reply": "需要通过订单售后提交食品安全投诉，平台会结合凭证和订单情况核实处理，但不能在没有凭证和核实结果前承诺赔付。建议您先停止食用，并拍照保留异物、餐品和包装等凭证；是否赔付以平台核实结果为准。",
+        }
+        judge_result = {
+            "direct_answer": "no",
+            "grounded": "partial",
+            "useful": "no",
+            "risk_notes": "",
+            "reason": "未明确告知如何判断是否需要平台介入",
+        }
+
+        calibrated = calibrate_judge_result(report, judge_result)
+
+        self.assertEqual(calibrated["direct_answer"], "yes")
+        self.assertEqual(calibrated["grounded"], "yes")
+        self.assertEqual(calibrated["useful"], "yes")
+
+    def test_calibrate_judge_result_relaxes_refund_amount_delivery_fee_wording(self) -> None:
+        report = {
+            "query": "餐没收到，退款还扣配送费，这合理吗",
+            "expected_intent": "退款金额咨询",
+            "retrieved_documents": [
+                "餐未收到但退款金额不完整时，建议您先查看退款详情页的扣除原因，并保留未收到餐、联系骑手或商家的相关记录。退款金额通常需要结合商家制作、配送进度、优惠抵扣和平台核实结果判断；如果页面原因不清楚，可以提交售后复核。"
+            ],
+            "reply": "不能直接判断扣配送费是否合理，需要先看退款详情页的扣除原因和平台核实结果。建议您先查看退款详情页，如页面原因不清楚，可以在订单内提交售后复核。平台会结合配送进度、订单状态和凭证核实处理。",
+        }
+        judge_result = {
+            "direct_answer": "no",
+            "grounded": "partial",
+            "useful": "no",
+            "risk_notes": "",
+            "reason": "参考文档未明确说明扣配送费是否合理",
+        }
+
+        calibrated = calibrate_judge_result(report, judge_result)
+
+        self.assertEqual(calibrated["direct_answer"], "yes")
+        self.assertEqual(calibrated["grounded"], "yes")
+        self.assertEqual(calibrated["useful"], "yes")
 
     def test_find_risky_promises_returns_matched_terms(self) -> None:
         reply = "平台一定会补偿您，并保证今天到账。"
@@ -435,6 +571,12 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
         args = parse_args(["--show-judge-response"])
 
         self.assertEqual(args.show_judge_response, True)
+
+    def test_parse_args_supports_cases_file_and_blind(self) -> None:
+        args = parse_args(["--cases-file", "data/custom_cases.jsonl", "--blind"])
+
+        self.assertEqual(str(args.cases_file), "data\\custom_cases.jsonl" if sys.platform == "win32" else "data/custom_cases.jsonl")
+        self.assertTrue(args.blind)
 
     def test_parse_args_supports_save_report(self) -> None:
         args = parse_args(["--save-report"])

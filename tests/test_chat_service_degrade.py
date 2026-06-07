@@ -37,6 +37,9 @@ class ChatServiceDegradeTest(unittest.TestCase):
             def eval(self):
                 return None
 
+            def to(self, device):
+                return self
+
             def generate(self, **kwargs):
                 return [[1, 2, 3, 4]]
 
@@ -57,6 +60,7 @@ class ChatServiceDegradeTest(unittest.TestCase):
 
         fake_vector_retriever = types.ModuleType("utils.vector_retriever")
         fake_vector_retriever.retrieve_rag_items = retrieve_impl
+        fake_vector_retriever.detect_intent_hint = lambda query: ""
 
         previous_modules = {
             name: sys.modules.get(name)
@@ -102,6 +106,9 @@ class ChatServiceDegradeTest(unittest.TestCase):
         self.assertEqual(result["trace"]["answer_source"], "fallback")
         self.assertTrue(result["trace"]["degraded"])
         self.assertEqual(result["trace"]["failure_stage"], "retrieval")
+        self.assertIn("request_id", result["trace"])
+        self.assertIn("latency_ms", result["trace"])
+        self.assertEqual(result["trace"]["top1_intent"], "")
         self.assertEqual(result["prompt_context_items"], [])
 
     def test_generation_failure_returns_safe_fallback_reply(self) -> None:
@@ -156,11 +163,11 @@ class ChatServiceDegradeTest(unittest.TestCase):
 
         result = chat_service.get_answer_from_rag("refund")
 
-        self.assertEqual(result["reply"], "model answer")
+        self.assertEqual(result["reply"], "doc。")
         self.assertEqual(result["trace"]["failure_stage"], "reply_rules")
         self.assertTrue(result["trace"]["degraded"])
         self.assertFalse(result["trace"]["reply_rules_applied"])
-        self.assertEqual(result["prompt_context_items"][0]["question"], "when refund arrives")
+        self.assertEqual(result["prompt_context_items"][0]["source_question"], "when refund arrives")
 
 
 if __name__ == "__main__":
