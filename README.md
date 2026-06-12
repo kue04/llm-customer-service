@@ -4,6 +4,14 @@
 
 项目已完成 FastAPI 后端、RAG 检索链路、本地模型接入、知识库管理、反馈运营、评测脚本、Docker 配置和配套前端工作台，可作为大模型应用工程、RAG 系统和 AI 客服方向的面试展示项目。
 
+## 可验证入口
+
+- GitHub 后端仓库：https://github.com/kue04/llm-customer-service
+- 配套前端仓库：https://github.com/kue04/takeout-rag-support-frontend
+- 本地 API 文档：启动后访问 `http://127.0.0.1:8000/docs`
+- 评测报告：[docs/EVALUATION.md](docs/EVALUATION.md)
+- Bad case 复盘：[docs/BAD_CASES.md](docs/BAD_CASES.md)
+
 ## 系统功能
 
 - 客服问答：围绕退款、配送进度、售后流程、食品安全、优惠券、平台规则等外卖客服场景生成中文回复。
