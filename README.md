@@ -4,6 +4,16 @@
 
 项目已完成 FastAPI 后端、RAG 检索链路、本地模型接入、知识库管理、反馈运营、评测脚本、Docker 配置和配套前端工作台，可作为大模型应用工程、RAG 系统和 AI 客服方向的面试展示项目。
 
+## 项目截图
+
+![项目展示首页](docs/images/project-showcase-home.png)
+
+| 订单客服诊断面板 | 证据溯源视图 |
+| --- | --- |
+| ![订单客服诊断面板](docs/images/chat-diagnostics-timeline.png) | ![证据溯源视图](docs/images/chat-diagnostics-evidence.png) |
+
+![知识库运营](docs/images/knowledge-ops.png)
+
 ## 可验证入口
 
 - GitHub 后端仓库：https://github.com/kue04/llm-customer-service
