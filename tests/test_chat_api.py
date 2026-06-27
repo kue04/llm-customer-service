@@ -10,9 +10,22 @@ from fastapi.testclient import TestClient
 class ChatPromptApiTest(unittest.TestCase):
     def test_chat_prompt_returns_retrieved_documents_and_trace(self) -> None:
         fake_chat_service = types.ModuleType("services.chat_service")
-        fake_chat_service.get_answer_from_rag = lambda message: {
+        fake_chat_service.get_answer_from_rag = lambda request: {
             "reply": "answer",
+            "answer_basis": "主证据：refund_progress",
+            "evidence_citations": [{"evidence_id": "kb_1", "evidence_role": "primary"}],
+            "tool_results": [],
+            "memory_snapshot": {"short_term": {}, "long_term": {"used": False}},
+            "decision_trace": {"request_id": "req-test"},
+            "full_trace": [{"step": "request_received", "status": "success"}],
+            "handoff_ticket": None,
             "confidence_score": 0.95,
+            "session_id": getattr(request, "session_id", None) or "session-test",
+            "user_id": getattr(request, "user_id", "demo_user"),
+            "order_id": getattr(request, "order_id", None),
+            "intent_analysis": {"primary_intent": "refund_progress"},
+            "context_used": {"recent_message_count": 0},
+            "safety_status": {"passed": True},
             "final_prompt": "prompt text",
             "retrieved_documents": ["first document", "second document"],
             "retrieved_items": [{"intent": "refund_progress"}],
@@ -32,6 +45,9 @@ class ChatPromptApiTest(unittest.TestCase):
             "trace": {
                 "retrieval_count": 1,
                 "request_id": "req-test",
+                "user_id": getattr(request, "user_id", "demo_user"),
+                "session_id": getattr(request, "session_id", None) or "session-test",
+                "order_id": getattr(request, "order_id", None),
                 "latency_ms": 12.3,
                 "top1_intent": "refund_progress",
                 "used_fallback_prompt": False,
@@ -69,6 +85,8 @@ class ChatPromptApiTest(unittest.TestCase):
         body = response.json()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(body["reply"], "answer")
+        self.assertEqual(body["user_id"], "demo_user")
+        self.assertEqual(body["session_id"], "session-test")
         self.assertEqual(body["confidence_score"], 0.95)
         self.assertEqual(body["final_prompt"], "prompt text")
         self.assertEqual(
@@ -80,6 +98,8 @@ class ChatPromptApiTest(unittest.TestCase):
         self.assertEqual(body["trace"]["request_id"], "req-test")
         self.assertEqual(body["trace"]["top1_intent"], "refund_progress")
         self.assertEqual(body["trace"]["latency_ms"], 12.3)
+        self.assertEqual(body["evidence_citations"][0]["evidence_id"], "kb_1")
+        self.assertEqual(body["full_trace"][0]["step"], "request_received")
         self.assertFalse(body["trace"]["used_fallback_prompt"])
         self.assertEqual(body["trace"]["answer_source"], "rag")
         self.assertFalse(body["trace"]["degraded"])

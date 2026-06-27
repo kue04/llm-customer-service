@@ -112,7 +112,11 @@ POST /chat/prompt
 
 ```json
 {
-  "message": "会员退款多久到账"
+  "user_id": "demo_user",
+  "session_id": "demo_session_001",
+  "order_id": "order_picked",
+  "channel": "test",
+  "message": "骑手已经取餐了，我现在取消能全额退款吗？"
 }
 ```
 
@@ -121,11 +125,57 @@ POST /chat/prompt
 ```json
 {
   "reply": "客服回答文本",
-  "confidence_score": 0.8
+  "answer_basis": "主证据：退款金额咨询；工具结果：骑手已取餐，不应直接承诺全额退款...",
+  "evidence_citations": [
+    {
+      "evidence_id": "kb_1_1",
+      "source_type": "knowledge_base",
+      "evidence_role": "primary",
+      "intent": "退款金额咨询",
+      "quote": "退款金额需以订单状态和平台核实结果为准"
+    }
+  ],
+  "tool_results": [
+    {
+      "tool_name": "query_order_status",
+      "status": "success",
+      "input": {"order_id": "order_picked"},
+      "output": {"status_label": "骑手已取餐"},
+      "error_type": "",
+      "latency_ms": 0.12,
+      "retryable": false
+    }
+  ],
+  "memory_snapshot": {
+    "short_term": {"session_id": "demo_session_001", "facts": {}},
+    "long_term": {"used": false, "fields": {}}
+  },
+  "decision_trace": {
+    "request_id": "request-id",
+    "primary_intent": "退款金额咨询",
+    "risk_level": "medium",
+    "needs_manual_review": false
+  },
+  "full_trace": [
+    {"step": "request_received", "status": "success", "latency_ms": 0.0},
+    {"step": "order_tool_called", "status": "success", "latency_ms": 0.2},
+    {"step": "response_returned", "status": "success", "latency_ms": 0.0}
+  ],
+  "handoff_ticket": null,
+  "confidence_score": 0.8,
+  "trace": {"retrieval_count": 3, "request_id": "request-id"}
 }
 ```
 
-用途：调用 RAG 链路生成最终客服回复。
+用途：调用 RAG 链路生成最终客服回复。旧字段仍保留，前端旧页面可以继续读取 `reply`、`confidence_score`、`final_prompt`、`retrieved_documents`、`retrieved_items`、`prompt_context_items` 和 `trace`。新增字段用于诊断面板：
+
+- `answer_basis`：给客服回复下方展示的简短回答依据。
+- `evidence_citations`：进入 Prompt 的知识证据引用，区分 `primary` 和 `supporting`。
+- `tool_results`：订单状态、退款状态和人工接管工单的结构化结果。
+- `memory_snapshot`：短期会话记忆和长期用户记忆快照。
+- `decision_trace`：本次路由、风险、证据和人工复核结论摘要。
+- `full_trace`：按时间线组织的完整后端步骤。
+- `handoff_ticket`：触发人工接管时返回工单摘要。
 
 ## 模型信息
 

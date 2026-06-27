@@ -32,6 +32,9 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    _ensure_column(connection, "chat_sessions", "user_id", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "chat_sessions", "session_id", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "chat_sessions", "order_id", "TEXT")
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS feedback (
@@ -55,6 +58,22 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _ensure_column(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    column_definition: str,
+) -> None:
+    existing_columns = {
+        row["name"]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in existing_columns:
+        connection.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+        )
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -68,8 +87,9 @@ def save_chat_session(query: str, reply: str, trace: dict) -> None:
         connection.execute(
             """
             INSERT OR REPLACE INTO chat_sessions
-            (request_id, query, reply, trace_json, top1_intent, latency_ms, answer_source, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (request_id, query, reply, trace_json, top1_intent, latency_ms,
+             answer_source, user_id, session_id, order_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 request_id,
@@ -79,6 +99,9 @@ def save_chat_session(query: str, reply: str, trace: dict) -> None:
                 str(trace.get("top1_intent", "")),
                 float(trace.get("latency_ms") or 0.0),
                 str(trace.get("answer_source", "")),
+                str(trace.get("user_id", "")),
+                str(trace.get("session_id", "")),
+                str(trace.get("order_id", "")),
                 utc_now(),
             ),
         )

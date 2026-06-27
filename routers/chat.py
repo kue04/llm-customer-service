@@ -10,7 +10,7 @@ router = APIRouter()
 async def generate_answer(request: ChatRequest):
     from services.chat_service import get_answer_from_rag
 
-    response = get_answer_from_rag(request.message)
+    response = get_answer_from_rag(request)
     if not response:
         raise HTTPException(status_code=500, detail="Error while generating response.")
     return response

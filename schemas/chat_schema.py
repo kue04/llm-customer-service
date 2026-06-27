@@ -4,11 +4,18 @@ from pydantic import BaseModel, Field
 
 class ChatRequest(BaseModel):
     message: str
+    user_id: str = "demo_user"
+    session_id: str | None = None
+    order_id: str | None = None
+    channel: str = "test"
 
 
 class ChatTrace(BaseModel):
     retrieval_count: int
     request_id: str = ""
+    user_id: str = ""
+    session_id: str = ""
+    order_id: str | None = None
     latency_ms: float = 0.0
     top1_intent: str = ""
     used_fallback_prompt: bool
@@ -38,7 +45,20 @@ class PromptContextItemResponse(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    answer_basis: str = ""
+    evidence_citations: list[dict] = Field(default_factory=list)
+    tool_results: list[dict] = Field(default_factory=list)
+    memory_snapshot: dict = Field(default_factory=dict)
+    decision_trace: dict = Field(default_factory=dict)
+    full_trace: list[dict] = Field(default_factory=list)
+    handoff_ticket: dict | None = None
     confidence_score: float
+    session_id: str = ""
+    user_id: str = "demo_user"
+    order_id: str | None = None
+    intent_analysis: dict = Field(default_factory=dict)
+    context_used: dict = Field(default_factory=dict)
+    safety_status: dict = Field(default_factory=dict)
     final_prompt: str
     retrieved_documents: list[str]
     retrieved_items: list[dict] = Field(default_factory=list)

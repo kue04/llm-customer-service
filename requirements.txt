@@ -9,3 +9,4 @@ trl==1.2.0
 accelerate==1.13.0
 sentence-transformers==5.4.1
 faiss-cpu==1.13.2
+pytest==9.1.1

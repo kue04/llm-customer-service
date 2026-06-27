@@ -19,6 +19,10 @@
 - Reranker 精排：使用 reranker 对召回结果二次排序，提高证据相关性。
 - Context Builder：区分 primary evidence 与 supporting evidence，减少相似意图混用。
 - Prompt 预览：返回最终 Prompt、证据列表和诊断字段，便于调试每次回答。
+- 客服上下文：`/chat/prompt` 支持 `user_id`、`session_id`、`order_id` 和 `channel`，可贯穿一次客服请求。
+- 订单工具：内置本地模拟订单状态、退款状态和人工接管工单工具，不依赖真实外卖平台 API。
+- 记忆链路：SQLite 保存会话短期上下文和长期用户记忆，Prompt 中明确 `user_memory` 低于订单状态和知识库证据。
+- 全链路 trace：返回 `full_trace`、`decision_trace`、`tool_results`、`memory_snapshot` 和 `evidence_citations`，便于前端诊断面板展示。
 - Reply Rules 兜底：对私下转账、食品安全、退款争议、隐私信息等高风险场景提供规则保护。
 - 反馈闭环：保存会话、用户反馈和 bad case，可导出 eval case 继续优化。
 - 知识运营：支持知识条目新增、修改、下架、审核、发布和回滚。
@@ -35,10 +39,12 @@
 -> reranker 精排
 -> Top1 标记为 primary evidence
 -> 其余证据标记为 supporting evidence
--> Context Builder 构造 final_prompt
+-> 加载会话上下文、长期用户记忆和订单模拟工具结果
+-> Context Builder 构造 final_prompt，并区分知识证据、订单状态和 user_memory 优先级
 -> Qwen / online model 生成客服回复
--> reply_rules 做高风险兜底
--> 返回 reply、retrieved_items、prompt_context_items、final_prompt、trace
+-> reply_rules + safety guard 做高风险兜底
+-> grounding check 判断是否需要人工复核
+-> 返回 reply、证据引用、工具结果、记忆快照、trace 和 full_trace
 ```
 
 ## 项目亮点
@@ -66,6 +72,10 @@ Reply Rules 对隐私、私下转账、食品安全、退款争议等场景提�
 ### 6. 知识库运营闭环
 
 系统提供知识草稿、审核、发布、回滚和发布历史能力，模拟真实客服知识库从编辑到影响 RAG 的运营流程。
+
+### 7. 客服工作流可观测性
+
+聊天接口会生成 `request_id`，贯穿意图识别、风险预检、订单工具、检索、证据选择、Prompt 构造、生成、校验、记忆更新和返回响应。前端可以用 `full_trace` 展示流程时间线，用 `tool_results` 展示订单/退款/人工接管工具结果，用 `evidence_citations` 展示回答依据。
 
 ## API 模块
 
@@ -169,11 +179,18 @@ RAG_GENERATION_PROVIDER=local
 RAG_ONLINE_API_KEY=
 RAG_ONLINE_BASE_URL=
 RAG_ONLINE_MODEL=
+REDIS_URL=
 ```
 
 本地模型默认通过本机目录挂载或手动下载，不包含在仓库中。
 
 ## 评测与诊断
+
+运行聊天 API 测试：
+
+```powershell
+.\venv\Scripts\python.exe -m pytest tests\test_chat_api.py -q
+```
 
 运行 grounding evaluation：
 

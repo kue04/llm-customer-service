@@ -8,6 +8,7 @@ __pycache__/
 .venv/
 .cache/
 .codex_deps/
+.codebase-memory/
 eval_outputs/
 reports/
 models/takeout-qwen-lora-*/

@@ -1,5 +1,59 @@
 # LLM Customer Service Project Handoff
 
+## 2026-06-27 Current Handoff Update: Customer Workflow Trace
+
+### Completed
+
+Backend has been upgraded from a basic RAG chat endpoint into a fuller takeout customer-service workflow demo.
+
+```text
+POST /chat/prompt
+-> request context: user_id, session_id, order_id, channel, message
+-> short-term session memory + long-term user_memory
+-> mock order/refund/handoff tools
+-> RAG retrieval + evidence citations
+-> reply rules + safety guard + grounding diagnostics
+-> decision_trace + full_trace
+```
+
+The response keeps old frontend fields and adds:
+
+```text
+answer_basis
+evidence_citations
+tool_results
+memory_snapshot
+decision_trace
+full_trace
+handoff_ticket
+```
+
+New local workflow services:
+
+```text
+services/order_tool_service.py
+services/customer_memory_service.py
+```
+
+The existing conversation store now also has a `user_memory` table. The prompt includes session summary, recent turns, known facts, order tool output, and `user_memory`; `user_memory` is explicitly lower priority than order status and knowledge evidence.
+
+### Verification
+
+The project `venv` was repaired because it pointed at missing `E:\python\python.exe`:
+
+```powershell
+python -m venv --upgrade .\venv
+.\venv\Scripts\python.exe -m pip install pytest
+```
+
+Latest passing checks:
+
+```powershell
+.\venv\Scripts\python.exe -m pytest tests\test_chat_api.py -q
+.\venv\Scripts\python.exe -m py_compile main.py services\chat_service.py services\order_tool_service.py services\customer_memory_service.py services\conversation_store.py models\prompt.py schemas\chat_schema.py
+.\venv\Scripts\python.exe -m uvicorn main:app
+```
+
 ## 2026-06-07 Current Handoff Update: Knowledge Publish Loop + Frontend Light Split
 
 ### Completed
