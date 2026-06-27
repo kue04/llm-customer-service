@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from uuid import uuid4
 
+from services.order_state_store import get_order_state
+
 
 MOCK_ORDERS = {
     "order_new": {
@@ -73,7 +75,7 @@ def query_order_status(order_id: str | None) -> dict:
             status="skipped",
             error_type="missing_order_id",
         )
-    order = MOCK_ORDERS.get(order_id)
+    order = get_order_state(order_id) or MOCK_ORDERS.get(order_id)
     if not order:
         return _tool_result(
             "query_order_status",
@@ -88,7 +90,7 @@ def query_order_status(order_id: str | None) -> dict:
 
 def query_refund_status(order_id: str | None) -> dict:
     started_at = time.perf_counter()
-    order = MOCK_ORDERS.get(order_id or "")
+    order = get_order_state(order_id) or MOCK_ORDERS.get(order_id or "")
     if not order:
         return _tool_result(
             "query_refund_status",

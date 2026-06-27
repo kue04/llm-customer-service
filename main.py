@@ -3,7 +3,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import chat, example, feedback, info, knowledge, ops, retrieval
+from routers import chat, example, feedback, info, knowledge, ops, order, retrieval
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -24,6 +24,7 @@ app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 app.include_router(info.router, prefix="/model", tags=["info"])
 app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
 app.include_router(ops.router, prefix="/ops", tags=["ops"])
+app.include_router(order.router, prefix="/orders", tags=["orders"])
 app.include_router(retrieval.router, prefix="/retrieval", tags=["retrieval"])
 
 

@@ -116,6 +116,7 @@ POST /retrieval/search
 
 ```text
 POST /chat/prompt
+GET /chat/history
 ```
 
 展示内容：
@@ -123,11 +124,27 @@ POST /chat/prompt
 - 用户问题
 - 客服回复
 - `confidence_score`
+- 重新打开订单客服时恢复后端保存的历史消息和最近一次诊断响应
 
 注意：
 
-- 当前聊天接口不返回检索详情，所以检索详情仍由 `RetrievalPanel` 展示。
-- 点击“生成回复”前，可以先点击“检索调试”观察 TopK。
+- 聊天历史以后端 SQLite 为准，前端不应只依赖 React 内存状态。
+- 前端可以继续保留本地临时状态，但重新打开窗口时应调用 `/chat/history`。
+
+### Order State
+
+接口：
+
+```text
+PUT /orders/{order_id}/state
+GET /orders/{order_id}/state
+```
+
+功能：
+
+- 保存当前订单状态，供客服订单工具读取。
+- 模拟不同外卖阶段时，必须更新同一个订单，不要创建 `DEMO-PAID`、`DEMO-RIDER` 这类多份订单。
+- 订单列表中同一份订单只能有一个订单号，状态以 `status` 和 `delivery_status` 流转。
 
 ### KnowledgeBrowser
 

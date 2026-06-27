@@ -58,6 +58,20 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS conversation_turns (
+            request_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            order_id TEXT,
+            query TEXT NOT NULL,
+            reply TEXT NOT NULL,
+            response_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS conversation_facts (
             session_id TEXT NOT NULL,
             key TEXT NOT NULL,
@@ -173,6 +187,126 @@ def append_message(
         connection.commit()
     finally:
         connection.close()
+
+
+def find_conversation(
+    user_id: str,
+    order_id: str | None = None,
+    session_id: str | None = None,
+) -> dict | None:
+    connection = get_connection()
+    try:
+        if session_id:
+            row = connection.execute(
+                "SELECT * FROM conversations WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        elif order_id:
+            row = connection.execute(
+                """
+                SELECT * FROM conversations
+                WHERE user_id = ? AND order_id = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (user_id, order_id),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                """
+                SELECT * FROM conversations
+                WHERE user_id = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            ).fetchone()
+    finally:
+        connection.close()
+    return dict(row) if row else None
+
+
+def list_messages(session_id: str, limit: int = 50) -> list[dict]:
+    connection = get_connection()
+    try:
+        rows = connection.execute(
+            """
+            SELECT role, content, intent_json, risk_level, created_at
+            FROM conversation_messages
+            WHERE session_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (session_id, limit),
+        ).fetchall()
+    finally:
+        connection.close()
+    messages = [dict(row) for row in reversed(rows)]
+    for message in messages:
+        try:
+            message["intent"] = json.loads(message.pop("intent_json") or "{}")
+        except json.JSONDecodeError:
+            message["intent"] = {}
+    return messages
+
+
+def save_turn_response(
+    request_id: str,
+    session_id: str,
+    user_id: str,
+    order_id: str | None,
+    query: str,
+    reply: str,
+    response: dict,
+) -> None:
+    if not request_id:
+        return
+    now = utc_now()
+    connection = get_connection()
+    try:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO conversation_turns
+            (request_id, session_id, user_id, order_id, query, reply, response_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                request_id,
+                session_id,
+                user_id,
+                order_id,
+                query,
+                reply,
+                json.dumps(response, ensure_ascii=False),
+                now,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def get_latest_turn_response(session_id: str) -> dict:
+    connection = get_connection()
+    try:
+        row = connection.execute(
+            """
+            SELECT response_json
+            FROM conversation_turns
+            WHERE session_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (session_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        return {}
+    try:
+        return json.loads(row["response_json"] or "{}")
+    except json.JSONDecodeError:
+        return {}
 
 
 def list_recent_messages(session_id: str, limit: int = 10) -> list[dict]:

@@ -78,3 +78,19 @@ class ChatResponse(BaseModel):
     issue_type: str = ""
     suggested_layer: str = ""
     evaluation_metrics: dict = Field(default_factory=dict)
+
+
+class ChatHistoryMessage(BaseModel):
+    role: str
+    content: str
+    intent: dict = Field(default_factory=dict)
+    risk_level: str = "low"
+    created_at: str = ""
+
+
+class ChatHistoryResponse(BaseModel):
+    user_id: str = "demo_user"
+    session_id: str = ""
+    order_id: str | None = None
+    messages: list[ChatHistoryMessage] = Field(default_factory=list)
+    latest_response: dict = Field(default_factory=dict)

@@ -537,7 +537,7 @@ def complete_chat_response(
         )
     )
     full_trace.append(trace_step("response_returned", output_summary="response assembled"))
-    return attach_enhanced_fields(
+    final_result = attach_enhanced_fields(
         result=result,
         request_id=request_id,
         context=context,
@@ -549,6 +549,16 @@ def complete_chat_response(
         full_trace=full_trace,
         handoff_ticket=handoff_ticket.get("output") if handoff_ticket else None,
     )
+    conversation_store.save_turn_response(
+        request_id=request_id,
+        session_id=context.get("session_id", ""),
+        user_id=context.get("user_id", "demo_user"),
+        order_id=context.get("order_id"),
+        query=query,
+        reply=final_result.get("reply", ""),
+        response=final_result,
+    )
+    return final_result
 
 
 def log_chat_trace(query: str, trace: dict) -> None:

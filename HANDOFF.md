@@ -6,6 +6,14 @@
 
 Backend has been upgraded from a basic RAG chat endpoint into a fuller takeout customer-service workflow demo.
 
+Persistence update:
+
+- `GET /chat/history` restores persisted conversation messages and the latest full diagnostic response by `session_id` or `user_id + order_id`.
+- `/chat/prompt` stores each complete enhanced response in SQLite `conversation_turns`, in addition to existing message and trace persistence.
+- `PUT /orders/{order_id}/state` and `GET /orders/{order_id}/state` persist current order state in SQLite `order_states`.
+- `query_order_status(order_id)` and `query_refund_status(order_id)` prefer persisted order state and fall back to mock orders only when no persisted state exists.
+- Frontend status simulation should update the same order id instead of creating separate `DEMO-*` orders.
+
 ```text
 POST /chat/prompt
 -> request context: user_id, session_id, order_id, channel, message

@@ -41,6 +41,31 @@ class ConversationServiceTest(unittest.TestCase):
         self.assertEqual(context["facts"]["last_primary_intent"], "食品安全投诉")
         self.assertEqual(context["facts"]["refund_mentioned"], "true")
 
+    def test_history_can_reload_messages_and_latest_response(self) -> None:
+        from services import conversation_store
+
+        conversation_store.get_or_create_conversation("u1", "s1", "o1")
+        conversation_store.append_message("s1", "user", "订单怎么还没到")
+        conversation_store.append_message("s1", "assistant", "我帮您看一下订单状态")
+        conversation_store.save_turn_response(
+            request_id="req1",
+            session_id="s1",
+            user_id="u1",
+            order_id="o1",
+            query="订单怎么还没到",
+            reply="我帮您看一下订单状态",
+            response={"reply": "我帮您看一下订单状态", "trace": {"request_id": "req1"}},
+        )
+
+        conversation = conversation_store.find_conversation("u1", order_id="o1")
+        self.assertIsNotNone(conversation)
+        messages = conversation_store.list_messages("s1")
+        latest_response = conversation_store.get_latest_turn_response("s1")
+
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0]["role"], "user")
+        self.assertEqual(latest_response["trace"]["request_id"], "req1")
+
 
 if __name__ == "__main__":
     unittest.main()

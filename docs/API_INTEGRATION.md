@@ -177,6 +177,74 @@ POST /chat/prompt
 - `full_trace`：按时间线组织的完整后端步骤。
 - `handoff_ticket`：触发人工接管时返回工单摘要。
 
+聊天数据会长期保存到 SQLite：
+
+- `conversation_messages` 保存 user/assistant 消息。
+- `conversation_turns` 保存每轮完整响应 JSON，包括诊断字段。
+- `chat_sessions` 保存轻量 request trace，供反馈和运营指标使用。
+
+## 聊天历史接口
+
+```http
+GET /chat/history?user_id=demo_user&order_id=WM123&limit=50
+```
+
+用途：前端重新打开某个订单客服时，恢复该订单的会话消息、`session_id` 和最近一次完整诊断响应。
+
+响应：
+
+```json
+{
+  "user_id": "demo_user",
+  "session_id": "session-id",
+  "order_id": "WM123",
+  "messages": [
+    {"role": "user", "content": "我的餐怎么还没到", "risk_level": "low"},
+    {"role": "assistant", "content": "我帮您查看订单状态...", "risk_level": "low"}
+  ],
+  "latest_response": {
+    "reply": "最近一次客服回复",
+    "full_trace": []
+  }
+}
+```
+
+查询优先级：
+
+- 如果传 `session_id`，优先按 `session_id` 查。
+- 否则按 `user_id + order_id` 查最近会话。
+
+## 订单状态持久化接口
+
+```http
+PUT /orders/{order_id}/state
+GET /orders/{order_id}/state
+```
+
+用途：保存外卖订单当前状态。客服链路中的 `query_order_status(order_id)` 会优先读取这张持久化订单状态表，找不到时才回退到本地 mock 订单。
+
+请求：
+
+```json
+{
+  "user_id": "demo_user",
+  "order_id": "WM123",
+  "status": "delivering",
+  "status_label": "骑手已取餐，正在配送中",
+  "delivery_status": "骑手已取餐，正在配送中",
+  "summary": "骑手已取餐，不应直接承诺全额退款。",
+  "refund_status": "pending_review",
+  "store_name": "青禾轻食便当",
+  "items": [{"name": "香煎鸡胸能量碗", "quantity": 1}],
+  "total": 35
+}
+```
+
+持久化位置：
+
+- SQLite `order_states` 表。
+- 前端模拟不同订单状态时应更新同一个 `order_id`，不要为不同状态创建多笔订单。
+
 ## 模型信息
 
 ```http
