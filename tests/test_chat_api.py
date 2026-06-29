@@ -19,6 +19,14 @@ class ChatPromptApiTest(unittest.TestCase):
             "decision_trace": {"request_id": "req-test"},
             "full_trace": [{"step": "request_received", "status": "success"}],
             "handoff_ticket": None,
+            "token_usage": {
+                "provider": "local",
+                "model": "qwen2.5-1.5b-instruct",
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "total_tokens": 120,
+                "counting_method": "local_tokenizer",
+            },
             "confidence_score": 0.95,
             "session_id": getattr(request, "session_id", None) or "session-test",
             "user_id": getattr(request, "user_id", "demo_user"),
@@ -100,6 +108,7 @@ class ChatPromptApiTest(unittest.TestCase):
         self.assertEqual(body["trace"]["latency_ms"], 12.3)
         self.assertEqual(body["evidence_citations"][0]["evidence_id"], "kb_1")
         self.assertEqual(body["full_trace"][0]["step"], "request_received")
+        self.assertEqual(body["token_usage"]["total_tokens"], 120)
         self.assertFalse(body["trace"]["used_fallback_prompt"])
         self.assertEqual(body["trace"]["answer_source"], "rag")
         self.assertFalse(body["trace"]["degraded"])

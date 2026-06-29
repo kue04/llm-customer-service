@@ -21,6 +21,22 @@ def generate_online_chat_completion(
     api_base_url: str,
     api_key_env: str,
 ) -> str:
+    return generate_online_chat_completion_with_usage(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        model_name=model_name,
+        api_base_url=api_base_url,
+        api_key_env=api_key_env,
+    )["text"]
+
+
+def generate_online_chat_completion_with_usage(
+    prompt: str,
+    system_prompt: str,
+    model_name: str,
+    api_base_url: str,
+    api_key_env: str,
+) -> dict:
     api_key = os.getenv(api_key_env, "").strip()
     if not api_key:
         raise ValueError(f"{api_key_env} is not set")
@@ -48,4 +64,12 @@ def generate_online_chat_completion(
     with request.urlopen(http_request, timeout=60) as response:
         response_body = response.read().decode("utf-8")
     data = json.loads(response_body)
-    return data["choices"][0]["message"]["content"].strip()
+    usage = data.get("usage") or {}
+    return {
+        "text": data["choices"][0]["message"]["content"].strip(),
+        "usage": {
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": usage.get("completion_tokens"),
+            "total_tokens": usage.get("total_tokens"),
+        },
+    }

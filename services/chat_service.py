@@ -20,7 +20,10 @@ from services.customer_memory_service import get_user_memory, update_user_memory
 from services.feedback_service import save_chat_session
 from services.grounding_diagnostics import build_chat_grounding_diagnostics
 from services.intent_service import analyze_intents
-from services.online_generation import generate_online_chat_completion
+from services.online_generation import (
+    generate_online_chat_completion,
+    generate_online_chat_completion_with_usage,
+)
 from services.ops_metrics import record_chat_metrics
 from services.order_tool_service import (
     create_handoff_ticket,
@@ -121,6 +124,58 @@ def attach_runtime_fields(
     return result
 
 
+def build_chat_template_text(prompt: str, system_prompt: str) -> str:
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+    return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+
+def count_text_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return int(tokenizer(text, return_tensors="pt", add_special_tokens=False)["input_ids"].shape[-1])
+
+
+def build_token_usage(
+    provider: str,
+    model_name: str,
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+    counting_method: str,
+) -> dict:
+    prompt_count = int(prompt_tokens or 0)
+    completion_count = int(completion_tokens or 0)
+    return {
+        "provider": provider,
+        "model": model_name,
+        "prompt_tokens": prompt_count,
+        "completion_tokens": completion_count,
+        "total_tokens": prompt_count + completion_count,
+        "counting_method": counting_method,
+    }
+
+
+def estimate_token_usage(
+    prompt: str,
+    system_prompt: str,
+    reply: str,
+    provider: str,
+    model_name: str,
+    counting_method: str = "estimated_local_tokenizer",
+) -> dict:
+    prompt_tokens = count_text_tokens(build_chat_template_text(prompt, system_prompt))
+    completion_tokens = count_text_tokens(reply)
+    return build_token_usage(
+        provider=provider,
+        model_name=model_name,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        counting_method=counting_method,
+    )
+
+
 def generate_online_text_with_system_prompt(prompt: str, system_prompt: str) -> str:
     config = get_rag_config()
     return generate_online_chat_completion(
@@ -132,12 +187,43 @@ def generate_online_text_with_system_prompt(prompt: str, system_prompt: str) -> 
     )
 
 
+def generate_online_text_result_with_system_prompt(prompt: str, system_prompt: str) -> dict:
+    config = get_rag_config()
+    result = generate_online_chat_completion_with_usage(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        model_name=config.online_model_name,
+        api_base_url=config.online_api_base_url,
+        api_key_env=config.online_api_key_env,
+    )
+    text = result["text"]
+    usage = result.get("usage") or {}
+    if all(usage.get(key) is not None for key in ("prompt_tokens", "completion_tokens", "total_tokens")):
+        token_usage = {
+            "provider": "online",
+            "model": config.online_model_name,
+            "prompt_tokens": int(usage["prompt_tokens"]),
+            "completion_tokens": int(usage["completion_tokens"]),
+            "total_tokens": int(usage["total_tokens"]),
+            "counting_method": "api_usage",
+        }
+    else:
+        token_usage = estimate_token_usage(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            reply=text,
+            provider="online",
+            model_name=config.online_model_name,
+        )
+    return {"text": text, "token_usage": token_usage}
+
+
 def generate_local_text_with_system_prompt(prompt: str, system_prompt: str) -> str:
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": prompt},
-    ]
-    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    return generate_local_text_result_with_system_prompt(prompt, system_prompt)["text"]
+
+
+def generate_local_text_result_with_system_prompt(prompt: str, system_prompt: str) -> dict:
+    text = build_chat_template_text(prompt, system_prompt)
     inputs = tokenizer(text, return_tensors="pt")
     inputs = {key: value.to(DEVICE) for key, value in inputs.items()}
     input_length = inputs["input_ids"].shape[-1]
@@ -147,7 +233,27 @@ def generate_local_text_with_system_prompt(prompt: str, system_prompt: str) -> s
         do_sample=False,
         pad_token_id=tokenizer.eos_token_id,
     )
-    return tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+    completion_tokens = int(outputs[0][input_length:].shape[-1])
+    reply = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+    return {
+        "text": reply,
+        "token_usage": build_token_usage(
+            provider="local",
+            model_name=MODEL_PATH.name,
+            prompt_tokens=int(input_length),
+            completion_tokens=completion_tokens,
+            counting_method="local_tokenizer",
+        ),
+    }
+
+
+def generate_text_result_with_system_prompt(prompt: str, system_prompt: str) -> dict:
+    provider = get_rag_config().generation_provider
+    if provider == "online":
+        return generate_online_text_result_with_system_prompt(prompt, system_prompt)
+    if provider == "local":
+        return generate_local_text_result_with_system_prompt(prompt, system_prompt)
+    raise ValueError(f"Unsupported generation_provider: {provider}")
 
 
 def generate_text_with_system_prompt(prompt: str, system_prompt: str) -> str:
@@ -161,6 +267,10 @@ def generate_text_with_system_prompt(prompt: str, system_prompt: str) -> str:
 
 def generate_reply(prompt: str) -> str:
     return generate_text_with_system_prompt(prompt, SYSTEM_PROMPT)
+
+
+def generate_reply_with_usage(prompt: str) -> dict:
+    return generate_text_result_with_system_prompt(prompt, SYSTEM_PROMPT)
 
 
 def generate_answer_plan(prompt: str) -> str:
@@ -615,6 +725,7 @@ def get_answer_from_rag(request):
     retrieved_items = []
     prompt_context_items = []
     tool_results = []
+    token_usage = {}
     used_fallback_prompt = False
     degraded = False
     failure_stage = "none"
@@ -771,12 +882,15 @@ def get_answer_from_rag(request):
 
     generation_started_at = time.perf_counter()
     try:
-        reply = generate_reply(prompt)
+        generation_result = generate_reply_with_usage(prompt)
+        reply = generation_result["text"]
+        token_usage = generation_result.get("token_usage", {})
         full_trace.append(
             trace_step(
                 "generation_completed",
                 output_summary=f"reply_chars={len(reply)}",
                 started_at=generation_started_at,
+                metadata={"token_usage": token_usage},
             )
         )
     except Exception as error:
@@ -796,6 +910,7 @@ def get_answer_from_rag(request):
             "reply": reply,
             "confidence_score": 0.2,
             "final_prompt": prompt,
+            "token_usage": token_usage,
             "retrieved_documents": [item.answer for item in prompt_context_items],
             "retrieved_items": retrieved_items,
             "prompt_context_items": prompt_context_items_to_dicts(prompt_context_items),
@@ -892,6 +1007,7 @@ def get_answer_from_rag(request):
         "reply": reply,
         "confidence_score": confidence_score,
         "final_prompt": prompt,
+        "token_usage": token_usage,
         "retrieved_documents": [item.answer for item in prompt_context_items],
         "retrieved_items": retrieved_items,
         "prompt_context_items": prompt_context_items_to_dicts(prompt_context_items),

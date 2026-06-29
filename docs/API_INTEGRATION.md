@@ -162,6 +162,14 @@ POST /chat/prompt
     {"step": "response_returned", "status": "success", "latency_ms": 0.0}
   ],
   "handoff_ticket": null,
+  "token_usage": {
+    "provider": "local",
+    "model": "qwen2.5-1.5b-instruct",
+    "prompt_tokens": 1234,
+    "completion_tokens": 96,
+    "total_tokens": 1330,
+    "counting_method": "local_tokenizer"
+  },
   "confidence_score": 0.8,
   "trace": {"retrieval_count": 3, "request_id": "request-id"}
 }
@@ -176,6 +184,7 @@ POST /chat/prompt
 - `decision_trace`：本次路由、风险、证据和人工复核结论摘要。
 - `full_trace`：按时间线组织的完整后端步骤。
 - `handoff_ticket`：触发人工接管时返回工单摘要。
+- `token_usage`：生成阶段 token 总览；本地模型使用 tokenizer 统计，在线模型优先使用 API 返回的 usage，缺失时标记为本地估算。
 
 聊天数据会长期保存到 SQLite：
 

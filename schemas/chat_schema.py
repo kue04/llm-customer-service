@@ -52,6 +52,7 @@ class ChatResponse(BaseModel):
     decision_trace: dict = Field(default_factory=dict)
     full_trace: list[dict] = Field(default_factory=list)
     handoff_ticket: dict | None = None
+    token_usage: dict = Field(default_factory=dict)
     confidence_score: float
     session_id: str = ""
     user_id: str = "demo_user"
