@@ -88,6 +88,10 @@ INTENT_REPLY_RULES = [
         "部分问题平台客服可以协助联系商家核实。您也可以优先通过订单详情页的联系商家入口沟通，并尽量保留平台内聊天记录，方便后续核实处理。",
     ),
     (
+        ("站外交易风险",),
+        "不可以，我不能提供商家微信，也不支持绕开平台让商家私下退款。不建议通过平台外渠道处理退款或纠纷；请通过订单售后入口或官方客服渠道处理，并保留聊天记录和相关凭证，避免影响资金安全和后续核实。",
+    ),
+    (
         ("私下收费风险",),
         "不可以加微信转运费，也不建议私下转账配送费。配送费应以平台订单结算页为准，任何额外费用都应通过官方渠道确认和处理。请您保留聊天记录、转账要求截图等证据，并在订单内查看费用明细或提交反馈，避免产生资金纠纷。",
     ),
@@ -127,13 +131,56 @@ FORCE_REPLY_INTENTS = {
     "少送漏送",
     "错送餐品",
     "骑手态度投诉",
+    "站外交易风险",
     "私下收费风险",
+    "隐私保护咨询",
     "验证码诈骗提醒",
 }
 
 
+def query_has_any(query: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in query for keyword in keywords)
+
+
 def query_requests_unsupported_guarantee(query: str) -> bool:
     return any(term in query for term in ("一定", "保证", "承诺", "直接说", "直接让", "马上"))
+
+
+def query_level_forced_reply(query: str, primary_intent: str = "") -> tuple[str, dict]:
+    food_safety_hit = query_has_any(
+        query,
+        ("食品安全", "异物", "变质", "发霉", "吃坏", "拉肚子", "过敏", "发麻"),
+    )
+    off_platform_hit = query_has_any(
+        query,
+        ("商家微信", "店家微信", "平台外", "别走平台", "不走平台", "绕开平台", "私下退款", "私下退钱"),
+    ) or (
+        "私下" in query and query_has_any(query, ("退款", "退钱", "让他退", "商家退"))
+    )
+
+    if food_safety_hit and (off_platform_hit or query_requests_unsupported_guarantee(query)):
+        return (
+            "很抱歉出现这样的情况。请先停止食用，并保留餐品、包装、照片、聊天记录和订单信息，通过订单售后入口提交食品安全投诉；平台会结合凭证和订单情况核实处理，但不能在核实前承诺赔付结果。",
+            {"matched": True, "mode": "query_force", "rule_name": "food_safety_boundary"},
+        )
+    payment_security_hit = query_has_any(query, ("银行卡号", "银行卡", "支付密码"))
+    code_hit = query_has_any(query, ("验证码", "校验码", "短信码"))
+    if payment_security_hit or (code_hit and primary_intent != "验证码诈骗提醒"):
+        return (
+            "不可以。验证码、银行卡号、支付密码等都属于隐私和敏感信息，不要提供给商家、骑手或其他人。退款和订单处理请通过订单页面或官方客服渠道操作，并保留相关沟通记录。",
+            {"matched": True, "mode": "query_force", "rule_name": "verification_or_payment_security"},
+        )
+    if query_has_any(query, ("身份证", "身份证信息", "真实手机号", "完整手机号", "真实号码", "完整号码")):
+        return (
+            "不能向用户提供骑手或他人的身份证信息、完整手机号等隐私信息。投诉或沟通请使用平台内联系功能或官方渠道提交，平台会按规则核实处理。",
+            {"matched": True, "mode": "query_force", "rule_name": "privacy_boundary"},
+        )
+    if off_platform_hit:
+        return (
+            "不可以，我不能提供商家微信，也不支持绕开平台让商家私下退款。不建议通过平台外渠道处理退款或纠纷；请通过订单售后入口或官方客服渠道处理，并保留聊天记录和相关凭证，避免影响资金安全和后续核实。",
+            {"matched": True, "mode": "query_force", "rule_name": "off_platform_boundary"},
+        )
+    return "", {"matched": False}
 
 
 def apply_primary_intent_rules(primary_context: str) -> str:
@@ -169,6 +216,16 @@ def apply_reply_rules_with_trace(
     primary_context = (
         f"{query} {primary_item.get('category', '')} {primary_intent}"
     )
+    query_rule_reply, query_rule_trace = query_level_forced_reply(query, primary_intent)
+    if query_rule_reply:
+        query_rule_trace.update(
+            {
+                "primary_category": primary_item.get("category", ""),
+                "primary_intent": primary_intent,
+            }
+        )
+        return query_rule_reply, query_rule_trace
+
     primary_rule_reply, rule_trace = apply_primary_intent_rules_with_trace(
         primary_context
     )

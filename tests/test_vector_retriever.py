@@ -28,6 +28,18 @@ class RerankCandidatesTest(unittest.TestCase):
 
     def test_detects_boundary_intent_hints_before_surface_phone_terms(self) -> None:
         self.assertEqual(
+            detect_intent_hint("我不想走平台了，你直接给我商家微信，我私下让他退钱"),
+            "站外交易风险",
+        )
+        self.assertEqual(
+            detect_intent_hint("你能把骑手真实手机号和身份证信息发我吗，我要投诉他"),
+            "隐私保护咨询",
+        )
+        self.assertEqual(
+            detect_intent_hint("吃完外卖嘴巴发麻，商家让我别走平台，我能让你保证赔偿吗"),
+            "食品安全投诉",
+        )
+        self.assertEqual(
             detect_intent_hint("商家能看到我的真实手机号吗"),
             "隐私保护咨询",
         )
@@ -105,7 +117,7 @@ class RerankCandidatesTest(unittest.TestCase):
         )
         self.assertEqual(
             detect_intent_hint("你别让我自己联系了，直接私下打给商家让他退款"),
-            "联系商家咨询",
+            "站外交易风险",
         )
         self.assertEqual(
             detect_intent_hint("我没拍照也没包装了，你就说一定能赔可以吗"),

@@ -11,7 +11,7 @@ from uuid import uuid4
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "knowledge_ops.db"
 KNOWLEDGE_DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "takeout_customer_service_seed.jsonl"
 BACKUP_DIR = Path(__file__).resolve().parents[1] / "data" / "knowledge_backups"
-VALID_REVIEW_STATUSES = {"approved", "rejected"}
+VALID_REVIEW_STATUSES = {"pending_review", "approved", "rejected"}
 
 
 def utc_now() -> str:
@@ -33,11 +33,16 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             base_id TEXT NOT NULL,
             version INTEGER NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
             question TEXT NOT NULL,
             answer TEXT NOT NULL,
             category TEXT NOT NULL,
             intent TEXT NOT NULL,
             status TEXT NOT NULL,
+            owner TEXT NOT NULL DEFAULT 'knowledge_ops',
+            source TEXT NOT NULL DEFAULT 'knowledge_ops',
+            effective_at TEXT NOT NULL DEFAULT '',
+            expired_at TEXT NOT NULL DEFAULT '',
             review_note TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -45,6 +50,11 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    _ensure_column(connection, "knowledge_items", "title", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "knowledge_items", "owner", "TEXT NOT NULL DEFAULT 'knowledge_ops'")
+    _ensure_column(connection, "knowledge_items", "source", "TEXT NOT NULL DEFAULT 'knowledge_ops'")
+    _ensure_column(connection, "knowledge_items", "effective_at", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "knowledge_items", "expired_at", "TEXT NOT NULL DEFAULT ''")
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS knowledge_publish_history (
@@ -65,8 +75,30 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _ensure_column(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    column_definition: str,
+) -> None:
+    existing_columns = {
+        row["name"]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in existing_columns:
+        connection.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+        )
+
+
 def row_to_item(row: sqlite3.Row) -> dict:
-    return dict(row)
+    item = dict(row)
+    item["title"] = item.get("title") or item.get("question", "")
+    item["owner"] = item.get("owner") or "knowledge_ops"
+    item["source"] = item.get("source") or "knowledge_ops"
+    item["effective_at"] = item.get("effective_at") or ""
+    item["expired_at"] = item.get("expired_at") or ""
+    return item
 
 
 def create_knowledge_item(payload: dict) -> dict:
@@ -76,15 +108,21 @@ def create_knowledge_item(payload: dict) -> dict:
         cursor = connection.execute(
             """
             INSERT INTO knowledge_items
-            (base_id, version, question, answer, category, intent, status, created_at, updated_at)
-            VALUES (?, 1, ?, ?, ?, ?, 'draft', ?, ?)
+            (base_id, version, title, question, answer, category, intent, status,
+             owner, source, effective_at, expired_at, created_at, updated_at)
+            VALUES (?, 1, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
             """,
             (
                 f"kb_{uuid4().hex[:12]}",
+                payload.get("title", "") or payload["question"],
                 payload["question"],
                 payload["answer"],
                 payload["category"],
                 payload["intent"],
+                payload.get("owner", "knowledge_ops") or "knowledge_ops",
+                payload.get("source", "knowledge_ops") or "knowledge_ops",
+                payload.get("effective_at", "") or "",
+                payload.get("expired_at", "") or "",
                 now,
                 now,
             ),
@@ -118,16 +156,22 @@ def update_knowledge_item(item_id: int, payload: dict) -> dict:
         cursor = connection.execute(
             """
             INSERT INTO knowledge_items
-            (base_id, version, question, answer, category, intent, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+            (base_id, version, title, question, answer, category, intent, status,
+             owner, source, effective_at, expired_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
             """,
             (
                 original["base_id"],
                 int(latest_version) + 1,
+                payload.get("title", "") or payload["question"],
                 payload["question"],
                 payload["answer"],
                 payload["category"],
                 payload["intent"],
+                payload.get("owner", original.get("owner", "knowledge_ops")) or "knowledge_ops",
+                payload.get("source", original.get("source", "knowledge_ops")) or "knowledge_ops",
+                payload.get("effective_at", original.get("effective_at", "")) or "",
+                payload.get("expired_at", original.get("expired_at", "")) or "",
                 now,
                 now,
             ),
@@ -156,7 +200,7 @@ def archive_knowledge_item(item_id: int) -> dict:
 
 def review_knowledge_item(item_id: int, status: str, review_note: str = "") -> dict:
     if status not in VALID_REVIEW_STATUSES:
-        raise ValueError("status must be approved or rejected")
+        raise ValueError("status must be pending_review, approved or rejected")
     now = utc_now()
     connection = get_connection()
     try:
@@ -240,26 +284,21 @@ def export_approved_jsonl() -> dict:
 
     lines = []
     for row in rows:
-        payload = {
-            "id": f"{row['base_id']}_v{row['version']}",
-            "source": "knowledge_ops",
-            "dialogue_type": "single_turn",
-            "quality": "reviewed",
-            "question": row["question"],
-            "answer": row["answer"],
-            "category": row["category"],
-            "intent": row["intent"],
-            "sentiment": "neutral",
-            "entities": {"risk": "待确认"},
-        }
-        lines.append(json.dumps(payload, ensure_ascii=False))
+        lines.append(json.dumps(build_jsonl_payload(row), ensure_ascii=False))
     return {"count": len(lines), "jsonl": "\n".join(lines)}
 
 
 def build_jsonl_payload(row: sqlite3.Row) -> dict:
     return {
         "id": f"{row['base_id']}_v{row['version']}",
-        "source": "knowledge_ops",
+        "title": row["title"] or row["question"],
+        "version": f"v{row['version']}",
+        "status": "published",
+        "owner": row["owner"] or "knowledge_ops",
+        "source": row["source"] or "knowledge_ops",
+        "effective_at": row["effective_at"] or "",
+        "expired_at": row["expired_at"] or None,
+        "updated_at": row["updated_at"],
         "dialogue_type": "single_turn",
         "quality": "reviewed",
         "question": row["question"],
@@ -286,9 +325,9 @@ def reset_runtime_vector_cache() -> None:
 
 
 def get_faiss_index_path() -> Path:
-    from utils.vector_retriever import FAISS_INDEX_PATH
+    from config.rag_config import get_rag_config
 
-    return FAISS_INDEX_PATH
+    return get_rag_config().faiss_index_path
 
 
 def create_backup(publish_id: str) -> Path:
@@ -453,7 +492,7 @@ def rollback_latest_publish() -> dict:
         if item_ids:
             now = utc_now()
             connection.executemany(
-                "UPDATE knowledge_items SET status = 'approved', updated_at = ? WHERE id = ? AND status = 'published'",
+                "UPDATE knowledge_items SET status = 'rollback', updated_at = ? WHERE id = ? AND status = 'published'",
                 [(now, int(item_id)) for item_id in item_ids],
             )
             connection.commit()

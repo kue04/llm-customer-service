@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import sqlite3
 
+from services.privacy import mask_sensitive_payload, mask_sensitive_text
+
 
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "ops_feedback.db"
 
@@ -35,6 +37,11 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     _ensure_column(connection, "chat_sessions", "user_id", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(connection, "chat_sessions", "session_id", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(connection, "chat_sessions", "order_id", "TEXT")
+    _ensure_column(connection, "chat_sessions", "token_usage_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(connection, "chat_sessions", "prompt_tokens", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(connection, "chat_sessions", "completion_tokens", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(connection, "chat_sessions", "total_tokens", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(connection, "chat_sessions", "token_counting_method", "TEXT NOT NULL DEFAULT ''")
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS feedback (
@@ -78,30 +85,48 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def save_chat_session(query: str, reply: str, trace: dict) -> None:
+def _token_int(token_usage: dict, key: str) -> int:
+    try:
+        return int(token_usage.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def save_chat_session(query: str, reply: str, trace: dict, token_usage: dict | None = None) -> None:
     request_id = str(trace.get("request_id", ""))
     if not request_id:
         return
+    safe_trace = mask_sensitive_payload(trace)
+    safe_token_usage = token_usage or {}
+    prompt_tokens = _token_int(safe_token_usage, "prompt_tokens")
+    completion_tokens = _token_int(safe_token_usage, "completion_tokens")
+    total_tokens = _token_int(safe_token_usage, "total_tokens")
     connection = get_connection()
     try:
         connection.execute(
             """
             INSERT OR REPLACE INTO chat_sessions
             (request_id, query, reply, trace_json, top1_intent, latency_ms,
-             answer_source, user_id, session_id, order_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             answer_source, user_id, session_id, order_id, token_usage_json,
+             prompt_tokens, completion_tokens, total_tokens, token_counting_method, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 request_id,
-                query,
-                reply,
-                json.dumps(trace, ensure_ascii=False),
+                mask_sensitive_text(query),
+                mask_sensitive_text(reply),
+                json.dumps(safe_trace, ensure_ascii=False),
                 str(trace.get("top1_intent", "")),
                 float(trace.get("latency_ms") or 0.0),
                 str(trace.get("answer_source", "")),
                 str(trace.get("user_id", "")),
                 str(trace.get("session_id", "")),
                 str(trace.get("order_id", "")),
+                json.dumps(safe_token_usage, ensure_ascii=False),
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                str(safe_token_usage.get("counting_method", "")),
                 utc_now(),
             ),
         )
@@ -110,8 +135,53 @@ def save_chat_session(query: str, reply: str, trace: dict) -> None:
         connection.close()
 
 
+def get_latest_chat_token_tracking_summary() -> dict:
+    connection = get_connection()
+    try:
+        row = connection.execute(
+            """
+            SELECT request_id, prompt_tokens, completion_tokens, total_tokens,
+                   token_counting_method, created_at
+            FROM chat_sessions
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    finally:
+        connection.close()
+
+    if row is None:
+        return {
+            "source": "persisted_chat_sessions",
+            "request_count": 0,
+            "token_recorded_count": 0,
+            "total_prompt_tokens": 0,
+            "total_completion_tokens": 0,
+            "total_tokens": 0,
+            "average_tokens_per_request": 0.0,
+            "latest_request_id": "",
+            "latest_created_at": "",
+            "token_counting_method": "",
+        }
+
+    total_tokens = int(row["total_tokens"] or 0)
+    return {
+        "source": "persisted_chat_sessions",
+        "request_count": 1,
+        "token_recorded_count": 1 if total_tokens > 0 else 0,
+        "total_prompt_tokens": int(row["prompt_tokens"] or 0),
+        "total_completion_tokens": int(row["completion_tokens"] or 0),
+        "total_tokens": total_tokens,
+        "average_tokens_per_request": float(total_tokens),
+        "latest_request_id": row["request_id"],
+        "latest_created_at": row["created_at"],
+        "token_counting_method": row["token_counting_method"],
+    }
+
+
 def save_feedback(payload: dict) -> int:
     trace = payload.get("trace") or {}
+    safe_trace = mask_sensitive_payload(trace)
     connection = get_connection()
     try:
         cursor = connection.execute(
@@ -123,12 +193,12 @@ def save_feedback(payload: dict) -> int:
             """,
             (
                 payload["request_id"],
-                payload["query"],
-                payload["reply"],
+                mask_sensitive_text(payload["query"]),
+                mask_sensitive_text(payload["reply"]),
                 1 if payload["helpful"] else 0,
-                payload.get("reason", ""),
-                payload.get("expected_reply", ""),
-                json.dumps(trace, ensure_ascii=False),
+                mask_sensitive_text(payload.get("reason", "")),
+                mask_sensitive_text(payload.get("expected_reply", "")),
+                json.dumps(safe_trace, ensure_ascii=False),
                 str(trace.get("top1_intent", "")),
                 float(trace.get("latency_ms") or 0.0),
                 str(trace.get("answer_source", "")),

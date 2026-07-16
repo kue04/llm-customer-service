@@ -3,7 +3,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import chat, example, feedback, info, knowledge, ops, order, retrieval
+from routers import audit, chat, example, feedback, info, knowledge, ops, order, prompt, release, retrieval
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -19,12 +19,15 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(audit.router, prefix="/audit", tags=["audit"])
 app.include_router(example.router, prefix="/examples", tags=["examples"])
 app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 app.include_router(info.router, prefix="/model", tags=["info"])
 app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
 app.include_router(ops.router, prefix="/ops", tags=["ops"])
 app.include_router(order.router, prefix="/orders", tags=["orders"])
+app.include_router(prompt.router, prefix="/prompt", tags=["prompt"])
+app.include_router(release.router, prefix="/release", tags=["release"])
 app.include_router(retrieval.router, prefix="/retrieval", tags=["retrieval"])
 
 

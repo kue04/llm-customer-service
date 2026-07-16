@@ -12,6 +12,11 @@ class RagContextTest(unittest.TestCase):
                 "intent": "refund_progress",
                 "question": "退款多久到账？",
                 "answer": "退款到账时间取决于支付渠道。",
+                "knowledge_id": "takeout_0001",
+                "title": "退款到账规则",
+                "version": "v3",
+                "updated_at": "2026-07-06T10:00:00+08:00",
+                "source": "售后政策文档",
                 "score": 0.91,
                 "rerank_score": 0.93,
             },
@@ -33,6 +38,11 @@ class RagContextTest(unittest.TestCase):
         self.assertEqual(context_items[0].evidence_strength, "normal")
         self.assertEqual(context_items[0].rank, 1)
         self.assertEqual(context_items[0].intent, "refund_progress")
+        self.assertEqual(context_items[0].knowledge_id, "takeout_0001")
+        self.assertEqual(context_items[0].title, "退款到账规则")
+        self.assertEqual(context_items[0].version, "v3")
+        self.assertEqual(context_items[0].updated_at, "2026-07-06T10:00:00+08:00")
+        self.assertEqual(context_items[0].source, "售后政策文档")
 
     def test_build_prompt_context_items_marks_close_match_primary(self) -> None:
         items = [

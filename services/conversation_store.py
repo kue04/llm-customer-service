@@ -6,6 +6,16 @@ import sqlite3
 from uuid import uuid4
 
 from services.feedback_service import DB_PATH
+from services.order_tool_service import create_handoff_ticket
+from services.ops_metrics import record_review_action_metrics
+from services.privacy import mask_sensitive_payload, mask_sensitive_text
+
+REVIEW_STATUS_BY_ACTION = {
+    "accepted": "accepted",
+    "edited_and_sent": "edited_and_sent",
+    "human_handoff": "human_handoff",
+    "marked_bad_case": "marked_bad_case",
+}
 
 
 def utc_now() -> str:
@@ -66,6 +76,25 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
             query TEXT NOT NULL,
             reply TEXT NOT NULL,
             response_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS conversation_review_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            order_id TEXT,
+            action TEXT NOT NULL,
+            status TEXT NOT NULL,
+            original_reply TEXT NOT NULL,
+            final_reply TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            operator_id TEXT NOT NULL,
+            operator_role TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
         """
@@ -163,6 +192,8 @@ def append_message(
     risk_level: str = "low",
 ) -> None:
     now = utc_now()
+    safe_content = mask_sensitive_text(content)
+    safe_intent_analysis = mask_sensitive_payload(intent_analysis or {})
     connection = get_connection()
     try:
         connection.execute(
@@ -174,8 +205,8 @@ def append_message(
             (
                 session_id,
                 role,
-                content,
-                json.dumps(intent_analysis or {}, ensure_ascii=False),
+                safe_content,
+                json.dumps(safe_intent_analysis, ensure_ascii=False),
                 risk_level,
                 now,
             ),
@@ -262,6 +293,7 @@ def save_turn_response(
     if not request_id:
         return
     now = utc_now()
+    safe_response = mask_sensitive_payload(response)
     connection = get_connection()
     try:
         connection.execute(
@@ -275,15 +307,154 @@ def save_turn_response(
                 session_id,
                 user_id,
                 order_id,
-                query,
-                reply,
-                json.dumps(response, ensure_ascii=False),
+                mask_sensitive_text(query),
+                mask_sensitive_text(reply),
+                json.dumps(safe_response, ensure_ascii=False),
                 now,
             ),
         )
         connection.commit()
     finally:
         connection.close()
+
+
+def get_turn_response(request_id: str) -> dict:
+    connection = get_connection()
+    try:
+        row = connection.execute(
+            """
+            SELECT request_id, session_id, user_id, order_id, query, reply, response_json, created_at
+            FROM conversation_turns
+            WHERE request_id = ?
+            """,
+            (request_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise KeyError(f"chat turn not found: {request_id}")
+
+    turn = dict(row)
+    try:
+        turn["response"] = json.loads(turn.pop("response_json") or "{}")
+    except json.JSONDecodeError:
+        turn["response"] = {}
+    return turn
+
+
+def set_conversation_status(session_id: str, status: str) -> None:
+    if not session_id:
+        return
+    connection = get_connection()
+    try:
+        connection.execute(
+            "UPDATE conversations SET status = ?, updated_at = ? WHERE session_id = ?",
+            (status, utc_now(), session_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def save_review_action(payload: dict) -> dict:
+    action = str(payload.get("action", ""))
+    if action not in REVIEW_STATUS_BY_ACTION:
+        raise ValueError("unsupported review action")
+
+    turn = get_turn_response(str(payload["request_id"]))
+    status = REVIEW_STATUS_BY_ACTION[action]
+    final_reply = str(payload.get("final_reply") or turn["reply"])
+    reason = str(payload.get("reason", ""))
+    safe_final_reply = mask_sensitive_text(final_reply)
+    safe_reason = mask_sensitive_text(reason)
+    operator_id = str(payload.get("operator_id", "demo_agent"))
+    operator_role = str(payload.get("operator_role", "agent"))
+    now = utc_now()
+    response = turn.get("response") or {}
+    memory_snapshot = response.get("memory_snapshot") or {}
+    short_term = memory_snapshot.get("short_term") or {}
+    handoff_ticket = None
+    if action == "human_handoff":
+        ticket_result = create_handoff_ticket(
+            safe_reason or "客服确认转人工",
+            {
+                "user_id": turn["user_id"],
+                "session_id": turn["session_id"],
+                "order_id": turn["order_id"],
+                "summary": mask_sensitive_text(short_term.get("summary", "")),
+                "facts": mask_sensitive_payload(short_term.get("facts", {})),
+            },
+        )
+        handoff_ticket = mask_sensitive_payload(ticket_result.get("output", {}))
+
+    connection = get_connection()
+    try:
+        connection.execute(
+            """
+            INSERT INTO conversation_review_actions
+            (request_id, session_id, user_id, order_id, action, status, original_reply,
+             final_reply, reason, operator_id, operator_role, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                turn["request_id"],
+                turn["session_id"],
+                turn["user_id"],
+                turn["order_id"],
+                action,
+                status,
+                mask_sensitive_text(turn["reply"]),
+                safe_final_reply,
+                safe_reason,
+                operator_id,
+                operator_role,
+                now,
+            ),
+        )
+
+        response["conversation_status"] = status
+        if handoff_ticket:
+            response["handoff_ticket"] = handoff_ticket
+        response["review_action"] = {
+            "action": action,
+            "status": status,
+            "final_reply": safe_final_reply,
+            "reason": safe_reason,
+            "operator_id": operator_id,
+            "operator_role": operator_role,
+            "handoff_ticket": handoff_ticket,
+            "created_at": now,
+        }
+        connection.execute(
+            """
+            UPDATE conversation_turns
+            SET response_json = ?
+            WHERE request_id = ?
+            """,
+            (json.dumps(mask_sensitive_payload(response), ensure_ascii=False), turn["request_id"]),
+        )
+        connection.execute(
+            "UPDATE conversations SET status = ?, updated_at = ? WHERE session_id = ?",
+            (status, now, turn["session_id"]),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    record_review_action_metrics(action)
+    return {
+        "request_id": turn["request_id"],
+        "session_id": turn["session_id"],
+        "user_id": turn["user_id"],
+        "order_id": turn["order_id"],
+        "action": action,
+        "status": status,
+        "final_reply": safe_final_reply,
+        "reason": safe_reason,
+        "handoff_ticket": handoff_ticket,
+        "saved": True,
+        "created_at": now,
+    }
 
 
 def get_latest_turn_response(session_id: str) -> dict:
@@ -362,7 +533,7 @@ def update_summary(session_id: str, summary: str) -> None:
     try:
         connection.execute(
             "UPDATE conversations SET summary = ?, updated_at = ? WHERE session_id = ?",
-            (summary[:500], utc_now(), session_id),
+            (mask_sensitive_text(summary)[:500], utc_now(), session_id),
         )
         connection.commit()
     finally:
@@ -404,7 +575,7 @@ def upsert_facts(session_id: str, facts: dict[str, str], source: str = "system")
                     source = excluded.source,
                     updated_at = excluded.updated_at
                 """,
-                (session_id, key, str(value), source, now),
+                (session_id, key, mask_sensitive_text(str(value)), source, now),
             )
         connection.commit()
     finally:
@@ -444,7 +615,7 @@ def upsert_user_memory(user_id: str, memory: dict[str, str]) -> None:
                     value = excluded.value,
                     updated_at = excluded.updated_at
                 """,
-                (user_id, key, str(value), now),
+                (user_id, key, mask_sensitive_text(str(value)), now),
             )
         connection.commit()
     finally:

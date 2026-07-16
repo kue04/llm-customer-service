@@ -66,6 +66,42 @@ class ConversationServiceTest(unittest.TestCase):
         self.assertEqual(messages[0]["role"], "user")
         self.assertEqual(latest_response["trace"]["request_id"], "req1")
 
+    def test_conversation_store_masks_sensitive_text_before_persisting(self) -> None:
+        from services import conversation_store
+
+        conversation_store.get_or_create_conversation("u1", "s-sensitive", "o1")
+        conversation_store.append_message("s-sensitive", "user", "手机号13812345678")
+        conversation_store.save_turn_response(
+            request_id="req-sensitive",
+            session_id="s-sensitive",
+            user_id="u1",
+            order_id="o1",
+            query="手机号13812345678，订单号202606061234567890",
+            reply="验证码123456",
+            response={
+                "reply": "验证码123456",
+                "trace": {"request_id": "req-sensitive", "raw": "13812345678"},
+            },
+        )
+        review = conversation_store.save_review_action(
+            {
+                "request_id": "req-sensitive",
+                "action": "edited_and_sent",
+                "final_reply": "请联系13812345678",
+                "reason": "订单号202606061234567890",
+            }
+        )
+
+        messages = conversation_store.list_messages("s-sensitive")
+        turn = conversation_store.get_turn_response("req-sensitive")
+
+        self.assertEqual(messages[0]["content"], "手机号[手机号已脱敏]")
+        self.assertNotIn("13812345678", turn["query"])
+        self.assertNotIn("123456", turn["reply"])
+        self.assertNotIn("13812345678", str(turn["response"]))
+        self.assertNotIn("13812345678", review["final_reply"])
+        self.assertNotIn("202606061234567890", review["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

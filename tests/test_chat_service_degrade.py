@@ -5,6 +5,19 @@ import unittest
 
 
 class ChatServiceDegradeTest(unittest.TestCase):
+    def _generation_result(self, text: str) -> dict:
+        return {
+            "text": text,
+            "token_usage": {
+                "provider": "test",
+                "model": "test-model",
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "counting_method": "test",
+            },
+        }
+
     def _load_chat_service_with_stubs(
         self,
         retrieve_impl,
@@ -98,7 +111,9 @@ class ChatServiceDegradeTest(unittest.TestCase):
             generate_impl=None,
             reply_rules_impl=lambda query, reply, items: reply,
         )
-        chat_service.generate_reply = lambda prompt: "fallback answer"
+        chat_service.generate_reply_with_usage = (
+            lambda prompt, system_prompt=None: self._generation_result("fallback answer")
+        )
 
         result = chat_service.get_answer_from_rag("refund")
 
@@ -128,10 +143,10 @@ class ChatServiceDegradeTest(unittest.TestCase):
             reply_rules_impl=lambda query, reply, items: reply,
         )
 
-        def raise_generation(prompt: str):
+        def raise_generation(prompt: str, system_prompt=None):
             raise RuntimeError("generation boom")
 
-        chat_service.generate_reply = raise_generation
+        chat_service.generate_reply_with_usage = raise_generation
 
         result = chat_service.get_answer_from_rag("refund")
 
@@ -159,7 +174,9 @@ class ChatServiceDegradeTest(unittest.TestCase):
             generate_impl=None,
             reply_rules_impl=lambda query, reply, items: (_ for _ in ()).throw(RuntimeError("rules boom")),
         )
-        chat_service.generate_reply = lambda prompt: "model answer"
+        chat_service.generate_reply_with_usage = (
+            lambda prompt, system_prompt=None: self._generation_result("model answer")
+        )
 
         result = chat_service.get_answer_from_rag("refund")
 

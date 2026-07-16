@@ -13,10 +13,13 @@ class KnowledgeOpsTest(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.knowledge_service = importlib.import_module("services.knowledge_service")
+        self.feedback_service = importlib.import_module("services.feedback_service")
         self.previous_db_path = self.knowledge_service.DB_PATH
+        self.previous_feedback_db_path = self.feedback_service.DB_PATH
         self.previous_knowledge_path = self.knowledge_service.KNOWLEDGE_DATA_PATH
         self.previous_backup_dir = self.knowledge_service.BACKUP_DIR
         self.knowledge_service.DB_PATH = Path(self.temp_dir.name) / "knowledge_ops.db"
+        self.feedback_service.DB_PATH = Path(self.temp_dir.name) / "ops_feedback.db"
         self.knowledge_service.KNOWLEDGE_DATA_PATH = Path(self.temp_dir.name) / "seed.jsonl"
         self.knowledge_service.BACKUP_DIR = Path(self.temp_dir.name) / "backups"
         self.knowledge_service.KNOWLEDGE_DATA_PATH.write_text(
@@ -28,10 +31,18 @@ class KnowledgeOpsTest(unittest.TestCase):
         knowledge_router = importlib.import_module("routers.knowledge")
         app = FastAPI()
         app.include_router(knowledge_router.router, prefix="/knowledge")
+        self.app = app
         self.client = TestClient(app)
+        self.client.headers.update(
+            {
+                "X-User-Role": "knowledge_ops",
+                "X-Operator-Id": "knowledge_ops_1",
+            }
+        )
 
     def restore_paths(self) -> None:
         self.knowledge_service.DB_PATH = self.previous_db_path
+        self.feedback_service.DB_PATH = self.previous_feedback_db_path
         self.knowledge_service.KNOWLEDGE_DATA_PATH = self.previous_knowledge_path
         self.knowledge_service.BACKUP_DIR = self.previous_backup_dir
 
@@ -54,6 +65,26 @@ class KnowledgeOpsTest(unittest.TestCase):
         self.assertEqual(item["status"], "draft")
         self.assertEqual(item["version"], 1)
         self.assertTrue(item["base_id"])
+        self.assertEqual(item["title"], "优惠券不能用怎么办")
+        self.assertEqual(item["owner"], "knowledge_ops")
+        self.assertEqual(item["source"], "knowledge_ops")
+
+    def test_knowledge_routes_require_operator_identity(self) -> None:
+        bare_client = TestClient(self.app)
+
+        list_response = bare_client.get("/knowledge/items")
+        create_response = bare_client.post(
+            "/knowledge/items",
+            json={
+                "question": "q",
+                "answer": "a",
+                "category": "c",
+                "intent": "i",
+            },
+        )
+
+        self.assertEqual(list_response.status_code, 401)
+        self.assertEqual(create_response.status_code, 401)
 
     def test_update_creates_new_draft_version(self) -> None:
         item = self.create_item()
@@ -76,6 +107,13 @@ class KnowledgeOpsTest(unittest.TestCase):
 
     def test_archive_and_review_item(self) -> None:
         item = self.create_item()
+
+        pending_response = self.client.post(
+            f"/knowledge/items/{item['id']}/review",
+            json={"status": "pending_review", "review_note": "submit"},
+        )
+        self.assertEqual(pending_response.status_code, 200)
+        self.assertEqual(pending_response.json()["status"], "pending_review")
 
         review_response = self.client.post(
             f"/knowledge/items/{item['id']}/review",
@@ -114,6 +152,8 @@ class KnowledgeOpsTest(unittest.TestCase):
         export_body = export_response.json()
         self.assertEqual(export_body["count"], 1)
         self.assertIn('"source": "knowledge_ops"', export_body["jsonl"])
+        self.assertIn('"title": "退款失败怎么办"', export_body["jsonl"])
+        self.assertIn('"version": "v1"', export_body["jsonl"])
         self.assertIn('"question": "退款失败怎么办"', export_body["jsonl"])
 
     def test_publish_approved_writes_jsonl_and_marks_published(self) -> None:
@@ -155,7 +195,10 @@ class KnowledgeOpsTest(unittest.TestCase):
         self.knowledge_service.KNOWLEDGE_DATA_PATH.write_text("broken\n", encoding="utf-8")
 
         with patch.object(self.knowledge_service, "rebuild_vector_store") as rebuild:
-            response = self.client.post("/knowledge/rollback-latest")
+            response = self.client.post(
+                "/knowledge/rollback-latest",
+                headers={"X-User-Role": "admin", "X-Operator-Id": "admin_1"},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["action"], "rollback")
@@ -163,7 +206,7 @@ class KnowledgeOpsTest(unittest.TestCase):
             self.knowledge_service.KNOWLEDGE_DATA_PATH.read_text(encoding="utf-8"),
             '{"id":"seed","question":"old","answer":"old"}\n',
         )
-        self.assertEqual(self.client.get("/knowledge/items?status=approved").json()["total"], 1)
+        self.assertEqual(self.client.get("/knowledge/items?status=rollback").json()["total"], 1)
         rebuild.assert_called_once()
 
     def test_publish_history_returns_publish_and_rollback(self) -> None:
@@ -172,7 +215,10 @@ class KnowledgeOpsTest(unittest.TestCase):
 
         with patch.object(self.knowledge_service, "rebuild_vector_store"):
             self.client.post("/knowledge/publish-approved")
-            self.client.post("/knowledge/rollback-latest")
+            self.client.post(
+                "/knowledge/rollback-latest",
+                headers={"X-User-Role": "admin", "X-Operator-Id": "admin_1"},
+            )
 
         response = self.client.get("/knowledge/publish-history")
         self.assertEqual(response.status_code, 200)

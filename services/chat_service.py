@@ -6,7 +6,6 @@ from uuid import uuid4
 
 from config.rag_config import get_rag_config
 from models.prompt import create_prompt
-from peft import PeftModel
 from services import conversation_store
 from services.answer_composer import compose_answer_if_needed
 from services.conversation_service import (
@@ -24,32 +23,42 @@ from services.online_generation import (
     generate_online_chat_completion,
     generate_online_chat_completion_with_usage,
 )
-from services.ops_metrics import record_chat_metrics
+from services.ops_metrics import record_chat_metrics, record_token_usage
 from services.order_tool_service import (
-    create_handoff_ticket,
     query_order_status,
     query_refund_status,
     should_call_refund_tool,
 )
 from services.privacy import mask_sensitive_text
+from services.prompt_service import DEFAULT_SYSTEM_PROMPT, get_active_prompt_config
 from services.redis_context_cache import get_redis_context_cache
 from services.reply_rules import apply_reply_rules_with_trace
 from services.safety_guard import validate_reply
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.rag_context import build_prompt_context_items, prompt_context_items_to_dicts
 from utils.vector_retriever import detect_intent_hint, retrieve_rag_items
+
+try:
+    import torch
+except ModuleNotFoundError:
+    torch = None
+
+try:
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+except ModuleNotFoundError:
+    AutoModelForCausalLM = None
+    AutoTokenizer = None
+
+try:
+    from peft import PeftModel
+except ModuleNotFoundError:
+    PeftModel = None
 
 
 MODEL_PATH = Path(__file__).resolve().parents[1] / "local_models" / "qwen2.5-1.5b-instruct"
 ADAPTER_PATH = Path(__file__).resolve().parents[1] / "models" / "takeout-qwen-lora-minimal"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
-SYSTEM_PROMPT = (
-    "你是外卖平台中文客服。回答要礼貌、准确、简洁，先安抚用户，再说明原因，"
-    "最后给出可执行的下一步。不要编造平台规则；遇到支付、隐私、食品安全、"
-    "站外交易等高风险问题时要提醒用户保留证据并通过官方渠道处理。"
-)
+DEVICE = "cuda" if torch is not None and torch.cuda.is_available() else "cpu"
+MODEL_DTYPE = torch.float16 if torch is not None and DEVICE == "cuda" else (torch.float32 if torch is not None else None)
+SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 ANSWER_PLAN_SYSTEM_PROMPT = (
     "你是外卖平台客服回答规划助手。你的任务不是直接回复用户，"
     "而是根据用户问题和参考资料，输出一个稳定的 JSON 回答计划。"
@@ -62,16 +71,42 @@ FALLBACK_REPLY = (
 )
 logger = logging.getLogger(__name__)
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_PATH,
-    local_files_only=True,
-    dtype=MODEL_DTYPE,
-)
-if ADAPTER_PATH.exists() and (ADAPTER_PATH / "adapter_config.json").exists():
-    model = PeftModel.from_pretrained(model, ADAPTER_PATH, local_files_only=True)
-model = model.to(DEVICE)
-model.eval()
+tokenizer = None
+model = None
+
+
+def load_local_model() -> tuple[object, object]:
+    global tokenizer, model
+    if tokenizer is not None and model is not None:
+        return tokenizer, model
+    if torch is None or AutoModelForCausalLM is None or AutoTokenizer is None:
+        raise RuntimeError("local generation dependencies are unavailable")
+
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
+    model_kwargs = {"local_files_only": True}
+    if MODEL_DTYPE is not None:
+        model_kwargs["dtype"] = MODEL_DTYPE
+    loaded_model = AutoModelForCausalLM.from_pretrained(MODEL_PATH, **model_kwargs)
+    if PeftModel is not None and ADAPTER_PATH.exists() and (ADAPTER_PATH / "adapter_config.json").exists():
+        loaded_model = PeftModel.from_pretrained(loaded_model, ADAPTER_PATH, local_files_only=True)
+    loaded_model = loaded_model.to(DEVICE)
+    loaded_model.eval()
+    model = loaded_model
+    return tokenizer, model
+
+
+def load_local_tokenizer() -> object | None:
+    global tokenizer
+    if tokenizer is not None:
+        return tokenizer
+    if AutoTokenizer is None:
+        return None
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
+    except Exception as error:
+        logger.warning("local tokenizer unavailable: %s", error)
+        return None
+    return tokenizer
 
 
 def normalize_chat_request(request) -> dict:
@@ -129,13 +164,33 @@ def build_chat_template_text(prompt: str, system_prompt: str) -> str:
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
-    return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    local_tokenizer = load_local_tokenizer()
+    if local_tokenizer is None:
+        return f"{system_prompt}\n\n{prompt}"
+    return local_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+
+def _count_input_ids(input_ids) -> int:
+    if hasattr(input_ids, "shape"):
+        return int(input_ids.shape[-1])
+    if isinstance(input_ids, list):
+        if input_ids and isinstance(input_ids[0], list):
+            return len(input_ids[0])
+        return len(input_ids)
+    return 0
 
 
 def count_text_tokens(text: str) -> int:
     if not text:
         return 0
-    return int(tokenizer(text, return_tensors="pt", add_special_tokens=False)["input_ids"].shape[-1])
+    local_tokenizer = load_local_tokenizer()
+    if local_tokenizer is None:
+        return max(1, round(len(text) / 4))
+    try:
+        tokenized = local_tokenizer(text, return_tensors="pt", add_special_tokens=False)
+    except TypeError:
+        tokenized = local_tokenizer(text, return_tensors="pt")
+    return _count_input_ids(tokenized["input_ids"])
 
 
 def build_token_usage(
@@ -223,18 +278,23 @@ def generate_local_text_with_system_prompt(prompt: str, system_prompt: str) -> s
 
 
 def generate_local_text_result_with_system_prompt(prompt: str, system_prompt: str) -> dict:
+    local_tokenizer, local_model = load_local_model()
     text = build_chat_template_text(prompt, system_prompt)
-    inputs = tokenizer(text, return_tensors="pt")
-    inputs = {key: value.to(DEVICE) for key, value in inputs.items()}
-    input_length = inputs["input_ids"].shape[-1]
-    outputs = model.generate(
+    inputs = local_tokenizer(text, return_tensors="pt")
+    inputs = {
+        key: value.to(DEVICE) if hasattr(value, "to") else value
+        for key, value in inputs.items()
+    }
+    input_length = _count_input_ids(inputs["input_ids"])
+    outputs = local_model.generate(
         **inputs,
         max_new_tokens=256,
         do_sample=False,
-        pad_token_id=tokenizer.eos_token_id,
+        pad_token_id=local_tokenizer.eos_token_id,
     )
-    completion_tokens = int(outputs[0][input_length:].shape[-1])
-    reply = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+    completion_ids = outputs[0][input_length:]
+    completion_tokens = _count_input_ids(completion_ids)
+    reply = local_tokenizer.decode(completion_ids, skip_special_tokens=True).strip()
     return {
         "text": reply,
         "token_usage": build_token_usage(
@@ -266,11 +326,14 @@ def generate_text_with_system_prompt(prompt: str, system_prompt: str) -> str:
 
 
 def generate_reply(prompt: str) -> str:
-    return generate_text_with_system_prompt(prompt, SYSTEM_PROMPT)
+    return generate_text_with_system_prompt(prompt, get_active_prompt_config()["system_prompt"])
 
 
-def generate_reply_with_usage(prompt: str) -> dict:
-    return generate_text_result_with_system_prompt(prompt, SYSTEM_PROMPT)
+def generate_reply_with_usage(prompt: str, system_prompt: str | None = None) -> dict:
+    return generate_text_result_with_system_prompt(
+        prompt,
+        system_prompt or get_active_prompt_config()["system_prompt"],
+    )
 
 
 def generate_answer_plan(prompt: str) -> str:
@@ -393,7 +456,7 @@ def build_top1_intent(retrieved_items: list[dict]) -> str:
 
 
 def elapsed_ms(started_at: float) -> float:
-    return round((time.perf_counter() - started_at) * 1000, 2)
+    return max(round((time.perf_counter() - started_at) * 1000, 2), 0.01)
 
 
 def trace_step(
@@ -407,8 +470,8 @@ def trace_step(
     return {
         "step": step,
         "status": status,
-        "input_summary": input_summary,
-        "output_summary": output_summary,
+        "input_summary": mask_sensitive_text(input_summary)[:500],
+        "output_summary": mask_sensitive_text(output_summary)[:500],
         "latency_ms": elapsed_ms(started_at) if started_at else 0.0,
         "metadata": metadata or {},
     }
@@ -436,20 +499,24 @@ def build_evidence_citations(prompt_context_items: list) -> list[dict]:
     citations = []
     for index, item in enumerate(prompt_context_items):
         rank = getattr(item, "rank", index + 1)
+        knowledge_id = getattr(item, "knowledge_id", "") or f"kb_rank_{rank}"
         score = getattr(item, "rerank_score", 0.0) or getattr(item, "score", 0.0)
         quote = getattr(item, "evidence_summary", "") or getattr(item, "answer", "")
         citations.append(
             {
-                "evidence_id": f"kb_{rank}_{index + 1}",
+                "evidence_id": knowledge_id,
+                "knowledge_id": knowledge_id,
                 "source_type": "knowledge_base",
+                "source": getattr(item, "source", ""),
                 "category": getattr(item, "category", ""),
                 "intent": getattr(item, "intent", ""),
                 "risk_level": "unknown",
-                "version": "local",
+                "version": getattr(item, "version", ""),
+                "updated_at": getattr(item, "updated_at", ""),
                 "score": score,
                 "evidence_role": getattr(item, "role", "supporting"),
                 "quote": quote,
-                "title": getattr(item, "display_title", ""),
+                "title": getattr(item, "title", "") or getattr(item, "display_title", ""),
             }
         )
     return citations
@@ -463,6 +530,57 @@ def evidence_citations_from_result(result: dict) -> list[dict]:
     return build_evidence_citations(
         [ItemAdapter(item) for item in result.get("prompt_context_items", [])]
     )
+
+
+def normalize_prd_risk_level(risk_level: str) -> str:
+    if risk_level == "critical":
+        return "blocked"
+    if risk_level in {"low", "medium", "high", "blocked"}:
+        return risk_level
+    return "low"
+
+
+def build_confidence_level(confidence_score: float) -> str:
+    if confidence_score >= 0.8:
+        return "high"
+    if confidence_score >= 0.5:
+        return "medium"
+    return "low"
+
+
+def build_prd_citations(evidence_citations: list[dict]) -> list[dict]:
+    citations = []
+    for item in evidence_citations:
+        citations.append(
+            {
+                "knowledge_id": item.get("knowledge_id", "") or item.get("evidence_id", ""),
+                "title": item.get("title", ""),
+                "category": item.get("category", ""),
+                "version": item.get("version", ""),
+                "snippet": item.get("quote", ""),
+                "score": item.get("score", 0.0),
+                "updated_at": item.get("updated_at", ""),
+                "source": item.get("source", ""),
+            }
+        )
+    return citations
+
+
+def build_human_review_reason(
+    result: dict,
+    safety_status: dict,
+    handoff_ticket: dict | None,
+) -> str:
+    if handoff_ticket:
+        return str(handoff_ticket.get("reason") or "建议创建人工接管工单")
+    handoff_recommendation = result.get("handoff_recommendation") or {}
+    if handoff_recommendation.get("recommended"):
+        return str(handoff_recommendation.get("reason") or "建议客服确认后转人工")
+    if safety_status.get("blocked"):
+        return "命中安全规则，需要客服确认"
+    if result.get("needs_manual_review"):
+        return "诊断结果建议人工复核"
+    return "v1 默认客服确认后发送"
 
 
 def build_answer_basis(evidence_citations: list[dict], tool_results: list[dict], safety_status: dict) -> str:
@@ -570,7 +688,18 @@ def attach_enhanced_fields(
     handoff_ticket: dict | None = None,
 ) -> dict:
     evidence_citations = evidence_citations_from_result(result)
+    confidence_score = float(result.get("confidence_score") or 0.0)
+    risk_level = normalize_prd_risk_level(intent_analysis.get("risk_level", "low"))
+    human_review_reason = build_human_review_reason(result, safety_status, handoff_ticket)
     result["evidence_citations"] = evidence_citations
+    result["request_id"] = request_id
+    result["risk_level"] = risk_level
+    result["confidence_level"] = build_confidence_level(confidence_score)
+    result["need_human_review"] = True
+    result["needs_manual_review"] = True
+    result["human_review_reason"] = human_review_reason
+    result["citations"] = build_prd_citations(evidence_citations)
+    result["conversation_status"] = "pending_agent_review"
     result["tool_results"] = tool_results
     result["memory_snapshot"] = build_memory_snapshot(context, user_memory, updated_user_memory)
     result["answer_basis"] = build_answer_basis(evidence_citations, tool_results, safety_status)
@@ -599,11 +728,13 @@ def complete_chat_response(
     safety_status: dict,
     full_trace: list[dict],
 ) -> dict:
+    grounding_started_at = time.perf_counter()
     result = finalize_chat_result(result, query)
     full_trace.append(
         trace_step(
             "grounding_checked",
             output_summary=f"needs_manual_review={bool(result.get('needs_manual_review'))}",
+            started_at=grounding_started_at,
             metadata={
                 "missing_evidence_keywords": result.get("missing_evidence_keywords", []),
                 "risky_promises": result.get("risky_promises", []),
@@ -618,22 +749,25 @@ def complete_chat_response(
         safety_status=safety_status,
         diagnostics_needs_review=bool(result.get("needs_manual_review")),
     )
-    handoff_ticket = None
     if handoff_needed:
-        started_at = time.perf_counter()
-        handoff_ticket = create_handoff_ticket(handoff_reason, context)
-        tool_results.append(handoff_ticket)
+        handoff_started_at = time.perf_counter()
         result["needs_manual_review"] = True
+        result["handoff_recommendation"] = {
+            "recommended": True,
+            "reason": handoff_reason,
+            "priority": "high" if intent_analysis.get("risk_level") in {"high", "critical"} else "normal",
+        }
         full_trace.append(
             trace_step(
-                "handoff_ticket_created",
+                "handoff_recommended",
                 input_summary=handoff_reason,
-                output_summary=handoff_ticket.get("output", {}).get("ticket_id", ""),
-                started_at=started_at,
-                metadata={"tool_status": handoff_ticket.get("status", "")},
+                output_summary="waiting_agent_confirmation",
+                started_at=handoff_started_at,
+                metadata={"write_tool_deferred": True},
             )
         )
 
+    memory_update_started_at = time.perf_counter()
     updated_user_memory = update_user_memory_from_turn(
         user_id=context.get("user_id", "demo_user"),
         query=query,
@@ -644,9 +778,10 @@ def complete_chat_response(
         trace_step(
             "memory_updated",
             output_summary=f"short_term=updated,long_term_fields={len(updated_user_memory)}",
+            started_at=memory_update_started_at,
         )
     )
-    full_trace.append(trace_step("response_returned", output_summary="response assembled"))
+    response_started_at = time.perf_counter()
     final_result = attach_enhanced_fields(
         result=result,
         request_id=request_id,
@@ -657,7 +792,7 @@ def complete_chat_response(
         tool_results=tool_results,
         safety_status=safety_status,
         full_trace=full_trace,
-        handoff_ticket=handoff_ticket.get("output") if handoff_ticket else None,
+        handoff_ticket=None,
     )
     conversation_store.save_turn_response(
         request_id=request_id,
@@ -668,6 +803,11 @@ def complete_chat_response(
         reply=final_result.get("reply", ""),
         response=final_result,
     )
+    conversation_store.set_conversation_status(
+        context.get("session_id", ""),
+        final_result.get("conversation_status", "pending_agent_review"),
+    )
+    full_trace.append(trace_step("response_returned", output_summary="response assembled", started_at=response_started_at))
     return final_result
 
 
@@ -700,7 +840,13 @@ def log_chat_trace(query: str, trace: dict) -> None:
 def finalize_chat_result(result: dict, query: str) -> dict:
     trace = result.get("trace", {})
     record_chat_metrics(trace)
-    save_chat_session(query=query, reply=result.get("reply", ""), trace=trace)
+    record_token_usage(result.get("token_usage", {}))
+    save_chat_session(
+        query=query,
+        reply=result.get("reply", ""),
+        trace=trace,
+        token_usage=result.get("token_usage", {}),
+    )
     log_chat_trace(query, result.get("trace", {}))
     return attach_grounding_diagnostics(result, query)
 
@@ -714,6 +860,7 @@ def get_answer_from_rag(request):
         trace_step(
             "request_received",
             input_summary=mask_sensitive_text(query)[:160],
+            started_at=started_at,
             metadata={
                 "request_id": request_id,
                 "channel": request_data["channel"],
@@ -737,6 +884,7 @@ def get_answer_from_rag(request):
         "fallback_applied": False,
     }
 
+    memory_started_at = time.perf_counter()
     context = get_or_create_context(
         user_id=request_data["user_id"],
         session_id=request_data["session_id"],
@@ -747,24 +895,21 @@ def get_answer_from_rag(request):
         trace_step(
             "memory_loaded",
             output_summary=f"recent={len(context.get('recent_messages', []))}, user_memory_fields={len(user_memory)}",
+            started_at=memory_started_at,
             metadata={"session_id": context["session_id"]},
         )
     )
+    intent_started_at = time.perf_counter()
     intent_analysis = analyze_intents(query, context)
     full_trace.append(
         trace_step(
             "intent_detected",
             output_summary=str(intent_analysis.get("primary_intent", "")),
+            started_at=intent_started_at,
             metadata={"risk_level": intent_analysis.get("risk_level", "low")},
         )
     )
-    full_trace.append(
-        trace_step(
-            "risk_precheck",
-            status="high_risk" if intent_analysis.get("risk_level") in {"high", "critical"} else "success",
-            output_summary=str(intent_analysis.get("routing", "rag")),
-        )
-    )
+    risk_started_at = time.perf_counter()
     get_redis_context_cache().cache_intent_analysis(request_id, intent_analysis)
     get_redis_context_cache().set_risk_state(
         context["session_id"],
@@ -772,6 +917,14 @@ def get_answer_from_rag(request):
             "risk_level": intent_analysis.get("risk_level", "low"),
             "primary_intent": intent_analysis.get("primary_intent", ""),
         },
+    )
+    full_trace.append(
+        trace_step(
+            "risk_precheck",
+            status="high_risk" if intent_analysis.get("risk_level") in {"high", "critical"} else "success",
+            output_summary=str(intent_analysis.get("routing", "rag")),
+            started_at=risk_started_at,
+        )
     )
     save_message(
         session_id=context["session_id"],
@@ -790,10 +943,10 @@ def get_answer_from_rag(request):
     context["facts"] = facts or context.get("facts", {})
     context["summary"] = summary or context.get("summary", "")
     order_tool_started_at = time.perf_counter()
-    order_status_result = query_order_status(context.get("order_id"))
+    order_status_result = query_order_status(context.get("user_id", "demo_user"), context.get("order_id"))
     tool_results.append(order_status_result)
     if should_call_refund_tool(query, intent_analysis):
-        tool_results.append(query_refund_status(context.get("order_id")))
+        tool_results.append(query_refund_status(context.get("user_id", "demo_user"), context.get("order_id")))
     order_context = build_order_context(tool_results)
     full_trace.append(
         trace_step(
@@ -808,9 +961,10 @@ def get_answer_from_rag(request):
     retrieval_query = build_query_with_intent_hint(query, intent_analysis)
 
     retrieval_started_at = time.perf_counter()
-    full_trace.append(trace_step("retrieval_started", input_summary=retrieval_query[:160]))
+    full_trace.append(trace_step("retrieval_started", input_summary=mask_sensitive_text(retrieval_query)[:160], started_at=retrieval_started_at))
     try:
         retrieved_items = retrieve_rag_items(retrieval_query)
+        evidence_started_at = time.perf_counter()
         prompt_context_items = build_prompt_context_items(retrieved_items)
         full_trace.append(
             trace_step(
@@ -823,6 +977,7 @@ def get_answer_from_rag(request):
             trace_step(
                 "evidence_selected",
                 output_summary=f"selected={len(prompt_context_items)}",
+                started_at=evidence_started_at,
                 metadata={"primary_intent": prompt_context_items[0].intent if prompt_context_items else ""},
             )
         )
@@ -852,8 +1007,9 @@ def get_answer_from_rag(request):
                 started_at=retrieval_started_at,
             )
         )
-        full_trace.append(trace_step("evidence_selected", status="degraded", output_summary="selected=0"))
+        full_trace.append(trace_step("evidence_selected", status="degraded", output_summary="selected=0", started_at=retrieval_started_at))
 
+    prompt_started_at = time.perf_counter()
     if prompt_context_items:
         prompt = create_prompt(
             query,
@@ -872,17 +1028,22 @@ def get_answer_from_rag(request):
         answer_source = "fallback"
         if failure_stage == "none":
             fallback_reason = "no_retrieved_documents"
+    prompt_config = get_active_prompt_config()
     full_trace.append(
         trace_step(
             "prompt_built",
             output_summary=f"source={answer_source}, chars={len(prompt)}",
-            metadata={"used_fallback_prompt": used_fallback_prompt},
+            started_at=prompt_started_at,
+            metadata={
+                "used_fallback_prompt": used_fallback_prompt,
+                "prompt_version": prompt_config.get("version", ""),
+            },
         )
     )
 
     generation_started_at = time.perf_counter()
     try:
-        generation_result = generate_reply_with_usage(prompt)
+        generation_result = generate_reply_with_usage(prompt, prompt_config.get("system_prompt", SYSTEM_PROMPT))
         reply = generation_result["text"]
         token_usage = generation_result.get("token_usage", {})
         full_trace.append(
@@ -910,6 +1071,7 @@ def get_answer_from_rag(request):
             "reply": reply,
             "confidence_score": 0.2,
             "final_prompt": prompt,
+            "prompt_version": prompt_config.get("version", ""),
             "token_usage": token_usage,
             "retrieved_documents": [item.answer for item in prompt_context_items],
             "retrieved_items": retrieved_items,
@@ -952,6 +1114,7 @@ def get_answer_from_rag(request):
 
     answer_composer_applied = False
     answer_composer_trace = {}
+    rules_started_at = time.perf_counter()
     if get_rag_config().answer_composer_enabled:
         try:
             updated_reply, answer_composer_trace = compose_answer_if_needed(
@@ -994,6 +1157,7 @@ def get_answer_from_rag(request):
             trace_step(
                 "reply_rules_checked",
                 output_summary=f"reply_rules_applied={reply_rules_applied}, safety_passed={safety_status.get('passed')}",
+                started_at=rules_started_at,
                 metadata={"safety_issues": safety_status.get("issues", [])},
             )
         )
@@ -1001,12 +1165,13 @@ def get_answer_from_rag(request):
         degraded = True
         failure_stage = "safety_guard"
         fallback_reason = f"safety_guard_failed: {error}"
-        full_trace.append(trace_step("reply_rules_checked", status="failed", output_summary=str(error)))
+        full_trace.append(trace_step("reply_rules_checked", status="failed", output_summary=str(error), started_at=rules_started_at))
 
     result = attach_runtime_fields({
         "reply": reply,
         "confidence_score": confidence_score,
         "final_prompt": prompt,
+        "prompt_version": prompt_config.get("version", ""),
         "token_usage": token_usage,
         "retrieved_documents": [item.answer for item in prompt_context_items],
         "retrieved_items": retrieved_items,

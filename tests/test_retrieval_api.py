@@ -9,13 +9,17 @@ from routers.retrieval import preview_prompt, search_retrieval
 from schemas.retrieval_schema import RetrievalSearchRequest
 
 
+AUTH_HEADERS = {"X-User-Role": "agent", "X-Operator-Id": "agent_1"}
+OPERATOR_CONTEXT = {"role": "agent", "operator_id": "agent_1"}
+
+
 class RetrievalSearchApiTest(unittest.TestCase):
     def test_config_endpoint_returns_current_rag_config(self) -> None:
         app = FastAPI()
         app.include_router(retrieval.router, prefix="/retrieval")
         client = TestClient(app)
 
-        response = client.get("/retrieval/config")
+        response = client.get("/retrieval/config", headers=AUTH_HEADERS)
 
         body = response.json()
         self.assertEqual(response.status_code, 200)
@@ -51,7 +55,7 @@ class RetrievalSearchApiTest(unittest.TestCase):
         )
 
         with patch("routers.retrieval.retrieve_by_real_vector", return_value=[candidate]):
-            response = search_retrieval(request)
+            response = search_retrieval(request, operator_context=OPERATOR_CONTEXT)
 
         result = response.results[0]
         self.assertEqual(result.score, 0.78)
@@ -98,7 +102,7 @@ class RetrievalSearchApiTest(unittest.TestCase):
         )
 
         with patch("routers.retrieval.retrieve_by_real_vector", return_value=candidates) as mocked_retrieve:
-            response = preview_prompt(request)
+            response = preview_prompt(request, operator_context=OPERATOR_CONTEXT)
 
         mocked_retrieve.assert_called_once_with(
             "refund arrival time",
@@ -142,6 +146,7 @@ class RetrievalSearchApiTest(unittest.TestCase):
         with patch("routers.retrieval.retrieve_by_real_vector", return_value=candidates):
             response = client.post(
                 "/retrieval/prompt-preview",
+                headers=AUTH_HEADERS,
                 json={
                     "query": "refund arrival time",
                     "mode": "hybrid",
@@ -199,7 +204,7 @@ class RetrievalSearchApiTest(unittest.TestCase):
         )
 
         with patch("routers.retrieval.retrieve_by_real_vector", return_value=candidates):
-            response = preview_prompt(request)
+            response = preview_prompt(request, operator_context=OPERATOR_CONTEXT)
 
         self.assertEqual(response.prompt_context_items[0].role, "primary")
         self.assertEqual(response.prompt_context_items[0].evidence_strength, "close_match")

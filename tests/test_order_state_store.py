@@ -37,11 +37,99 @@ class OrderStateStoreTest(unittest.TestCase):
             }
         )
 
-        result = query_order_status("wm1")
+        result = query_order_status("u1", "wm1")
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["output"]["order_id"], "wm1")
         self.assertEqual(result["output"]["status_label"], "骑手已取餐")
+
+    def test_order_tool_rejects_order_owned_by_another_user(self) -> None:
+        from services.order_state_store import upsert_order_state
+        from services.order_tool_service import query_order_status, query_refund_status
+
+        upsert_order_state(
+            {
+                "user_id": "owner_user",
+                "order_id": "wm-private",
+                "status": "delivered",
+                "status_label": "已送达",
+                "delivery_status": "已送达",
+                "summary": "订单已送达。",
+                "refund_status": "none",
+            }
+        )
+
+        order_result = query_order_status("other_user", "wm-private")
+        refund_result = query_refund_status("other_user", "wm-private")
+
+        self.assertEqual(order_result["status"], "failed")
+        self.assertEqual(order_result["error_type"], "order_user_mismatch")
+        self.assertEqual(refund_result["status"], "failed")
+        self.assertEqual(refund_result["error_type"], "order_user_mismatch")
+
+    def test_order_tool_rejects_owner_bound_mock_order_for_wrong_user(self) -> None:
+        from services.order_tool_service import query_order_status, query_refund_status
+
+        order_result = query_order_status("other_user", "__release_check_owner_order__")
+        refund_result = query_refund_status("other_user", "__release_check_owner_order__")
+
+        self.assertEqual(order_result["status"], "failed")
+        self.assertEqual(order_result["error_type"], "order_user_mismatch")
+        self.assertEqual(order_result["output"], {})
+        self.assertEqual(refund_result["status"], "failed")
+        self.assertEqual(refund_result["error_type"], "order_user_mismatch")
+        self.assertEqual(refund_result["output"], {})
+
+    def test_order_and_refund_tools_skip_when_order_id_is_missing(self) -> None:
+        from services.order_tool_service import query_order_status, query_refund_status
+
+        order_result = query_order_status("u1", None)
+        refund_result = query_refund_status("u1", None)
+
+        self.assertEqual(order_result["status"], "skipped")
+        self.assertEqual(order_result["error_type"], "missing_order_id")
+        self.assertFalse(order_result["retryable"])
+        self.assertEqual(order_result["output"], {})
+        self.assertEqual(refund_result["status"], "skipped")
+        self.assertEqual(refund_result["error_type"], "missing_order_id")
+        self.assertFalse(refund_result["retryable"])
+        self.assertEqual(refund_result["output"], {})
+
+    def test_tool_adapter_exception_returns_retryable_empty_failure(self) -> None:
+        from services.order_tool_service import QUERY_ERROR_TYPE, query_order_status, query_refund_status
+
+        with patch("services.order_tool_service._lookup_order", side_effect=RuntimeError("adapter down")):
+            order_result = query_order_status("u1", "wm-error")
+            refund_result = query_refund_status("u1", "wm-error")
+
+        self.assertEqual(order_result["status"], "failed")
+        self.assertEqual(order_result["error_type"], QUERY_ERROR_TYPE)
+        self.assertTrue(order_result["retryable"])
+        self.assertEqual(order_result["output"], {})
+        self.assertEqual(refund_result["status"], "failed")
+        self.assertEqual(refund_result["error_type"], QUERY_ERROR_TYPE)
+        self.assertTrue(refund_result["retryable"])
+        self.assertEqual(refund_result["output"], {})
+
+    def test_tool_adapter_timeout_returns_retryable_empty_failure(self) -> None:
+        from services.order_tool_service import TIMEOUT_ERROR_TYPE, query_order_status, query_refund_status
+
+        order = {"user_id": "u1", "order_id": "wm-timeout", "status": "delivered"}
+        with (
+            patch("services.order_tool_service._lookup_order", return_value=order),
+            patch("services.order_tool_service.TOOL_TIMEOUT_SECONDS", -1.0),
+        ):
+            order_result = query_order_status("u1", "wm-timeout")
+            refund_result = query_refund_status("u1", "wm-timeout")
+
+        self.assertEqual(order_result["status"], "failed")
+        self.assertEqual(order_result["error_type"], TIMEOUT_ERROR_TYPE)
+        self.assertTrue(order_result["retryable"])
+        self.assertEqual(order_result["output"], {})
+        self.assertEqual(refund_result["status"], "failed")
+        self.assertEqual(refund_result["error_type"], TIMEOUT_ERROR_TYPE)
+        self.assertTrue(refund_result["retryable"])
+        self.assertEqual(refund_result["output"], {})
 
 
 if __name__ == "__main__":

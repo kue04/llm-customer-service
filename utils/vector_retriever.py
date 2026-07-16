@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
-import faiss
+try:
+    import faiss
+except ModuleNotFoundError:
+    faiss = None
 import numpy as np
-from sentence_transformers import CrossEncoder, SentenceTransformer
+try:
+    from sentence_transformers import CrossEncoder, SentenceTransformer
+except ModuleNotFoundError:
+    CrossEncoder = None
+    SentenceTransformer = None
 
 from config.rag_config import get_rag_config
 from utils.retriever import iter_knowledge_items, is_similar_answer
@@ -18,6 +26,41 @@ _REAL_FAISS_INDEX: faiss.IndexFlatIP | None = None
 
 DEFAULT_MODEL_RERANK_WEIGHT = get_rag_config().model_rerank_weight
 DEFAULT_MIN_VECTOR_SCORE = get_rag_config().min_vector_score
+
+
+def _require_faiss():
+    if faiss is None:
+        raise RuntimeError("faiss is not installed; install faiss-cpu to use the real vector store")
+    return faiss
+
+
+def _require_sentence_transformers():
+    if CrossEncoder is None or SentenceTransformer is None:
+        raise RuntimeError("sentence-transformers is not installed; install it to use model reranking and embeddings")
+    return CrossEncoder, SentenceTransformer
+
+
+def _knowledge_id_from_source(source: dict, rank: int) -> str:
+    if source.get("id"):
+        return str(source["id"])
+    raw_key = "|".join(
+        str(source.get(field, ""))
+        for field in ("question", "answer", "category", "intent")
+    ).strip("|")
+    if not raw_key:
+        return f"kb_rank_{rank}"
+    return f"kb_{hashlib.md5(raw_key.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _knowledge_version_from_source(source: dict) -> str:
+    if source.get("version"):
+        return str(source["version"])
+    knowledge_id = str(source.get("id", ""))
+    if "_v" in knowledge_id:
+        return f"v{knowledge_id.rsplit('_v', 1)[-1]}"
+    if source.get("quality") == "reviewed":
+        return "reviewed"
+    return "seed"
 VECTOR_STORE_DIR = get_rag_config().faiss_store_dir
 FAISS_INDEX_PATH = VECTOR_STORE_DIR / "real_vector.index"
 FAISS_DOCS_PATH = VECTOR_STORE_DIR / "real_vector_docs.json"
@@ -29,7 +72,8 @@ def get_reranker_model() -> CrossEncoder:
     global _RERANKER_MODEL
 
     if _RERANKER_MODEL is None:
-        _RERANKER_MODEL = CrossEncoder(get_rag_config().reranker_model_name)
+        cross_encoder_cls, _ = _require_sentence_transformers()
+        _RERANKER_MODEL = cross_encoder_cls(get_rag_config().reranker_model_name)
 
     return _RERANKER_MODEL
 
@@ -47,7 +91,8 @@ def get_embedding_model() -> SentenceTransformer:
     global _EMBEDDING_MODEL
 
     if _EMBEDDING_MODEL is None:
-        _EMBEDDING_MODEL = SentenceTransformer(get_rag_config().embedding_model_name)
+        _, sentence_transformer_cls = _require_sentence_transformers()
+        _EMBEDDING_MODEL = sentence_transformer_cls(get_rag_config().embedding_model_name)
 
     return _EMBEDDING_MODEL
 
@@ -122,12 +167,13 @@ def get_real_vector_documents() -> list[dict]:
 
 
 def build_real_vector_index() -> faiss.IndexFlatIP:
+    faiss_module = _require_faiss()
     documents = get_real_vector_documents()
     vectors = np.array(
         [build_embedding(document["text"]) for document in documents],
         dtype="float32",
     )
-    index = faiss.IndexFlatIP(vectors.shape[1])
+    index = faiss_module.IndexFlatIP(vectors.shape[1])
     index.add(vectors)
     return index
 
@@ -144,9 +190,10 @@ def get_real_vector_index() -> faiss.IndexFlatIP:
 def save_real_vector_store() -> None:
     global _REAL_FAISS_INDEX
 
+    faiss_module = _require_faiss()
     VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
     index = build_real_vector_index()
-    faiss.write_index(index, str(FAISS_INDEX_PATH))
+    faiss_module.write_index(index, str(FAISS_INDEX_PATH))
     FAISS_DOCS_PATH.write_text(
         json.dumps(get_real_vector_documents(), ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -168,7 +215,8 @@ def load_real_vector_store() -> bool:
     if not FAISS_INDEX_PATH.exists() or not FAISS_DOCS_PATH.exists():
         return False
 
-    _REAL_FAISS_INDEX = faiss.read_index(str(FAISS_INDEX_PATH))
+    faiss_module = _require_faiss()
+    _REAL_FAISS_INDEX = faiss_module.read_index(str(FAISS_INDEX_PATH))
     _REAL_VECTOR_DOCS = json.loads(FAISS_DOCS_PATH.read_text(encoding="utf-8"))
     return True
 
@@ -319,6 +367,27 @@ def detect_intent_hint(query: str) -> str:
     )
     if wrong_item_delivered:
         return "错送餐品"
+
+    asks_food_safety = any(
+        word in query
+        for word in ["食品安全", "异物", "变质", "发霉", "吃坏", "拉肚子", "过敏", "发麻"]
+    )
+    if asks_food_safety:
+        return "食品安全投诉"
+
+    asks_off_platform_refund = (
+        any(word in query for word in ["商家微信", "店家微信", "平台外", "别走平台", "不走平台", "绕开平台", "私下退款", "私下退钱"])
+        or ("私下" in query and any(word in query for word in ["退款", "退钱", "让他退", "商家退"]))
+    )
+    if asks_off_platform_refund:
+        return "站外交易风险"
+
+    asks_sensitive_identity = any(
+        word in query
+        for word in ["身份证", "身份证信息", "真实手机号", "完整手机号", "真实号码", "完整号码"]
+    )
+    if asks_sensitive_identity:
+        return "隐私保护咨询"
 
     asks_verification_code = any(word in query for word in ["验证码", "验正码", "校验码"])
     if asks_verification_code:
@@ -723,9 +792,15 @@ def retrieve_rag_items(
     items = []
     for rank, candidate in enumerate(candidates, start=1):
         source = candidate.get("source", {})
+        knowledge_id = _knowledge_id_from_source(source, rank)
         items.append(
             {
                 "rank": rank,
+                "knowledge_id": knowledge_id,
+                "title": source.get("title", "") or source.get("question", "") or knowledge_id,
+                "version": _knowledge_version_from_source(source),
+                "updated_at": source.get("updated_at", "") or source.get("effective_at", ""),
+                "source": source.get("source", ""),
                 "answer": candidate["answer"],
                 "category": source.get("category", ""),
                 "intent": source.get("intent", ""),

@@ -2,14 +2,19 @@ from pydantic import BaseModel, Field
 
 
 class KnowledgeItemPayload(BaseModel):
+    title: str = ""
     question: str = Field(min_length=1)
     answer: str = Field(min_length=1)
     category: str = Field(min_length=1)
     intent: str = Field(min_length=1)
+    owner: str = "knowledge_ops"
+    source: str = "knowledge_ops"
+    effective_at: str = ""
+    expired_at: str = ""
 
 
 class KnowledgeReviewRequest(BaseModel):
-    status: str = Field(pattern="^(approved|rejected)$")
+    status: str = Field(pattern="^(pending_review|approved|rejected)$")
     review_note: str = ""
 
 
@@ -17,11 +22,16 @@ class KnowledgeItem(BaseModel):
     id: int
     base_id: str
     version: int
+    title: str
     question: str
     answer: str
     category: str
     intent: str
     status: str
+    owner: str
+    source: str
+    effective_at: str
+    expired_at: str
     review_note: str
     created_at: str
     updated_at: str

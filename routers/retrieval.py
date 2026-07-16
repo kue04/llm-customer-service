@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from config.rag_config import get_rag_config_dict
 from models.prompt import create_prompt
 from schemas.retrieval_schema import (
@@ -8,6 +8,7 @@ from schemas.retrieval_schema import (
     RetrievalSearchRequest,
     RetrievalSearchResponse,
 )
+from services.auth_service import get_operator_context, require_read_operation_role
 from utils.rag_context import build_prompt_context_items
 from utils.vector_retriever import retrieve_by_real_vector
 
@@ -16,7 +17,8 @@ router = APIRouter()
 
 
 @router.get("/config", response_model=RagConfigResponse)
-def get_retrieval_config() -> dict:
+def get_retrieval_config(operator_context: dict = Depends(get_operator_context)) -> dict:
+    require_read_operation_role("retrieval_read", operator_context)
     return get_rag_config_dict()
 
 
@@ -37,7 +39,11 @@ def build_retrieval_result_item(rank: int, item: dict) -> RetrievalResultItem:
     )
 
 @router.post("/search", response_model=RetrievalSearchResponse)
-def search_retrieval(request: RetrievalSearchRequest) -> RetrievalSearchResponse:
+def search_retrieval(
+    request: RetrievalSearchRequest,
+    operator_context: dict = Depends(get_operator_context),
+) -> RetrievalSearchResponse:
+    require_read_operation_role("retrieval_read", operator_context)
     candidates = retrieve_by_real_vector(
         request.query,
         limit=request.limit,
@@ -58,7 +64,11 @@ def search_retrieval(request: RetrievalSearchRequest) -> RetrievalSearchResponse
     )
 
 @router.post("/prompt-preview", response_model=PromptPreviewResponse)
-def preview_prompt(request: RetrievalSearchRequest) -> PromptPreviewResponse:
+def preview_prompt(
+    request: RetrievalSearchRequest,
+    operator_context: dict = Depends(get_operator_context),
+) -> PromptPreviewResponse:
+    require_read_operation_role("retrieval_read", operator_context)
     candidates = retrieve_by_real_vector(
         request.query,
         limit=request.limit,

@@ -14,6 +14,9 @@ reports/
 models/takeout-qwen-lora-*/
 data/faiss_store/
 output/pdf/
+tmp/
+data/knowledge_backups/
+README - 副本.md
 *.safetensors
 *.bin
 *.pt

@@ -15,6 +15,11 @@ class PromptContextItem:
     source_question: str
     source_answer: str
     rank: int
+    knowledge_id: str
+    title: str
+    version: str
+    updated_at: str
+    source: str
     category: str
     intent: str
     question: str
@@ -95,6 +100,11 @@ def build_prompt_context_items(
                 source_question=item.get("question", ""),
                 source_answer=item.get("answer", ""),
                 rank=int(item.get("rank", index + 1)),
+                knowledge_id=item.get("knowledge_id", ""),
+                title=item.get("title", "") or item.get("question", ""),
+                version=str(item.get("version", "")),
+                updated_at=item.get("updated_at", ""),
+                source=item.get("source", ""),
                 category=item.get("category", ""),
                 intent=item.get("intent", ""),
                 question=display_title,

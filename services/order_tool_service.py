@@ -5,6 +5,9 @@ from uuid import uuid4
 
 from services.order_state_store import get_order_state
 
+TOOL_TIMEOUT_SECONDS = 3.0
+QUERY_ERROR_TYPE = "tool_unavailable"
+TIMEOUT_ERROR_TYPE = "tool_timeout"
 
 MOCK_ORDERS = {
     "order_new": {
@@ -42,6 +45,14 @@ MOCK_ORDERS = {
         "summary": "食品安全场景需保留餐品、包装、照片和订单信息，按高风险处理。",
         "refund_status": "manual_review",
     },
+    "__release_check_owner_order__": {
+        "user_id": "release_check_owner",
+        "order_id": "__release_check_owner_order__",
+        "status": "delivered",
+        "status_label": "已送达",
+        "summary": "release check owner-bound mock order",
+        "refund_status": "none",
+    },
 }
 
 
@@ -65,44 +76,126 @@ def _tool_result(
     }
 
 
-def query_order_status(order_id: str | None) -> dict:
+def _lookup_order(order_id: str | None) -> dict | None:
+    return get_order_state(order_id) or MOCK_ORDERS.get(order_id or "")
+
+
+def _failed_tool_result(
+    tool_name: str,
+    started_at: float,
+    input_data: dict,
+    error_type: str,
+    retryable: bool,
+) -> dict:
+    return _tool_result(
+        tool_name,
+        started_at,
+        input_data,
+        status="failed",
+        error_type=error_type,
+        retryable=retryable,
+    )
+
+
+def _lookup_order_with_contract(tool_name: str, started_at: float, input_data: dict) -> tuple[dict | None, dict | None]:
+    try:
+        order = _lookup_order(str(input_data.get("order_id") or ""))
+    except Exception:
+        return None, _failed_tool_result(
+            tool_name,
+            started_at,
+            input_data,
+            error_type=QUERY_ERROR_TYPE,
+            retryable=True,
+        )
+
+    if time.perf_counter() - started_at > TOOL_TIMEOUT_SECONDS:
+        return None, _failed_tool_result(
+            tool_name,
+            started_at,
+            input_data,
+            error_type=TIMEOUT_ERROR_TYPE,
+            retryable=True,
+        )
+
+    return order, None
+
+
+def _is_wrong_user(order: dict, user_id: str) -> bool:
+    stored_user_id = str(order.get("user_id") or "")
+    return bool(stored_user_id and user_id and stored_user_id != user_id)
+
+
+def query_order_status(user_id: str, order_id: str | None) -> dict:
     started_at = time.perf_counter()
+    input_data = {"user_id": user_id, "order_id": order_id}
     if not order_id:
         return _tool_result(
             "query_order_status",
             started_at,
-            {"order_id": order_id},
+            input_data,
             status="skipped",
             error_type="missing_order_id",
         )
-    order = get_order_state(order_id) or MOCK_ORDERS.get(order_id)
+    order, failure = _lookup_order_with_contract("query_order_status", started_at, input_data)
+    if failure:
+        return failure
+    if order and _is_wrong_user(order, user_id):
+        return _tool_result(
+            "query_order_status",
+            started_at,
+            input_data,
+            status="failed",
+            error_type="order_user_mismatch",
+            retryable=False,
+        )
     if not order:
         return _tool_result(
             "query_order_status",
             started_at,
-            {"order_id": order_id},
+            input_data,
             status="failed",
             error_type="order_not_found",
             retryable=False,
         )
-    return _tool_result("query_order_status", started_at, {"order_id": order_id}, order)
+    return _tool_result("query_order_status", started_at, input_data, order)
 
 
-def query_refund_status(order_id: str | None) -> dict:
+def query_refund_status(user_id: str, order_id: str | None) -> dict:
     started_at = time.perf_counter()
-    order = get_order_state(order_id) or MOCK_ORDERS.get(order_id or "")
+    input_data = {"user_id": user_id, "order_id": order_id}
+    if not order_id:
+        return _tool_result(
+            "query_refund_status",
+            started_at,
+            input_data,
+            status="skipped",
+            error_type="missing_order_id",
+        )
+    order, failure = _lookup_order_with_contract("query_refund_status", started_at, input_data)
+    if failure:
+        return failure
+    if order and _is_wrong_user(order, user_id):
+        return _tool_result(
+            "query_refund_status",
+            started_at,
+            input_data,
+            status="failed",
+            error_type="order_user_mismatch",
+            retryable=False,
+        )
     if not order:
         return _tool_result(
             "query_refund_status",
             started_at,
-            {"order_id": order_id},
-            status="skipped" if not order_id else "failed",
-            error_type="missing_order_id" if not order_id else "order_not_found",
+            input_data,
+            status="failed",
+            error_type="order_not_found",
         )
     return _tool_result(
         "query_refund_status",
         started_at,
-        {"order_id": order_id},
+        input_data,
         {
             "order_id": order_id,
             "refund_status": order.get("refund_status", "none"),

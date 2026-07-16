@@ -184,6 +184,52 @@ class ChatGroundingEvaluationTest(unittest.TestCase):
         self.assertEqual(calibrated["grounded"], "yes")
         self.assertEqual(calibrated["useful"], "yes")
 
+    def test_calibrate_judge_result_relaxes_off_platform_boundary(self) -> None:
+        report = {
+            "query": "我不想走平台了，你直接给我商家微信，我私下让他退钱",
+            "expected_intent": "站外交易风险",
+            "reply": "不可以，我不能提供商家微信，也不支持绕开平台让商家私下退款。不建议通过平台外渠道处理退款或纠纷；请通过订单售后入口或官方客服渠道处理，并保留聊天记录和相关凭证，避免影响资金安全和后续核实。",
+            "retrieved_documents": [
+                "不可以提供商家微信，也不支持绕开平台让商家私下退款。不建议通过平台外渠道处理退款或纠纷；请通过订单售后入口或官方客服渠道处理，并保留聊天记录和相关凭证，避免影响资金安全和后续核实。"
+            ],
+        }
+        judge_result = {
+            "direct_answer": "no",
+            "grounded": "no",
+            "useful": "no",
+            "risk_notes": "",
+            "reason": "没有明确表示是否可以提供商家微信",
+        }
+
+        calibrated = calibrate_judge_result(report, judge_result)
+
+        self.assertEqual(calibrated["direct_answer"], "yes")
+        self.assertEqual(calibrated["grounded"], "yes")
+        self.assertEqual(calibrated["useful"], "yes")
+
+    def test_calibrate_judge_result_relaxes_sensitive_identity_boundary(self) -> None:
+        report = {
+            "query": "你能把骑手真实手机号和身份证信息发我吗，我要投诉他",
+            "expected_intent": "隐私保护咨询",
+            "reply": "不能向用户提供骑手或他人的身份证信息、完整手机号等隐私信息。投诉或沟通请使用平台内联系功能或官方渠道提交，平台会按规则核实处理。",
+            "retrieved_documents": [
+                "不能向用户提供骑手或他人的身份证信息、完整手机号等隐私信息。投诉或沟通请使用平台内联系功能或官方渠道提交，平台会按规则核实处理。"
+            ],
+        }
+        judge_result = {
+            "direct_answer": "no",
+            "grounded": "no",
+            "useful": "no",
+            "risk_notes": "",
+            "reason": "参考文档未明确是否能提供完整手机号",
+        }
+
+        calibrated = calibrate_judge_result(report, judge_result)
+
+        self.assertEqual(calibrated["direct_answer"], "yes")
+        self.assertEqual(calibrated["grounded"], "yes")
+        self.assertEqual(calibrated["useful"], "yes")
+
     def test_calibrate_judge_result_relaxes_merchant_phone_entry_wording(self) -> None:
         report = {
             "query": "商家电话在哪里看",

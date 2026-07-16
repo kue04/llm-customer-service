@@ -1,4 +1,6 @@
 # app/schemas/chat_schema.py
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -35,6 +37,11 @@ class PromptContextItemResponse(BaseModel):
     source_question: str = ""
     source_answer: str = ""
     rank: int
+    knowledge_id: str = ""
+    title: str = ""
+    version: str = ""
+    updated_at: str = ""
+    source: str = ""
     category: str
     intent: str
     question: str
@@ -44,7 +51,14 @@ class PromptContextItemResponse(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    request_id: str = ""
     reply: str
+    risk_level: str = "low"
+    confidence_level: str = "medium"
+    need_human_review: bool = True
+    human_review_reason: str = "v1 默认客服确认后发送"
+    citations: list[dict] = Field(default_factory=list)
+    conversation_status: str = "pending_agent_review"
     answer_basis: str = ""
     evidence_citations: list[dict] = Field(default_factory=list)
     tool_results: list[dict] = Field(default_factory=list)
@@ -61,6 +75,7 @@ class ChatResponse(BaseModel):
     context_used: dict = Field(default_factory=dict)
     safety_status: dict = Field(default_factory=dict)
     final_prompt: str
+    prompt_version: str = ""
     retrieved_documents: list[str]
     retrieved_items: list[dict] = Field(default_factory=list)
     prompt_context_items: list[PromptContextItemResponse] = Field(default_factory=list)
@@ -95,3 +110,30 @@ class ChatHistoryResponse(BaseModel):
     order_id: str | None = None
     messages: list[ChatHistoryMessage] = Field(default_factory=list)
     latest_response: dict = Field(default_factory=dict)
+
+
+ReviewAction = Literal["accepted", "edited_and_sent", "human_handoff", "marked_bad_case"]
+
+
+class ChatReviewActionRequest(BaseModel):
+    request_id: str = Field(min_length=1)
+    action: ReviewAction
+    operator_id: str = "demo_agent"
+    operator_role: str = "agent"
+    final_reply: str = ""
+    reason: str = ""
+
+
+class ChatReviewActionResponse(BaseModel):
+    request_id: str
+    session_id: str
+    user_id: str
+    order_id: str | None = None
+    action: ReviewAction
+    status: str
+    final_reply: str = ""
+    reason: str = ""
+    handoff_ticket: dict | None = None
+    audit_id: int | None = None
+    saved: bool = True
+    created_at: str

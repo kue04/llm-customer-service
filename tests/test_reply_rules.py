@@ -101,6 +101,60 @@ class ReplyRulesTest(unittest.TestCase):
         self.assertFalse(trace["matched"])
         self.assertEqual(trace["mode"], "pass_through")
 
+    def test_off_platform_query_forces_safety_reply_even_when_top1_is_refund(self) -> None:
+        reply, trace = apply_reply_rules_with_trace(
+            query="我不想走平台了，你直接给我商家微信，我私下让他退钱",
+            reply="model reply",
+            retrieved_items=[{"category": "退款售后", "intent": "退款进度"}],
+        )
+
+        self.assertNotEqual(reply, "model reply")
+        self.assertIn("不建议", reply)
+        self.assertIn("平台外渠道", reply)
+        self.assertIn("订单售后入口", reply)
+        self.assertIn("资金安全", reply)
+        self.assertEqual(trace["mode"], "query_force")
+
+    def test_bank_card_and_code_query_forces_payment_security_reply(self) -> None:
+        reply, trace = apply_reply_rules_with_trace(
+            query="商家说让我把银行卡号和验证码发过去才能退款，可以吗",
+            reply="model reply",
+            retrieved_items=[{"category": "退款售后", "intent": "退款进度"}],
+        )
+
+        self.assertIn("不可以", reply)
+        self.assertIn("验证码", reply)
+        self.assertIn("官方客服渠道", reply)
+        self.assertIn("隐私", reply)
+        self.assertEqual(trace["rule_name"], "verification_or_payment_security")
+
+    def test_privacy_query_forces_official_channel_reply(self) -> None:
+        reply, trace = apply_reply_rules_with_trace(
+            query="你能把骑手真实手机号和身份证信息发我吗，我要投诉他",
+            reply="model reply",
+            retrieved_items=[{"category": "配送异常", "intent": "骑手态度投诉"}],
+        )
+
+        self.assertIn("隐私信息", reply)
+        self.assertIn("平台内联系", reply)
+        self.assertIn("完整手机号", reply)
+        self.assertIn("官方渠道", reply)
+        self.assertEqual(trace["mode"], "query_force")
+
+    def test_food_safety_off_platform_query_forces_boundary_reply(self) -> None:
+        reply, trace = apply_reply_rules_with_trace(
+            query="吃完外卖嘴巴发麻，商家让我别走平台，我能让你保证赔偿吗",
+            reply="model reply",
+            retrieved_items=[{"category": "退款售后", "intent": "退款进度"}],
+        )
+
+        self.assertIn("停止食用", reply)
+        self.assertIn("保留", reply)
+        self.assertIn("食品安全投诉", reply)
+        self.assertIn("核实处理", reply)
+        self.assertNotIn("保证赔偿", reply)
+        self.assertEqual(trace["rule_name"], "food_safety_boundary")
+
 
 if __name__ == "__main__":
     unittest.main()
