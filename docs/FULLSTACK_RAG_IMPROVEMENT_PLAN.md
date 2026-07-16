@@ -1608,3 +1608,14 @@ docs: update fullstack RAG console guide
 10. Release report 指纹不一致仍显示 pass。
 11. npm run build 或后端目标测试没有通过。
 12. 为了单个固定 case 再增加意图专用 Answer Composer 硬编码。
+
+---
+
+## 7. 实施记录
+
+### 2026-07-16：里程碑 1 后端契约基线
+
+- 新增 `scripts/export_openapi.py`，从 FastAPI `app.openapi()` 导出完整接口契约到 `docs/openapi.json`。
+- 新增 `tests/test_export_openapi.py`，固定 `/chat/prompt`、`/retrieval/search`、`/knowledge/items` 三条全栈关键链路。
+- 验收命令：`python -m pytest tests/test_export_openapi.py -q`。
+- 当前结果：`1 passed`；OpenAPI 文件可以被前端 `openapi-typescript` 直接消费。
