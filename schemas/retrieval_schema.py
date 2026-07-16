@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-RetrievalMode = Literal["vector", "hybrid"]
+RetrievalMode = Literal["dense", "hybrid"]
 
 
 class RetrievalSearchRequest(BaseModel):
@@ -28,6 +28,12 @@ class RetrievalResultItem(BaseModel):
     vector_score: float
     keyword_bonus: float
     direction_penalty: float
+    dense_rank: int | None = None
+    lexical_rank: int | None = None
+    dense_score: float = 0.0
+    lexical_score: float = 0.0
+    rrf_score: float = 0.0
+    retrieval_origin: str = "dense"
     reranker_degraded: bool = False
     reranker_error: str = ""
     category: str

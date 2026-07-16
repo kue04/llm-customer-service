@@ -1629,3 +1629,12 @@ docs: update fullstack RAG console guide
 - index、docs、manifest 使用同目录临时文件写入，最后切换 manifest；内存缓存命中时不再重复读取磁盘索引。
 - Reranker 异常改为 fail-open：保留 Dense/Hybrid 候选及基础排序，候选和 Chat trace 均标记降级原因。
 - `/retrieval/config` 返回索引版本、知识数量、向量维度、构建时间和 Manifest 状态；Release Gate 增加 `vector_manifest` 检查。
+
+### 2026-07-17：里程碑 3 多路召回与 Retrieval V2
+
+- 新增 Jieba + BM25Okapi 词法召回，并将知识实体元数据纳入索引文本；五条固定查询 Top3 均命中目标 intent。
+- 新增 Dense Top30、BM25 Top30、RRF Top20 融合，返回两路 rank/score、RRF、CrossEncoder、规则分和最终分。
+- 检索模式契约由 `vector | hybrid` 更新为 `dense | hybrid`，并保留 Reranker fail-open。
+- 新增 120 条 Retrieval V2 数据集，六类各 20 条；支持五组消融、Recall@K、MRR、nDCG@5、P50/P95、分组指标和失败 case。
+- 实测 Hybrid + Reranker：Recall@3 `0.9667`、MRR `0.9371`、高风险 Recall@3 `1.0000`。
+- 当前 Release Gate 未通过：Hybrid P95 `102.18ms`，Dense P95 `4.90ms`，超过 `1.5x` 延迟门槛；`retrieval_v2` 检查会明确阻断发布，不继续里程碑 4。

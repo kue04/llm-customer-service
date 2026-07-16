@@ -372,6 +372,10 @@ class ReleaseSmokeFlowTest(unittest.TestCase):
                 "vector_built_at": "2026-07-16T12:00:00Z",
                 "vector_manifest_status": "ready",
             },
+        ), patch.object(
+            self.release_check_service,
+            "build_retrieval_v2_status",
+            return_value={"status": "pass", "evidence": "release smoke", "next_step": ""},
         ):
             checklist_response = self.client.get("/release/checklist")
 

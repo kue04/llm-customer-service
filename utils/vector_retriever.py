@@ -16,7 +16,14 @@ except ModuleNotFoundError:
     SentenceTransformer = None
 
 from config.rag_config import get_rag_config
+from utils.hybrid_retriever import (
+    DEFAULT_DENSE_TOP_K,
+    DEFAULT_FUSION_TOP_K,
+    DEFAULT_LEXICAL_TOP_K,
+    reciprocal_rank_fusion,
+)
 from utils.knowledge_filter import select_latest_active_items
+from utils.lexical_retriever import LexicalRetriever
 from utils.retriever import iter_knowledge_items, is_similar_answer
 from utils.vector_store_manifest import build_vector_store_manifest, manifest_is_compatible
 
@@ -27,6 +34,7 @@ _EMBEDDING_MODEL: SentenceTransformer | None = None
 _REAL_VECTOR_DOCS: list[dict] | None = None
 _REAL_FAISS_INDEX: faiss.IndexFlatIP | None = None
 _REAL_VECTOR_MANIFEST: dict | None = None
+_LEXICAL_RETRIEVER: LexicalRetriever | None = None
 
 DEFAULT_MODEL_RERANK_WEIGHT = get_rag_config().model_rerank_weight
 DEFAULT_MIN_VECTOR_SCORE = get_rag_config().min_vector_score
@@ -114,6 +122,7 @@ def build_document_text(item: dict) -> str:
         f"意图：{item.get('intent', '')}",
         f"问题：{item.get('question', '')}",
         f"答案：{item.get('answer', '')}",
+        f"实体：{json.dumps(item.get('entities', {}), ensure_ascii=False, sort_keys=True)}",
     ]
     return "\n".join(parts)
 
@@ -141,6 +150,14 @@ def get_real_vector_documents() -> list[dict]:
         _REAL_VECTOR_DOCS = load_vector_documents()
 
     return _REAL_VECTOR_DOCS
+
+
+def get_lexical_retriever() -> LexicalRetriever:
+    global _LEXICAL_RETRIEVER
+
+    if _LEXICAL_RETRIEVER is None:
+        _LEXICAL_RETRIEVER = LexicalRetriever(get_real_vector_documents())
+    return _LEXICAL_RETRIEVER
 
 
 def build_real_vector_index() -> faiss.IndexFlatIP:
@@ -208,12 +225,13 @@ def temporary_path(path: Path) -> Path:
 
 
 def reset_vector_store_cache() -> None:
-    global _TOY_VECTOR_INDEX, _REAL_VECTOR_DOCS, _REAL_FAISS_INDEX, _REAL_VECTOR_MANIFEST
+    global _TOY_VECTOR_INDEX, _REAL_VECTOR_DOCS, _REAL_FAISS_INDEX, _REAL_VECTOR_MANIFEST, _LEXICAL_RETRIEVER
 
     _TOY_VECTOR_INDEX = None
     _REAL_VECTOR_DOCS = None
     _REAL_FAISS_INDEX = None
     _REAL_VECTOR_MANIFEST = None
+    _LEXICAL_RETRIEVER = None
 
 
 def load_real_vector_store() -> bool:
@@ -688,6 +706,11 @@ def supplement_candidates_by_intent_hint(
                 "text": document["text"],
                 "source": source,
                 "direction_penalty": 0.0,
+                "dense_rank": None,
+                "lexical_rank": None,
+                "dense_score": 0.0,
+                "lexical_score": 0.0,
+                "rrf_score": 0.0,
                 "_retrieval_origin": "intent_hint_supplement",
             }
         )
@@ -810,30 +833,62 @@ def retrieve_by_real_vector(
     min_score: float = DEFAULT_MIN_VECTOR_SCORE,
     use_hybrid: bool = True,
     rerank_weight: float = DEFAULT_MODEL_RERANK_WEIGHT,
+    apply_rules: bool | None = None,
+    apply_reranker: bool = True,
 ) -> list[dict]:
-    top_k = max(limit * 5, 20)
-    faiss_hits = _search_real_faiss(query, top_k=top_k)
+    rules_enabled = use_hybrid if apply_rules is None else apply_rules
+    faiss_hits = _search_real_faiss(query, top_k=DEFAULT_DENSE_TOP_K)
+    dense_hits = [(doc_index, score) for doc_index, score in faiss_hits if score >= min_score]
     documents = get_real_vector_documents()
     raw_candidates = []
 
-    for doc_index, similarity in faiss_hits:
-        if similarity < min_score:
-            continue
-
-        document = documents[doc_index]
-        candidate = _build_raw_candidate(query, document, similarity, use_hybrid)
-        candidate["_retrieval_origin"] = "faiss"
-        raw_candidates.append(candidate)
+    if use_hybrid:
+        lexical_hits = get_lexical_retriever().search(query, top_k=DEFAULT_LEXICAL_TOP_K)
+        fused_hits = reciprocal_rank_fusion(
+            dense_hits,
+            lexical_hits,
+            top_k=DEFAULT_FUSION_TOP_K,
+        )
+        for hit in fused_hits:
+            document = documents[hit["doc_index"]]
+            candidate = _build_raw_candidate(query, document, hit["dense_score"], rules_enabled)
+            candidate.update(hit)
+            candidate["score"] = hit["rrf_score"] + candidate["keyword_bonus"] - candidate["direction_penalty"]
+            candidate["_retrieval_origin"] = hit["retrieval_origin"]
+            raw_candidates.append(candidate)
+    else:
+        for dense_rank, (doc_index, similarity) in enumerate(dense_hits, start=1):
+            document = documents[doc_index]
+            candidate = _build_raw_candidate(query, document, similarity, rules_enabled)
+            candidate.update(
+                {
+                    "dense_rank": dense_rank,
+                    "lexical_rank": None,
+                    "dense_score": similarity,
+                    "lexical_score": 0.0,
+                    "rrf_score": 0.0,
+                    "_retrieval_origin": "dense",
+                }
+            )
+            raw_candidates.append(candidate)
 
     raw_candidates = supplement_candidates_by_intent_hint(
         raw_candidates,
         detect_intent_hint(query),
     )
-    raw_candidates = rerank_candidates(
-        query,
-        raw_candidates,
-        model_rerank_weight=rerank_weight,
-    )
+    if apply_reranker:
+        raw_candidates = rerank_candidates(
+            query,
+            raw_candidates,
+            model_rerank_weight=rerank_weight,
+        )
+    else:
+        for candidate in raw_candidates:
+            candidate["rerank_score"] = candidate["score"]
+            candidate["model_rerank_score"] = 0.0
+            candidate["reranker_degraded"] = False
+            candidate["reranker_error"] = ""
+        raw_candidates.sort(key=lambda candidate: candidate["score"], reverse=True)
 
     return _dedupe_candidates(raw_candidates, limit)
 
@@ -879,6 +934,11 @@ def retrieve_rag_items(
                 "vector_score": candidate.get("vector_score", 0.0),
                 "keyword_bonus": candidate.get("keyword_bonus", 0.0),
                 "direction_penalty": candidate.get("direction_penalty", 0.0),
+                "dense_rank": candidate.get("dense_rank"),
+                "lexical_rank": candidate.get("lexical_rank"),
+                "dense_score": candidate.get("dense_score", 0.0),
+                "lexical_score": candidate.get("lexical_score", 0.0),
+                "rrf_score": candidate.get("rrf_score", 0.0),
                 "reranker_degraded": bool(candidate.get("reranker_degraded", False)),
                 "reranker_error": str(candidate.get("reranker_error", "")),
                 "retrieval_origin": candidate.get("_retrieval_origin", "faiss"),

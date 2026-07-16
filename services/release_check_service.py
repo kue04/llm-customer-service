@@ -16,6 +16,7 @@ from utils.vector_retriever import get_vector_store_status
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 GROUNDING_REPORT_DIR = PROJECT_ROOT / "reports" / "chat_grounding"
 RELEASE_REPORT_DIR = PROJECT_ROOT / "reports" / "release_eval"
+RETRIEVAL_V2_REPORT_PATH = PROJECT_ROOT / "reports" / "retrieval_v2.json"
 MIN_EVALUATION_CASES = 100
 MIN_HIGH_RISK_CASES = 40
 MIN_JUDGE_PASS_RATE = 0.85
@@ -318,6 +319,36 @@ def build_audit_coverage_status(
     return {"status": "pass", "evidence": evidence, "next_step": ""}
 
 
+def build_retrieval_v2_status(report: dict | None = None) -> dict:
+    if report is None:
+        if not RETRIEVAL_V2_REPORT_PATH.exists():
+            return {
+                "status": "warn",
+                "evidence": "missing retrieval_v2 report",
+                "next_step": "运行 scripts/evaluate_retrieval_v2.py --config all",
+            }
+        report = json.loads(RETRIEVAL_V2_REPORT_PATH.read_text(encoding="utf-8"))
+    results = report.get("results", {})
+    hybrid = results.get("hybrid_rerank", {}).get("overall", {})
+    dense = results.get("dense_only", {}).get("overall", {})
+    gate = report.get("release_gate", {})
+    failed_checks = [name for name, passed in gate.get("checks", {}).items() if not passed]
+    evidence = (
+        f"hybrid_recall@3={float(hybrid.get('recall_at_3') or 0.0):.4f}; "
+        f"hybrid_mrr={float(hybrid.get('mrr') or 0.0):.4f}; "
+        f"dense_mrr={float(dense.get('mrr') or 0.0):.4f}; "
+        f"hybrid_p95={float(hybrid.get('p95_ms') or 0.0):.2f}ms; "
+        f"dense_p95={float(dense.get('p95_ms') or 0.0):.2f}ms"
+    )
+    if failed_checks:
+        evidence = f"{evidence}; failed={','.join(failed_checks)}"
+    return {
+        "status": "pass" if gate.get("passed") else "fail",
+        "evidence": evidence,
+        "next_step": "优化未通过的 Retrieval V2 准入项" if failed_checks else "",
+    }
+
+
 def build_release_checklist() -> dict:
     items = []
 
@@ -368,6 +399,16 @@ def build_release_checklist() -> dict:
                 f"built_at={vector_status['vector_built_at']}"
             ),
             "重新发布知识库并构建 FAISS manifest" if not manifest_ready else "",
+        )
+    )
+
+    retrieval_v2 = build_retrieval_v2_status()
+    items.append(
+        _item(
+            "retrieval_v2",
+            retrieval_v2["status"],
+            retrieval_v2["evidence"],
+            retrieval_v2["next_step"],
         )
     )
 

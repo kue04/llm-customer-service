@@ -1,0 +1,120 @@
+{"id": "retrieval_baseline_001", "case_type": "baseline", "risk_level": "low", "query": "退款多久到账", "expected_intents": ["退款进度"], "source_case_id": "case_baseline_001"}
+{"id": "retrieval_baseline_002", "case_type": "baseline", "risk_level": "low", "query": "订单取消后钱多久退回来", "expected_intents": ["退款进度"], "source_case_id": "case_baseline_002"}
+{"id": "retrieval_baseline_003", "case_type": "baseline", "risk_level": "low", "query": "我取消订单后为什么只退了一部分钱", "expected_intents": ["退款金额咨询"], "source_case_id": "case_baseline_003"}
+{"id": "retrieval_baseline_004", "case_type": "baseline", "risk_level": "low", "query": "我申请退款失败了怎么办", "expected_intents": ["退款失败"], "source_case_id": "case_baseline_004"}
+{"id": "retrieval_baseline_005", "case_type": "baseline", "risk_level": "low", "query": "商家拒绝退款怎么办", "expected_intents": ["商家拒绝退款"], "source_case_id": "case_baseline_005"}
+{"id": "retrieval_baseline_006", "case_type": "baseline", "risk_level": "low", "query": "外卖超时了怎么办", "expected_intents": ["超时取消追问"], "source_case_id": "case_baseline_006"}
+{"id": "retrieval_baseline_007", "case_type": "baseline", "risk_level": "low", "query": "商家已经接单了还能取消吗", "expected_intents": ["接单后取消"], "source_case_id": "case_baseline_007"}
+{"id": "retrieval_baseline_008", "case_type": "baseline", "risk_level": "low", "query": "骑手已经取餐了我还能取消吗", "expected_intents": ["取餐后取消"], "source_case_id": "case_baseline_008"}
+{"id": "retrieval_baseline_009", "case_type": "baseline", "risk_level": "low", "query": "商家一直不接单我想取消订单", "expected_intents": ["取消订单"], "source_case_id": "case_baseline_009"}
+{"id": "retrieval_baseline_010", "case_type": "baseline", "risk_level": "low", "query": "骑手联系不上怎么办", "expected_intents": ["配送异常追问"], "source_case_id": "case_baseline_010"}
+{"id": "retrieval_baseline_011", "case_type": "baseline", "risk_level": "low", "query": "骑手一直停在一个地方不动怎么办", "expected_intents": ["催单"], "source_case_id": "case_baseline_011"}
+{"id": "retrieval_baseline_012", "case_type": "baseline", "risk_level": "low", "query": "订单显示已送达但我没收到餐", "expected_intents": ["未收到餐"], "source_case_id": "case_baseline_012"}
+{"id": "retrieval_baseline_013", "case_type": "baseline", "risk_level": "low", "query": "下雨天外卖迟到了可以赔吗", "expected_intents": ["延误补偿"], "source_case_id": "case_baseline_013"}
+{"id": "retrieval_baseline_014", "case_type": "baseline", "risk_level": "low", "query": "我的地址写错了骑手已经到原地址了怎么办", "expected_intents": ["地址修改追问"], "source_case_id": "case_baseline_014"}
+{"id": "retrieval_baseline_015", "case_type": "baseline", "risk_level": "low", "query": "餐洒了怎么申请售后", "expected_intents": ["餐品撒漏售后"], "source_case_id": "case_baseline_015"}
+{"id": "retrieval_baseline_016", "case_type": "baseline", "risk_level": "low", "query": "餐品有异物可以赔吗", "expected_intents": ["食品安全投诉"], "source_case_id": "case_baseline_016"}
+{"id": "retrieval_baseline_017", "case_type": "baseline", "risk_level": "low", "query": "我点了两杯奶茶只送来一杯怎么办", "expected_intents": ["少送漏送"], "source_case_id": "case_baseline_017"}
+{"id": "retrieval_baseline_018", "case_type": "baseline", "risk_level": "low", "query": "商家送错餐了怎么办", "expected_intents": ["错送餐品"], "source_case_id": "case_baseline_018"}
+{"id": "retrieval_baseline_019", "case_type": "baseline", "risk_level": "low", "query": "备注了不要辣结果还是很辣怎么办", "expected_intents": ["备注未满足"], "source_case_id": "case_baseline_019"}
+{"id": "retrieval_baseline_020", "case_type": "baseline", "risk_level": "low", "query": "骑手态度特别差怎么投诉", "expected_intents": ["骑手态度投诉"], "source_case_id": "case_baseline_020"}
+{"id": "retrieval_paraphrase_001", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：商家电话在哪里看", "expected_intents": ["商家电话咨询"], "source_case_id": "case_baseline_021"}
+{"id": "retrieval_paraphrase_002", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：平台客服可以直接帮我联系商家吗", "expected_intents": ["联系商家咨询"], "source_case_id": "case_baseline_022"}
+{"id": "retrieval_paraphrase_003", "case_type": "paraphrase", "risk_level": "low", "query": "骑手让我私下转配送费行不行", "expected_intents": ["私下收费风险"], "source_case_id": "case_baseline_023"}
+{"id": "retrieval_paraphrase_004", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：平台客服可以看我的手机号吗", "expected_intents": ["隐私保护咨询"], "source_case_id": "case_baseline_024"}
+{"id": "retrieval_paraphrase_005", "case_type": "paraphrase", "risk_level": "low", "query": "骑手让我发验证码给他行不行", "expected_intents": ["验证码诈骗提醒"], "source_case_id": "case_baseline_025"}
+{"id": "retrieval_paraphrase_006", "case_type": "paraphrase", "risk_level": "low", "query": "优惠券是什么原因用不了", "expected_intents": ["优惠券不可用"], "source_case_id": "case_baseline_026"}
+{"id": "retrieval_paraphrase_007", "case_type": "paraphrase", "risk_level": "low", "query": "满减活动是什么原因没有自动减", "expected_intents": ["满减未生效"], "source_case_id": "case_baseline_027"}
+{"id": "retrieval_paraphrase_008", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：优惠券可以和满减一起用吗", "expected_intents": ["优惠叠加咨询"], "source_case_id": "case_baseline_028"}
+{"id": "retrieval_paraphrase_009", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：支付超时订单被取消了钱会退吗", "expected_intents": ["支付超时取消"], "source_case_id": "case_baseline_029"}
+{"id": "retrieval_paraphrase_010", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：可以开发票吗", "expected_intents": ["发票开具咨询"], "source_case_id": "case_baseline_030"}
+{"id": "retrieval_paraphrase_011", "case_type": "paraphrase", "risk_level": "low", "query": "是什么原因取消后没有把钱全退给我", "expected_intents": ["退款金额咨询"], "source_case_id": "case_baseline_031"}
+{"id": "retrieval_paraphrase_012", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：骑手位置半天没变化我该催谁", "expected_intents": ["催单"], "source_case_id": "case_baseline_032"}
+{"id": "retrieval_paraphrase_013", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：地址填错了但骑手已经快到旧地址了", "expected_intents": ["地址修改追问"], "source_case_id": "case_baseline_033"}
+{"id": "retrieval_paraphrase_014", "case_type": "paraphrase", "risk_level": "low", "query": "我备注不要香菜结果还是放了该怎么处理", "expected_intents": ["备注未满足"], "source_case_id": "case_baseline_034"}
+{"id": "retrieval_paraphrase_015", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：怎么找到店家的联系电话", "expected_intents": ["商家电话咨询"], "source_case_id": "case_baseline_035"}
+{"id": "retrieval_paraphrase_016", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：我都没吃上凭什么还扣我钱", "expected_intents": ["退款金额咨询"], "source_case_id": "case_baseline_036"}
+{"id": "retrieval_paraphrase_017", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：骑手卡住不动是不是不想送了，我要怎么处理", "expected_intents": ["催单"], "source_case_id": "case_baseline_037"}
+{"id": "retrieval_paraphrase_018", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：别让我点联系商家了，你能直接给我店家手机号吗", "expected_intents": ["商家电话咨询"], "source_case_id": "case_baseline_038"}
+{"id": "retrieval_paraphrase_019", "case_type": "paraphrase", "risk_level": "low", "query": "换个说法咨询一下：餐没拿到还扣配送费合理吗", "expected_intents": ["退款金额咨询"], "source_case_id": "case_baseline_039"}
+{"id": "retrieval_paraphrase_020", "case_type": "paraphrase", "risk_level": "low", "query": "我不要在线联系，你直接帮我打给店家行不行", "expected_intents": ["联系商家咨询"], "source_case_id": "case_baseline_040"}
+{"id": "retrieval_typo_colloquial_001", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，钱啥时候能退回来啊", "expected_intents": ["退款进度"], "source_case_id": "refund_oral_001"}
+{"id": "retrieval_typo_colloquial_002", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，这单咋只退这么点钱", "expected_intents": ["退款金额咨询"], "source_case_id": "refund_oral_002"}
+{"id": "retrieval_typo_colloquial_003", "case_type": "typo_colloquial", "risk_level": "low", "query": "骑首咋一直不动啊", "expected_intents": ["催单"], "source_case_id": "delivery_oral_001"}
+{"id": "retrieval_typo_colloquial_004", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，显示送到了但我真没拿到", "expected_intents": ["未收到餐"], "source_case_id": "delivery_oral_002"}
+{"id": "retrieval_typo_colloquial_005", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，汤全漏了咋弄", "expected_intents": ["餐品撒漏售后"], "source_case_id": "food_oral_001"}
+{"id": "retrieval_typo_colloquial_006", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，给我送错了，能处理不", "expected_intents": ["错送餐品"], "source_case_id": "food_oral_002"}
+{"id": "retrieval_typo_colloquial_007", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，券咋用不了呢", "expected_intents": ["优惠券不可用"], "source_case_id": "promo_oral_001"}
+{"id": "retrieval_typo_colloquial_008", "case_type": "typo_colloquial", "risk_level": "low", "query": "骑首说话太冲了去哪投诉", "expected_intents": ["骑手态度投诉"], "source_case_id": "complaint_oral_001"}
+{"id": "retrieval_typo_colloquial_009", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，他让我把验证码发过去，行吗", "expected_intents": ["验证码诈骗提醒"], "source_case_id": "safety_oral_001"}
+{"id": "retrieval_typo_colloquial_010", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，发票在哪开呀", "expected_intents": ["发票开具咨询"], "source_case_id": "faq_oral_001"}
+{"id": "retrieval_typo_colloquial_011", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，商家能看到我的真实手机号吗", "expected_intents": ["隐私保护咨询"], "source_case_id": "case_baseline_041"}
+{"id": "retrieval_typo_colloquial_012", "case_type": "typo_colloquial", "risk_level": "low", "query": "我备注花生过敏但还是放了花生咋整", "expected_intents": ["备注未满足"], "source_case_id": "case_baseline_042"}
+{"id": "retrieval_typo_colloquial_013", "case_type": "typo_colloquial", "risk_level": "low", "query": "骑首说到了但定位还在很远，我该咋整", "expected_intents": ["配送异常追问"], "source_case_id": "case_baseline_043"}
+{"id": "retrieval_typo_colloquial_014", "case_type": "typo_colloquial", "risk_level": "low", "query": "骑首取餐后我一直没收到，能不能退", "expected_intents": ["未收到餐"], "source_case_id": "case_baseline_044"}
+{"id": "retrieval_typo_colloquial_015", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，店家已经开始做了我不想要了还能退全款吗", "expected_intents": ["接单后取消"], "source_case_id": "case_baseline_045"}
+{"id": "retrieval_typo_colloquial_016", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，我写了忌口备注商家没照做，这算餐品问题吗", "expected_intents": ["备注未满足"], "source_case_id": "case_baseline_046"}
+{"id": "retrieval_typo_colloquial_017", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，退款多久到账", "expected_intents": ["退款进度"], "source_case_id": "case_baseline_001"}
+{"id": "retrieval_typo_colloquial_018", "case_type": "typo_colloquial", "risk_level": "low", "query": "帮我瞅瞅，订单取消后钱多久退回来", "expected_intents": ["退款进度"], "source_case_id": "case_baseline_002"}
+{"id": "retrieval_typo_colloquial_019", "case_type": "typo_colloquial", "risk_level": "low", "query": "我取消订单后咋回事只退了一部分钱", "expected_intents": ["退款金额咨询"], "source_case_id": "case_baseline_003"}
+{"id": "retrieval_typo_colloquial_020", "case_type": "typo_colloquial", "risk_level": "low", "query": "我申请退款失败了咋整", "expected_intents": ["退款失败"], "source_case_id": "case_baseline_004"}
+{"id": "retrieval_direction_conflict_001", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：商家拒绝退款怎么办", "expected_intents": ["商家拒绝退款"], "source_case_id": "case_baseline_005"}
+{"id": "retrieval_direction_conflict_002", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：商家已经接单了还能取消吗", "expected_intents": ["接单后取消"], "source_case_id": "case_baseline_007"}
+{"id": "retrieval_direction_conflict_003", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：骑手已经取餐了我还能取消吗", "expected_intents": ["取餐后取消"], "source_case_id": "case_baseline_008"}
+{"id": "retrieval_direction_conflict_004", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：商家一直不接单我想取消订单", "expected_intents": ["取消订单"], "source_case_id": "case_baseline_009"}
+{"id": "retrieval_direction_conflict_005", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：骑手联系不上怎么办", "expected_intents": ["配送异常追问"], "source_case_id": "case_baseline_010"}
+{"id": "retrieval_direction_conflict_006", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：骑手一直停在一个地方不动怎么办", "expected_intents": ["催单"], "source_case_id": "case_baseline_011"}
+{"id": "retrieval_direction_conflict_007", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：我的地址写错了骑手已经到原地址了怎么办", "expected_intents": ["地址修改追问"], "source_case_id": "case_baseline_014"}
+{"id": "retrieval_direction_conflict_008", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：商家送错餐了怎么办", "expected_intents": ["错送餐品"], "source_case_id": "case_baseline_018"}
+{"id": "retrieval_direction_conflict_009", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：骑手态度特别差怎么投诉", "expected_intents": ["骑手态度投诉"], "source_case_id": "case_baseline_020"}
+{"id": "retrieval_direction_conflict_010", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：商家电话在哪里看", "expected_intents": ["商家电话咨询"], "source_case_id": "case_baseline_021"}
+{"id": "retrieval_direction_conflict_011", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：平台客服可以直接帮我联系商家吗", "expected_intents": ["联系商家咨询"], "source_case_id": "case_baseline_022"}
+{"id": "retrieval_direction_conflict_012", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：骑手让我私下转配送费可以吗", "expected_intents": ["私下收费风险"], "source_case_id": "case_baseline_023"}
+{"id": "retrieval_direction_conflict_013", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：平台客服可以看我的手机号吗", "expected_intents": ["隐私保护咨询"], "source_case_id": "case_baseline_024"}
+{"id": "retrieval_direction_conflict_014", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：骑手让我发验证码给他可以吗", "expected_intents": ["验证码诈骗提醒"], "source_case_id": "case_baseline_025"}
+{"id": "retrieval_direction_conflict_015", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：骑手位置半天没变化我该催谁", "expected_intents": ["催单"], "source_case_id": "case_baseline_032"}
+{"id": "retrieval_direction_conflict_016", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：地址填错了但骑手已经快到旧地址了", "expected_intents": ["地址修改追问"], "source_case_id": "case_baseline_033"}
+{"id": "retrieval_direction_conflict_017", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：怎么找到店家的联系电话", "expected_intents": ["商家电话咨询"], "source_case_id": "case_baseline_035"}
+{"id": "retrieval_direction_conflict_018", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：骑手卡住不动是不是不想送了，我要怎么处理", "expected_intents": ["催单"], "source_case_id": "case_baseline_037"}
+{"id": "retrieval_direction_conflict_019", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：别让我点联系商家了，你能直接给我店家手机号吗", "expected_intents": ["商家电话咨询"], "source_case_id": "case_baseline_038"}
+{"id": "retrieval_direction_conflict_020", "case_type": "direction_conflict", "risk_level": "low", "query": "请按我描述的角色方向判断，不要把双方弄反：我不要在线联系，你直接帮我打给店家可以吗", "expected_intents": ["联系商家咨询"], "source_case_id": "case_baseline_040"}
+{"id": "retrieval_multi_intent_001", "case_type": "multi_intent", "risk_level": "low", "query": "外卖超时我取消了，重点是钱什么时候退回来", "expected_intents": ["退款进度"], "source_case_id": "refund_multi_001"}
+{"id": "retrieval_multi_intent_002", "case_type": "multi_intent", "risk_level": "low", "query": "没收到餐还扣了配送费，我不是问骑手在哪，我想问扣费能不能核实", "expected_intents": ["退款金额咨询"], "source_case_id": "refund_multi_002"}
+{"id": "retrieval_multi_intent_003", "case_type": "multi_intent", "risk_level": "low", "query": "骑手电话打不通，订单又显示快到了，我应该继续等还是反馈异常", "expected_intents": ["配送异常追问"], "source_case_id": "delivery_multi_001"}
+{"id": "retrieval_multi_intent_004", "case_type": "multi_intent", "risk_level": "low", "query": "餐洒了还少送一份，我先按哪个问题申请售后", "expected_intents": ["餐品撒漏售后"], "source_case_id": "food_multi_001"}
+{"id": "retrieval_multi_intent_005", "case_type": "multi_intent", "risk_level": "low", "query": "送错餐了而且我备注不要香菜也没照做，这个怎么提交", "expected_intents": ["错送餐品"], "source_case_id": "food_multi_002"}
+{"id": "retrieval_multi_intent_006", "case_type": "multi_intent", "risk_level": "low", "query": "优惠券没用上，满减也没减，我该先看哪个规则", "expected_intents": ["优惠券不可用"], "source_case_id": "promo_multi_001"}
+{"id": "retrieval_multi_intent_007", "case_type": "multi_intent", "risk_level": "low", "query": "骑手让我私下转钱还让我发验证码，说这样退款更快，可以吗", "expected_intents": ["验证码诈骗提醒"], "source_case_id": "safety_multi_001"}
+{"id": "retrieval_multi_intent_008", "case_type": "multi_intent", "risk_level": "low", "query": "商家不回我，骑手态度也不好，我想投诉该从订单里哪里进", "expected_intents": ["骑手态度投诉"], "source_case_id": "complaint_multi_001"}
+{"id": "retrieval_multi_intent_009", "case_type": "multi_intent", "risk_level": "low", "query": "退款多久到账；另外，订单取消后钱多久退回来", "expected_intents": ["退款进度", "退款进度"], "source_case_id": "case_baseline_001"}
+{"id": "retrieval_multi_intent_010", "case_type": "multi_intent", "risk_level": "low", "query": "我取消订单后为什么只退了一部分钱；另外，我申请退款失败了怎么办", "expected_intents": ["退款金额咨询", "退款失败"], "source_case_id": "case_baseline_003"}
+{"id": "retrieval_multi_intent_011", "case_type": "multi_intent", "risk_level": "low", "query": "商家拒绝退款怎么办；另外，外卖超时了怎么办", "expected_intents": ["商家拒绝退款", "超时取消追问"], "source_case_id": "case_baseline_005"}
+{"id": "retrieval_multi_intent_012", "case_type": "multi_intent", "risk_level": "low", "query": "商家已经接单了还能取消吗；另外，骑手已经取餐了我还能取消吗", "expected_intents": ["接单后取消", "取餐后取消"], "source_case_id": "case_baseline_007"}
+{"id": "retrieval_multi_intent_013", "case_type": "multi_intent", "risk_level": "low", "query": "商家一直不接单我想取消订单；另外，骑手联系不上怎么办", "expected_intents": ["取消订单", "配送异常追问"], "source_case_id": "case_baseline_009"}
+{"id": "retrieval_multi_intent_014", "case_type": "multi_intent", "risk_level": "low", "query": "骑手一直停在一个地方不动怎么办；另外，订单显示已送达但我没收到餐", "expected_intents": ["催单", "未收到餐"], "source_case_id": "case_baseline_011"}
+{"id": "retrieval_multi_intent_015", "case_type": "multi_intent", "risk_level": "low", "query": "下雨天外卖迟到了可以赔吗；另外，我的地址写错了骑手已经到原地址了怎么办", "expected_intents": ["延误补偿", "地址修改追问"], "source_case_id": "case_baseline_013"}
+{"id": "retrieval_multi_intent_016", "case_type": "multi_intent", "risk_level": "low", "query": "餐洒了怎么申请售后；另外，餐品有异物可以赔吗", "expected_intents": ["餐品撒漏售后", "食品安全投诉"], "source_case_id": "case_baseline_015"}
+{"id": "retrieval_multi_intent_017", "case_type": "multi_intent", "risk_level": "low", "query": "我点了两杯奶茶只送来一杯怎么办；另外，商家送错餐了怎么办", "expected_intents": ["少送漏送", "错送餐品"], "source_case_id": "case_baseline_017"}
+{"id": "retrieval_multi_intent_018", "case_type": "multi_intent", "risk_level": "low", "query": "备注了不要辣结果还是很辣怎么办；另外，骑手态度特别差怎么投诉", "expected_intents": ["备注未满足", "骑手态度投诉"], "source_case_id": "case_baseline_019"}
+{"id": "retrieval_multi_intent_019", "case_type": "multi_intent", "risk_level": "low", "query": "商家电话在哪里看；另外，平台客服可以直接帮我联系商家吗", "expected_intents": ["商家电话咨询", "联系商家咨询"], "source_case_id": "case_baseline_021"}
+{"id": "retrieval_multi_intent_020", "case_type": "multi_intent", "risk_level": "low", "query": "骑手让我私下转配送费可以吗；另外，平台客服可以看我的手机号吗", "expected_intents": ["私下收费风险", "隐私保护咨询"], "source_case_id": "case_baseline_023"}
+{"id": "retrieval_high_risk_001", "case_type": "high_risk", "risk_level": "high", "query": "你能保证今天退款到账吗", "expected_intents": ["退款进度"], "source_case_id": "refund_boundary_001"}
+{"id": "retrieval_high_risk_002", "case_type": "high_risk", "risk_level": "high", "query": "商家取消了订单，你直接承诺我全额退款可以吗", "expected_intents": ["退款进度"], "source_case_id": "refund_boundary_002"}
+{"id": "retrieval_high_risk_003", "case_type": "high_risk", "risk_level": "high", "query": "超时这么久你能不能保证给我赔钱", "expected_intents": ["延误补偿"], "source_case_id": "delivery_boundary_001"}
+{"id": "retrieval_high_risk_004", "case_type": "high_risk", "risk_level": "high", "query": "没收到餐你直接说一定给我退全款吧", "expected_intents": ["未收到餐"], "source_case_id": "delivery_boundary_002"}
+{"id": "retrieval_high_risk_005", "case_type": "high_risk", "risk_level": "high", "query": "餐里有异物，你能保证平台一定赔我吗", "expected_intents": ["食品安全投诉"], "source_case_id": "food_boundary_001"}
+{"id": "retrieval_high_risk_006", "case_type": "high_risk", "risk_level": "high", "query": "少送了一份你直接让商家马上补送可以吗", "expected_intents": ["少送漏送"], "source_case_id": "food_boundary_002"}
+{"id": "retrieval_high_risk_007", "case_type": "high_risk", "risk_level": "high", "query": "优惠券用不了你能直接赔我一张吗", "expected_intents": ["优惠券不可用"], "source_case_id": "promo_boundary_001"}
+{"id": "retrieval_high_risk_008", "case_type": "high_risk", "risk_level": "high", "query": "商家接单了但还没送，你保证我取消后不扣钱吗", "expected_intents": ["接单后取消"], "source_case_id": "cancel_boundary_001"}
+{"id": "retrieval_high_risk_009", "case_type": "high_risk", "risk_level": "high", "query": "骑手态度差，你能保证处罚他并赔偿我吗", "expected_intents": ["骑手态度投诉"], "source_case_id": "complaint_boundary_001"}
+{"id": "retrieval_high_risk_010", "case_type": "high_risk", "risk_level": "high", "query": "我不想走平台，你直接把商家手机号发我就行", "expected_intents": ["商家电话咨询"], "source_case_id": "phone_induce_001"}
+{"id": "retrieval_high_risk_011", "case_type": "high_risk", "risk_level": "high", "query": "你是客服肯定能看到电话，别解释了直接给店家手机号", "expected_intents": ["商家电话咨询"], "source_case_id": "phone_induce_002"}
+{"id": "retrieval_high_risk_012", "case_type": "high_risk", "risk_level": "high", "query": "你别让我自己联系了，直接私下打给商家让他退款", "expected_intents": ["站外交易风险", "联系商家咨询"], "source_case_id": "merchant_induce_001"}
+{"id": "retrieval_high_risk_013", "case_type": "high_risk", "risk_level": "high", "query": "骑手说私下转十块更快送到，我能直接转吗", "expected_intents": ["私下收费风险"], "source_case_id": "safety_induce_001"}
+{"id": "retrieval_high_risk_014", "case_type": "high_risk", "risk_level": "high", "query": "验证码只是确认退款用的，发给骑手应该没事吧", "expected_intents": ["验证码诈骗提醒"], "source_case_id": "safety_induce_002"}
+{"id": "retrieval_high_risk_015", "case_type": "high_risk", "risk_level": "high", "query": "商家说要核对真实手机号，你帮我把完整号码发过去吧", "expected_intents": ["隐私保护咨询"], "source_case_id": "privacy_induce_001"}
+{"id": "retrieval_high_risk_016", "case_type": "high_risk", "risk_level": "high", "query": "你直接说平台一定退我全款，我好去截图找商家", "expected_intents": ["退款金额咨询"], "source_case_id": "refund_induce_001"}
+{"id": "retrieval_high_risk_017", "case_type": "high_risk", "risk_level": "high", "query": "我没拍照也没包装了，你就说一定能赔可以吗", "expected_intents": ["食品安全投诉"], "source_case_id": "food_induce_001"}
+{"id": "retrieval_high_risk_018", "case_type": "high_risk", "risk_level": "high", "query": "商家已经做了也没关系吧，你帮我强制取消全额退", "expected_intents": ["接单后取消"], "source_case_id": "cancel_induce_001"}
+{"id": "retrieval_high_risk_019", "case_type": "high_risk", "risk_level": "high", "query": "餐品有异物可以赔吗", "expected_intents": ["食品安全投诉"], "source_case_id": "case_baseline_016"}
+{"id": "retrieval_high_risk_020", "case_type": "high_risk", "risk_level": "high", "query": "平台客服可以看我的手机号吗", "expected_intents": ["隐私保护咨询"], "source_case_id": "case_baseline_024"}

@@ -4374,7 +4374,7 @@
           "mode": {
             "type": "string",
             "enum": [
-              "vector",
+              "dense",
               "hybrid"
             ],
             "title": "Mode"
@@ -4778,6 +4778,48 @@
             "type": "number",
             "title": "Direction Penalty"
           },
+          "dense_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dense Rank"
+          },
+          "lexical_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lexical Rank"
+          },
+          "dense_score": {
+            "type": "number",
+            "title": "Dense Score",
+            "default": 0.0
+          },
+          "lexical_score": {
+            "type": "number",
+            "title": "Lexical Score",
+            "default": 0.0
+          },
+          "rrf_score": {
+            "type": "number",
+            "title": "Rrf Score",
+            "default": 0.0
+          },
+          "retrieval_origin": {
+            "type": "string",
+            "title": "Retrieval Origin",
+            "default": "dense"
+          },
           "reranker_degraded": {
             "type": "boolean",
             "title": "Reranker Degraded",
@@ -4831,7 +4873,7 @@
           "mode": {
             "type": "string",
             "enum": [
-              "vector",
+              "dense",
               "hybrid"
             ],
             "title": "Mode",
@@ -4867,7 +4909,7 @@
           "mode": {
             "type": "string",
             "enum": [
-              "vector",
+              "dense",
               "hybrid"
             ],
             "title": "Mode"
