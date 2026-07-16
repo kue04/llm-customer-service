@@ -6,6 +6,7 @@ from unittest.mock import patch
 import utils.vector_retriever as vector_retriever
 from utils.vector_retriever import (
     detect_intent_hint,
+    ensure_real_vector_store,
     rerank_candidates,
     save_real_vector_store,
     load_real_vector_store,
@@ -202,6 +203,23 @@ class RerankCandidatesTest(unittest.TestCase):
         self.assertEqual(results[0]["rerank_score"], 0.70)
         self.assertEqual(results[0]["model_rerank_score"], 1.0)
 
+    def test_reranker_failure_keeps_candidates_in_base_score_order(self) -> None:
+        candidates = [
+            {"score": 0.60, "answer": "second", "source": {}},
+            {"score": 0.80, "answer": "first", "source": {}},
+        ]
+
+        with patch(
+            "utils.vector_retriever.calculate_model_rerank_scores",
+            side_effect=RuntimeError("reranker boom"),
+        ):
+            results = rerank_candidates("refund", candidates)
+
+        self.assertEqual([item["answer"] for item in results], ["first", "second"])
+        self.assertTrue(all(item["reranker_degraded"] for item in results))
+        self.assertTrue(all(item["model_rerank_score"] == 0.0 for item in results))
+        self.assertIn("reranker boom", results[0]["reranker_error"])
+
     def test_intent_hint_boosts_matching_intent(self) -> None:
         candidates = [
             {
@@ -339,8 +357,13 @@ class RerankCandidatesTest(unittest.TestCase):
             }
         ]
 
-        def fake_build_embedding(text: str) -> list[float]:
-            return [1.0, 0.0]
+        class FakeEmbeddingModel:
+            def encode(self, texts, **kwargs):
+                self.texts = texts
+                self.kwargs = kwargs
+                return vector_retriever.np.array([[1.0, 0.0] for _ in texts], dtype="float32")
+
+        fake_model = FakeEmbeddingModel()
 
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -352,23 +375,45 @@ class RerankCandidatesTest(unittest.TestCase):
                     "utils.vector_retriever.FAISS_DOCS_PATH",
                     temp_path / "store" / "real_vector_docs.json",
                 ), patch(
+                    "utils.vector_retriever.FAISS_MANIFEST_PATH",
+                    temp_path / "store" / "real_vector_manifest.json",
+                ), patch(
                     "utils.vector_retriever.get_real_vector_documents",
                     return_value=documents,
                 ), patch(
-                    "utils.vector_retriever.build_embedding",
-                    side_effect=fake_build_embedding,
+                    "utils.vector_retriever.get_embedding_model",
+                    return_value=fake_model,
                 ):
                     vector_retriever._REAL_FAISS_INDEX = None
                     vector_retriever._REAL_VECTOR_DOCS = documents
+                    vector_retriever._REAL_VECTOR_MANIFEST = None
                     save_real_vector_store()
                     self.assertTrue((temp_path / "store" / "real_vector.index").exists())
                     self.assertTrue((temp_path / "store" / "real_vector_docs.json").exists())
+                    self.assertTrue((temp_path / "store" / "real_vector_manifest.json").exists())
+                    self.assertEqual(fake_model.kwargs["batch_size"], 32)
                     vector_retriever._REAL_FAISS_INDEX = None
                     vector_retriever._REAL_VECTOR_DOCS = None
+                    vector_retriever._REAL_VECTOR_MANIFEST = None
                     self.assertTrue(load_real_vector_store())
         finally:
             vector_retriever._REAL_FAISS_INDEX = None
             vector_retriever._REAL_VECTOR_DOCS = None
+            vector_retriever._REAL_VECTOR_MANIFEST = None
+
+    def test_ensure_real_vector_store_reuses_memory_cache(self) -> None:
+        cached_index = object()
+        try:
+            vector_retriever._REAL_FAISS_INDEX = cached_index
+            vector_retriever._REAL_VECTOR_DOCS = [{"text": "cached"}]
+            vector_retriever._REAL_VECTOR_MANIFEST = {"schema_version": 1}
+            with patch("utils.vector_retriever.load_real_vector_store") as mocked_load:
+                self.assertIs(ensure_real_vector_store(), cached_index)
+            mocked_load.assert_not_called()
+        finally:
+            vector_retriever._REAL_FAISS_INDEX = None
+            vector_retriever._REAL_VECTOR_DOCS = None
+            vector_retriever._REAL_VECTOR_MANIFEST = None
 
 
 if __name__ == "__main__":

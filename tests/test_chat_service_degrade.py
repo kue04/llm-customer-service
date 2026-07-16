@@ -186,6 +186,36 @@ class ChatServiceDegradeTest(unittest.TestCase):
         self.assertFalse(result["trace"]["reply_rules_applied"])
         self.assertEqual(result["prompt_context_items"][0]["source_question"], "when refund arrives")
 
+    def test_reranker_failure_keeps_rag_evidence_and_marks_trace(self) -> None:
+        chat_service = self._load_chat_service_with_stubs(
+            retrieve_impl=lambda query: [
+                {
+                    "rank": 1,
+                    "answer": "doc",
+                    "category": "refund",
+                    "intent": "refund_progress",
+                    "question": "when refund arrives",
+                    "score": 0.8,
+                    "rerank_score": 0.8,
+                    "model_rerank_score": 0.0,
+                    "reranker_degraded": True,
+                    "reranker_error": "reranker boom",
+                }
+            ],
+            generate_impl=None,
+            reply_rules_impl=lambda query, reply, items: reply,
+        )
+        chat_service.generate_reply_with_usage = (
+            lambda prompt, system_prompt=None: self._generation_result("model answer grounded by doc")
+        )
+
+        result = chat_service.get_answer_from_rag("refund")
+
+        self.assertEqual(result["trace"]["answer_source"], "rag")
+        self.assertTrue(result["trace"]["degraded"])
+        self.assertEqual(result["trace"]["failure_stage"], "reranker")
+        self.assertEqual(result["retrieved_items"][0]["reranker_error"], "reranker boom")
+
 
 if __name__ == "__main__":
     unittest.main()

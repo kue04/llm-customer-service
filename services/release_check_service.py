@@ -11,6 +11,7 @@ from services.ops_metrics import get_ops_metrics
 from services.order_tool_service import QUERY_ERROR_TYPE, TIMEOUT_ERROR_TYPE, query_order_status, query_refund_status
 from services.privacy import mask_sensitive_text
 from services.prompt_service import get_active_prompt_config
+from utils.vector_retriever import get_vector_store_status
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 GROUNDING_REPORT_DIR = PROJECT_ROOT / "reports" / "chat_grounding"
@@ -351,6 +352,22 @@ def build_release_checklist() -> dict:
             "model_config_version",
             "pass",
             f"{model_config['generation_provider']}:{model_config['online_model_name']}",
+        )
+    )
+
+    vector_status = get_vector_store_status()
+    manifest_ready = vector_status["vector_manifest_status"] == "ready"
+    items.append(
+        _item(
+            "vector_manifest",
+            "pass" if manifest_ready else "fail",
+            (
+                f"status={vector_status['vector_manifest_status']}; "
+                f"documents={vector_status['vector_document_count']}; "
+                f"dimension={vector_status['vector_dimension']}; "
+                f"built_at={vector_status['vector_built_at']}"
+            ),
+            "重新发布知识库并构建 FAISS manifest" if not manifest_ready else "",
         )
     )
 

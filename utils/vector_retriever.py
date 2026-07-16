@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 try:
     import faiss
@@ -15,7 +16,9 @@ except ModuleNotFoundError:
     SentenceTransformer = None
 
 from config.rag_config import get_rag_config
+from utils.knowledge_filter import select_latest_active_items
 from utils.retriever import iter_knowledge_items, is_similar_answer
+from utils.vector_store_manifest import build_vector_store_manifest, manifest_is_compatible
 
 
 _TOY_VECTOR_INDEX: list[dict] | None = None
@@ -23,6 +26,7 @@ _RERANKER_MODEL: CrossEncoder | None = None
 _EMBEDDING_MODEL: SentenceTransformer | None = None
 _REAL_VECTOR_DOCS: list[dict] | None = None
 _REAL_FAISS_INDEX: faiss.IndexFlatIP | None = None
+_REAL_VECTOR_MANIFEST: dict | None = None
 
 DEFAULT_MODEL_RERANK_WEIGHT = get_rag_config().model_rerank_weight
 DEFAULT_MIN_VECTOR_SCORE = get_rag_config().min_vector_score
@@ -64,6 +68,7 @@ def _knowledge_version_from_source(source: dict) -> str:
 VECTOR_STORE_DIR = get_rag_config().faiss_store_dir
 FAISS_INDEX_PATH = VECTOR_STORE_DIR / "real_vector.index"
 FAISS_DOCS_PATH = VECTOR_STORE_DIR / "real_vector_docs.json"
+FAISS_MANIFEST_PATH = VECTOR_STORE_DIR / "real_vector_manifest.json"
 INTENT_HINT_BONUS = 0.10
 INTENT_HINT_SUPPLEMENT_SCORE = 0.80
 
@@ -116,7 +121,7 @@ def build_document_text(item: dict) -> str:
 def load_vector_documents() -> list[dict]:
     documents = []
 
-    for index, item in enumerate(iter_knowledge_items()):
+    for index, item in enumerate(select_latest_active_items(iter_knowledge_items())):
         documents.append(
             {
                 "id": index,
@@ -127,34 +132,6 @@ def load_vector_documents() -> list[dict]:
         )
 
     return documents
-
-
-def current_vector_document_signature() -> list[dict]:
-    return [
-        {
-            "answer": document["answer"],
-            "source": {
-                "question": document["source"].get("question", ""),
-                "category": document["source"].get("category", ""),
-                "intent": document["source"].get("intent", ""),
-            },
-        }
-        for document in load_vector_documents()
-    ]
-
-
-def stored_vector_document_signature() -> list[dict]:
-    return [
-        {
-            "answer": document["answer"],
-            "source": {
-                "question": document["source"].get("question", ""),
-                "category": document["source"].get("category", ""),
-                "intent": document["source"].get("intent", ""),
-            },
-        }
-        for document in _REAL_VECTOR_DOCS or []
-    ]
 
 
 def get_real_vector_documents() -> list[dict]:
@@ -169,10 +146,14 @@ def get_real_vector_documents() -> list[dict]:
 def build_real_vector_index() -> faiss.IndexFlatIP:
     faiss_module = _require_faiss()
     documents = get_real_vector_documents()
-    vectors = np.array(
-        [build_embedding(document["text"]) for document in documents],
-        dtype="float32",
-    )
+    texts = [document["text"] for document in documents]
+    vectors = get_embedding_model().encode(
+        texts,
+        batch_size=32,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+    ).astype("float32")
     index = faiss_module.IndexFlatIP(vectors.shape[1])
     index.add(vectors)
     return index
@@ -188,62 +169,135 @@ def get_real_vector_index() -> faiss.IndexFlatIP:
 
 
 def save_real_vector_store() -> None:
-    global _REAL_FAISS_INDEX
+    global _REAL_FAISS_INDEX, _REAL_VECTOR_MANIFEST
 
     faiss_module = _require_faiss()
     VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
     index = build_real_vector_index()
-    faiss_module.write_index(index, str(FAISS_INDEX_PATH))
-    FAISS_DOCS_PATH.write_text(
-        json.dumps(get_real_vector_documents(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    documents = get_real_vector_documents()
+    manifest = build_vector_store_manifest(
+        documents,
+        get_rag_config().embedding_model_name,
+        dimension=index.d,
     )
+    index_temp_path = temporary_path(FAISS_INDEX_PATH)
+    docs_temp_path = temporary_path(FAISS_DOCS_PATH)
+    manifest_temp_path = temporary_path(FAISS_MANIFEST_PATH)
+    try:
+        faiss_module.write_index(index, str(index_temp_path))
+        docs_temp_path.write_text(
+            json.dumps(documents, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        manifest_temp_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        index_temp_path.replace(FAISS_INDEX_PATH)
+        docs_temp_path.replace(FAISS_DOCS_PATH)
+        manifest_temp_path.replace(FAISS_MANIFEST_PATH)
+    finally:
+        for temp_path in (index_temp_path, docs_temp_path, manifest_temp_path):
+            temp_path.unlink(missing_ok=True)
     _REAL_FAISS_INDEX = index
+    _REAL_VECTOR_MANIFEST = manifest
+
+
+def temporary_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.tmp")
 
 
 def reset_vector_store_cache() -> None:
-    global _TOY_VECTOR_INDEX, _REAL_VECTOR_DOCS, _REAL_FAISS_INDEX
+    global _TOY_VECTOR_INDEX, _REAL_VECTOR_DOCS, _REAL_FAISS_INDEX, _REAL_VECTOR_MANIFEST
 
     _TOY_VECTOR_INDEX = None
     _REAL_VECTOR_DOCS = None
     _REAL_FAISS_INDEX = None
+    _REAL_VECTOR_MANIFEST = None
 
 
 def load_real_vector_store() -> bool:
-    global _REAL_FAISS_INDEX, _REAL_VECTOR_DOCS
+    global _REAL_FAISS_INDEX, _REAL_VECTOR_DOCS, _REAL_VECTOR_MANIFEST
 
-    if not FAISS_INDEX_PATH.exists() or not FAISS_DOCS_PATH.exists():
+    if not FAISS_INDEX_PATH.exists() or not FAISS_DOCS_PATH.exists() or not FAISS_MANIFEST_PATH.exists():
         return False
 
-    faiss_module = _require_faiss()
-    _REAL_FAISS_INDEX = faiss_module.read_index(str(FAISS_INDEX_PATH))
-    _REAL_VECTOR_DOCS = json.loads(FAISS_DOCS_PATH.read_text(encoding="utf-8"))
+    try:
+        faiss_module = _require_faiss()
+        index = faiss_module.read_index(str(FAISS_INDEX_PATH))
+        documents = json.loads(FAISS_DOCS_PATH.read_text(encoding="utf-8"))
+        manifest = json.loads(FAISS_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return False
+    _REAL_FAISS_INDEX = index
+    _REAL_VECTOR_DOCS = documents
+    _REAL_VECTOR_MANIFEST = manifest
     return True
 
 
 def _stored_vector_store_is_compatible() -> bool:
-    if _REAL_FAISS_INDEX is None or _REAL_VECTOR_DOCS is None:
+    if _REAL_FAISS_INDEX is None or _REAL_VECTOR_DOCS is None or _REAL_VECTOR_MANIFEST is None:
         return False
 
     if _REAL_FAISS_INDEX.ntotal != len(_REAL_VECTOR_DOCS):
         return False
 
-    if stored_vector_document_signature() != current_vector_document_signature():
+    current_documents = load_vector_documents()
+    if not manifest_is_compatible(
+        _REAL_VECTOR_MANIFEST,
+        current_documents,
+        get_rag_config().embedding_model_name,
+        expected_dimension=_REAL_FAISS_INDEX.d,
+    ):
         return False
-
-    sample_vector = build_embedding(_REAL_VECTOR_DOCS[0]["text"])
-    return _REAL_FAISS_INDEX.d == len(sample_vector)
+    return True
 
 
 def ensure_real_vector_store() -> faiss.IndexFlatIP:
+    global _REAL_FAISS_INDEX, _REAL_VECTOR_DOCS, _REAL_VECTOR_MANIFEST
+
+    if _REAL_FAISS_INDEX is not None and _REAL_VECTOR_DOCS is not None and _REAL_VECTOR_MANIFEST is not None:
+        return _REAL_FAISS_INDEX
+
     if load_real_vector_store() and _stored_vector_store_is_compatible():
         return get_real_vector_index()
 
-    global _REAL_FAISS_INDEX, _REAL_VECTOR_DOCS
     _REAL_FAISS_INDEX = None
     _REAL_VECTOR_DOCS = None
+    _REAL_VECTOR_MANIFEST = None
     save_real_vector_store()
     return get_real_vector_index()
+
+
+def get_vector_store_status() -> dict:
+    manifest = _REAL_VECTOR_MANIFEST
+    if manifest is None and FAISS_MANIFEST_PATH.exists():
+        try:
+            manifest = json.loads(FAISS_MANIFEST_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            manifest = None
+    status = "missing"
+    if manifest:
+        try:
+            compatible = (
+                FAISS_INDEX_PATH.exists()
+                and FAISS_DOCS_PATH.exists()
+                and manifest_is_compatible(
+                    manifest,
+                    load_vector_documents(),
+                    get_rag_config().embedding_model_name,
+                )
+            )
+            status = "ready" if compatible else "incompatible"
+        except (OSError, ValueError, TypeError):
+            status = "incompatible"
+    return {
+        "vector_preprocessing_version": str((manifest or {}).get("preprocessing_version", "")),
+        "vector_document_count": int((manifest or {}).get("document_count", 0)),
+        "vector_dimension": int((manifest or {}).get("dimension", 0)),
+        "vector_built_at": str((manifest or {}).get("created_at", "")),
+        "vector_manifest_status": status,
+    }
 
 
 def build_toy_embedding(text: str) -> list[float]:
@@ -651,9 +705,21 @@ def rerank_candidates(
 ) -> list[dict]:
     reranked_candidates = []
     intent_hint = detect_intent_hint(query)
-    model_rerank_scores = calculate_model_rerank_scores(query, candidates)
-    if len(model_rerank_scores) != len(candidates):
-        raise ValueError("Model rerank scores count must match candidates count.")
+    try:
+        model_rerank_scores = calculate_model_rerank_scores(query, candidates)
+        if len(model_rerank_scores) != len(candidates):
+            raise ValueError("Model rerank scores count must match candidates count.")
+    except Exception as error:
+        degraded_candidates = []
+        for candidate in candidates:
+            degraded_candidate = candidate.copy()
+            degraded_candidate["rerank_score"] = candidate["score"]
+            degraded_candidate["model_rerank_score"] = 0.0
+            degraded_candidate["reranker_degraded"] = True
+            degraded_candidate["reranker_error"] = str(error)
+            degraded_candidates.append(degraded_candidate)
+        degraded_candidates.sort(key=lambda candidate: candidate["score"], reverse=True)
+        return degraded_candidates
 
     for index, candidate in enumerate(candidates):
         reranked_candidate = candidate.copy()
@@ -677,6 +743,8 @@ def rerank_candidates(
 
         reranked_candidate["rerank_score"] = rerank_score
         reranked_candidate["model_rerank_score"] = model_rerank_score
+        reranked_candidate["reranker_degraded"] = False
+        reranked_candidate["reranker_error"] = ""
         reranked_candidates.append(reranked_candidate)
 
     reranked_candidates.sort(
@@ -811,6 +879,8 @@ def retrieve_rag_items(
                 "vector_score": candidate.get("vector_score", 0.0),
                 "keyword_bonus": candidate.get("keyword_bonus", 0.0),
                 "direction_penalty": candidate.get("direction_penalty", 0.0),
+                "reranker_degraded": bool(candidate.get("reranker_degraded", False)),
+                "reranker_error": str(candidate.get("reranker_error", "")),
                 "retrieval_origin": candidate.get("_retrieval_origin", "faiss"),
             }
         )

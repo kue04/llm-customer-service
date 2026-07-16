@@ -22,6 +22,7 @@ class ChatPromptApiTest(unittest.TestCase):
             "citations": [{"knowledge_id": "kb_1", "snippet": "rule"}],
             "conversation_status": "pending_agent_review",
             "answer_basis": "主证据：refund_progress",
+            "answer_strategy": "model_reply",
             "evidence_citations": [{"evidence_id": "kb_1", "evidence_role": "primary"}],
             "tool_results": [],
             "memory_snapshot": {"short_term": {}, "long_term": {"used": False}},
@@ -108,6 +109,7 @@ class ChatPromptApiTest(unittest.TestCase):
         self.assertEqual(body["confidence_level"], "high")
         self.assertTrue(body["need_human_review"])
         self.assertEqual(body["conversation_status"], "pending_agent_review")
+        self.assertEqual(body["answer_strategy"], "model_reply")
         self.assertEqual(body["citations"][0]["knowledge_id"], "kb_1")
         self.assertEqual(body["user_id"], "demo_user")
         self.assertEqual(body["session_id"], "session-test")

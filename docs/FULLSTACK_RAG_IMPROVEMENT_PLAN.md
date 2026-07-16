@@ -1619,3 +1619,13 @@ docs: update fullstack RAG console guide
 - 新增 `tests/test_export_openapi.py`，固定 `/chat/prompt`、`/retrieval/search`、`/knowledge/items` 三条全栈关键链路。
 - 验收命令：`python -m pytest tests/test_export_openapi.py -q`。
 - 当前结果：`1 passed`；OpenAPI 文件可以被前端 `openapi-typescript` 直接消费。
+
+### 2026-07-17：里程碑 2 正确性与索引生命周期
+
+- Answer Composer 改为只修复低质量回复，合格模型回答只移除固定套话尾部，并新增 `answer_strategy`。
+- 新增知识有效期过滤：排除未审核、未来生效、已过期和已归档知识；同一 `base_id` 仅索引最高版本。
+- 知识发布 JSONL 补齐 `base_id`，保证跨版本去重和溯源。
+- FAISS 改为批量 Embedding，新增文档指纹、模型名、维度、文档数和预处理版本 Manifest。
+- index、docs、manifest 使用同目录临时文件写入，最后切换 manifest；内存缓存命中时不再重复读取磁盘索引。
+- Reranker 异常改为 fail-open：保留 Dense/Hybrid 候选及基础排序，候选和 Chat trace 均标记降级原因。
+- `/retrieval/config` 返回索引版本、知识数量、向量维度、构建时间和 Manifest 状态；Release Gate 增加 `vector_manifest` 检查。

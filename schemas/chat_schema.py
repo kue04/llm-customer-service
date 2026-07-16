@@ -60,6 +60,7 @@ class ChatResponse(BaseModel):
     citations: list[dict] = Field(default_factory=list)
     conversation_status: str = "pending_agent_review"
     answer_basis: str = ""
+    answer_strategy: Literal["model_reply", "composer_repair", "safety_fallback"] = "model_reply"
     evidence_citations: list[dict] = Field(default_factory=list)
     tool_results: list[dict] = Field(default_factory=list)
     memory_snapshot: dict = Field(default_factory=dict)

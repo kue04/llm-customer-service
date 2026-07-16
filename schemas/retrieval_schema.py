@@ -28,6 +28,8 @@ class RetrievalResultItem(BaseModel):
     vector_score: float
     keyword_bonus: float
     direction_penalty: float
+    reranker_degraded: bool = False
+    reranker_error: str = ""
     category: str
     intent: str
     question: str
@@ -59,3 +61,8 @@ class RagConfigResponse(BaseModel):
     faiss_index_path: str
     faiss_docs_path: str
     reply_rules_enabled: bool
+    vector_preprocessing_version: str = ""
+    vector_document_count: int = 0
+    vector_dimension: int = 0
+    vector_built_at: str = ""
+    vector_manifest_status: str = "missing"

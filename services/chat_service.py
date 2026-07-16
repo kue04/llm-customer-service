@@ -599,6 +599,14 @@ def build_answer_basis(evidence_citations: list[dict], tool_results: list[dict],
     return "；".join(parts)
 
 
+def determine_answer_strategy(answer_composer_applied: bool, safety_status: dict) -> str:
+    if safety_status.get("fallback_applied"):
+        return "safety_fallback"
+    if answer_composer_applied:
+        return "composer_repair"
+    return "model_reply"
+
+
 def build_memory_snapshot(context: dict, user_memory: dict, updated_user_memory: dict | None = None) -> dict:
     active_memory = updated_user_memory or user_memory
     return {
@@ -964,13 +972,24 @@ def get_answer_from_rag(request):
     full_trace.append(trace_step("retrieval_started", input_summary=mask_sensitive_text(retrieval_query)[:160], started_at=retrieval_started_at))
     try:
         retrieved_items = retrieve_rag_items(retrieval_query)
+        reranker_degraded = any(item.get("reranker_degraded") for item in retrieved_items)
+        if reranker_degraded:
+            degraded = True
+            failure_stage = "reranker"
+            reranker_error = next(
+                (str(item.get("reranker_error")) for item in retrieved_items if item.get("reranker_error")),
+                "reranker unavailable",
+            )
+            fallback_reason = f"reranker_degraded: {reranker_error}"
         evidence_started_at = time.perf_counter()
         prompt_context_items = build_prompt_context_items(retrieved_items)
         full_trace.append(
             trace_step(
                 "rerank_completed",
+                status="degraded" if reranker_degraded else "success",
                 output_summary=f"retrieved={len(retrieved_items)}",
                 started_at=retrieval_started_at,
+                metadata={"reranker_error": reranker_error if reranker_degraded else ""},
             )
         )
         full_trace.append(
@@ -1069,6 +1088,7 @@ def get_answer_from_rag(request):
         )
         result = attach_runtime_fields({
             "reply": reply,
+            "answer_strategy": "safety_fallback",
             "confidence_score": 0.2,
             "final_prompt": prompt,
             "prompt_version": prompt_config.get("version", ""),
@@ -1122,7 +1142,7 @@ def get_answer_from_rag(request):
                 reply,
                 retrieved_items,
             )
-            answer_composer_applied = updated_reply != reply
+            answer_composer_applied = bool(answer_composer_trace.get("applied"))
             reply = updated_reply
         except Exception as error:
             degraded = True
@@ -1169,6 +1189,7 @@ def get_answer_from_rag(request):
 
     result = attach_runtime_fields({
         "reply": reply,
+        "answer_strategy": determine_answer_strategy(answer_composer_applied, safety_status),
         "confidence_score": confidence_score,
         "final_prompt": prompt,
         "prompt_version": prompt_config.get("version", ""),

@@ -2918,6 +2918,16 @@
             "title": "Answer Basis",
             "default": ""
           },
+          "answer_strategy": {
+            "type": "string",
+            "enum": [
+              "model_reply",
+              "composer_repair",
+              "safety_fallback"
+            ],
+            "title": "Answer Strategy",
+            "default": "model_reply"
+          },
           "evidence_citations": {
             "items": {
               "additionalProperties": true,
@@ -4583,6 +4593,31 @@
           "reply_rules_enabled": {
             "type": "boolean",
             "title": "Reply Rules Enabled"
+          },
+          "vector_preprocessing_version": {
+            "type": "string",
+            "title": "Vector Preprocessing Version",
+            "default": ""
+          },
+          "vector_document_count": {
+            "type": "integer",
+            "title": "Vector Document Count",
+            "default": 0
+          },
+          "vector_dimension": {
+            "type": "integer",
+            "title": "Vector Dimension",
+            "default": 0
+          },
+          "vector_built_at": {
+            "type": "string",
+            "title": "Vector Built At",
+            "default": ""
+          },
+          "vector_manifest_status": {
+            "type": "string",
+            "title": "Vector Manifest Status",
+            "default": "missing"
           }
         },
         "type": "object",
@@ -4742,6 +4777,16 @@
           "direction_penalty": {
             "type": "number",
             "title": "Direction Penalty"
+          },
+          "reranker_degraded": {
+            "type": "boolean",
+            "title": "Reranker Degraded",
+            "default": false
+          },
+          "reranker_error": {
+            "type": "string",
+            "title": "Reranker Error",
+            "default": ""
           },
           "category": {
             "type": "string",

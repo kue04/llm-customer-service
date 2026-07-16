@@ -10,7 +10,7 @@ from schemas.retrieval_schema import (
 )
 from services.auth_service import get_operator_context, require_read_operation_role
 from utils.rag_context import build_prompt_context_items
-from utils.vector_retriever import retrieve_by_real_vector
+from utils.vector_retriever import get_vector_store_status, retrieve_by_real_vector
 
 
 router = APIRouter()
@@ -19,7 +19,7 @@ router = APIRouter()
 @router.get("/config", response_model=RagConfigResponse)
 def get_retrieval_config(operator_context: dict = Depends(get_operator_context)) -> dict:
     require_read_operation_role("retrieval_read", operator_context)
-    return get_rag_config_dict()
+    return {**get_rag_config_dict(), **get_vector_store_status()}
 
 
 def build_retrieval_result_item(rank: int, item: dict) -> RetrievalResultItem:
@@ -32,6 +32,8 @@ def build_retrieval_result_item(rank: int, item: dict) -> RetrievalResultItem:
         vector_score=item["vector_score"],
         keyword_bonus=item["keyword_bonus"],
         direction_penalty=item.get("direction_penalty", 0.0),
+        reranker_degraded=bool(item.get("reranker_degraded", False)),
+        reranker_error=str(item.get("reranker_error", "")),
         category=source.get("category", ""),
         intent=source.get("intent", ""),
         question=source.get("question", ""),

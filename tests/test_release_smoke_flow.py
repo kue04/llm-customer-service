@@ -362,6 +362,16 @@ class ReleaseSmokeFlowTest(unittest.TestCase):
                 "total_tokens": 0,
                 "average_tokens_per_request": 0.0,
             },
+        ), patch.object(
+            self.release_check_service,
+            "get_vector_store_status",
+            return_value={
+                "vector_preprocessing_version": "faq-v2",
+                "vector_document_count": 1,
+                "vector_dimension": 512,
+                "vector_built_at": "2026-07-16T12:00:00Z",
+                "vector_manifest_status": "ready",
+            },
         ):
             checklist_response = self.client.get("/release/checklist")
 

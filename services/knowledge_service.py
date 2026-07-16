@@ -291,6 +291,7 @@ def export_approved_jsonl() -> dict:
 def build_jsonl_payload(row: sqlite3.Row) -> dict:
     return {
         "id": f"{row['base_id']}_v{row['version']}",
+        "base_id": row["base_id"],
         "title": row["title"] or row["question"],
         "version": f"v{row['version']}",
         "status": "published",

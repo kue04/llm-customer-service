@@ -535,12 +535,20 @@ def compose_answer_if_needed(
         return reply, {"applied": False, "reason": "no_primary_item"}
 
     cleaned_reply = remove_generic_tails(reply)
-    composed_reply, parts = compose_from_primary_evidence(query, primary_item)
     low_quality_reply = reply_needs_composer(query, cleaned_reply, primary_item)
+    if not low_quality_reply:
+        return cleaned_reply, {
+            "applied": False,
+            "reason": "model_reply_accepted",
+            "primary_category": primary_item.get("category", ""),
+            "primary_intent": primary_item.get("intent", ""),
+        }
+
+    composed_reply, parts = compose_from_primary_evidence(query, primary_item)
 
     return composed_reply, {
-        "applied": composed_reply != reply,
-        "reason": "low_quality_model_reply" if low_quality_reply else "structured_from_primary_evidence",
+        "applied": True,
+        "reason": "low_quality_model_reply",
         "primary_category": primary_item.get("category", ""),
         "primary_intent": primary_item.get("intent", ""),
         "answer_parts": {

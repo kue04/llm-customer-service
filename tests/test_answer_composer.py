@@ -23,7 +23,7 @@ class AnswerComposerTest(unittest.TestCase):
         self.assertIn("支付渠道", parts.conclusion)
         self.assertIn("订单详情页", parts.action)
 
-    def test_composes_structured_reply_from_primary_answer(self) -> None:
+    def test_keeps_qualified_model_reply_after_removing_generic_tail(self) -> None:
         reply, trace = compose_answer_if_needed(
             query="优惠券为什么不能用",
             reply="优惠券通常会有使用门槛、有效期、适用品类、适用商家和支付方式限制。您可以点开优惠券详情查看不可用原因。 我理解您现在比较着急，这类问题建议优先在订单内处理，方便平台核实。",
@@ -39,8 +39,9 @@ class AnswerComposerTest(unittest.TestCase):
         self.assertIn("使用门槛", reply)
         self.assertIn("优惠券详情", reply)
         self.assertNotIn("我理解您现在比较着急", reply)
-        self.assertEqual(trace["reason"], "structured_from_primary_evidence")
-        self.assertEqual(trace["answer_parts"]["conclusion"], "优惠券不能使用通常与使用门槛、有效期、适用品类、适用商家或支付方式限制有关。")
+        self.assertTrue(reply.startswith("优惠券通常会有使用门槛"))
+        self.assertFalse(trace["applied"])
+        self.assertEqual(trace["reason"], "model_reply_accepted")
 
     def test_coupon_unavailable_reply_keeps_coupon_flow(self) -> None:
         reply, trace = compose_answer_if_needed(
@@ -183,10 +184,10 @@ class AnswerComposerTest(unittest.TestCase):
             ],
         )
 
-        self.assertTrue(reply.startswith("商家电话一般在订单详情页"))
-        self.assertIn("平台内电话或在线联系功能", reply)
+        self.assertEqual(reply, "商家电话或联系商家入口一般可以在订单详情页查看，也可以进入商家主页查找联系商家入口。")
         self.assertEqual(reply.count("订单详情页"), 1)
-        self.assertEqual(trace["answer_parts"]["action"], "建议您优先通过平台内电话或在线联系功能沟通。")
+        self.assertFalse(trace["applied"])
+        self.assertEqual(trace["reason"], "model_reply_accepted")
 
     def test_merchant_phone_strong_request_uses_boundary_first(self) -> None:
         reply, trace = compose_answer_if_needed(
