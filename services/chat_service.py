@@ -1121,6 +1121,7 @@ def get_answer_from_rag(request):
                 query,
                 reply,
                 retrieved_items,
+                mode=get_rag_config().answer_composer_mode,
             )
             answer_composer_applied = updated_reply != reply
             reply = updated_reply

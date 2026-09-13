@@ -41,6 +41,8 @@ class RagConfig:
     min_vector_score: float = _get_env_float("RAG_MIN_VECTOR_SCORE", 0.40)
     faiss_store_dir: Path = _get_env_path("RAG_FAISS_STORE_DIR", PROJECT_ROOT / "data" / "faiss_store")
     answer_composer_enabled: bool = _get_env_bool("RAG_ANSWER_COMPOSER_ENABLED", True)
+    # on: 总是用主证据重组回复；off: 完全不介入；auto: 只在模型输出低质量时介入
+    answer_composer_mode: str = os.getenv("RAG_ANSWER_COMPOSER_MODE", "auto")
     reply_rules_enabled: bool = _get_env_bool("RAG_REPLY_RULES_ENABLED", True)
 
     @property

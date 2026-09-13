@@ -4,6 +4,9 @@ from dataclasses import dataclass
 import re
 
 
+COMPOSER_MODES = ("on", "off", "auto")
+DEFAULT_COMPOSER_MODE = "auto"
+
 BAD_GENERIC_REPLIES = (
     "很抱歉，这个问题我来帮您分析一下",
     "我会先帮您按订单问题来判断",
@@ -529,18 +532,49 @@ def compose_answer_if_needed(
     query: str,
     reply: str,
     retrieved_items: list[dict],
+    mode: str = DEFAULT_COMPOSER_MODE,
 ) -> tuple[str, dict]:
+    """按 mode 决定最终回复来自模型还是来自证据模板。
+
+    mode:
+      on   - 总是用主证据重组成「结论 + 动作 + 限制」三段式（历史行为）。
+      off  - 完全不介入，原样返回模型输出。
+      auto - 只在模型输出低质量时介入，由 reply_needs_composer() 判定。
+    """
+    if mode not in COMPOSER_MODES:
+        mode = "auto"
+
     primary_item = retrieved_items[0] if retrieved_items else {}
     if not primary_item:
-        return reply, {"applied": False, "reason": "no_primary_item"}
+        return reply, {"applied": False, "reason": "no_primary_item", "mode": mode}
 
     cleaned_reply = remove_generic_tails(reply)
     composed_reply, parts = compose_from_primary_evidence(query, primary_item)
+
+    if mode == "off":
+        return reply, {
+            "applied": False,
+            "reason": "composer_disabled",
+            "mode": mode,
+            "primary_category": primary_item.get("category", ""),
+            "primary_intent": primary_item.get("intent", ""),
+        }
+
     low_quality_reply = reply_needs_composer(query, cleaned_reply, primary_item)
+
+    if mode == "auto" and not low_quality_reply:
+        return cleaned_reply, {
+            "applied": False,
+            "reason": "model_reply_kept",
+            "mode": mode,
+            "primary_category": primary_item.get("category", ""),
+            "primary_intent": primary_item.get("intent", ""),
+        }
 
     return composed_reply, {
         "applied": composed_reply != reply,
         "reason": "low_quality_model_reply" if low_quality_reply else "structured_from_primary_evidence",
+        "mode": mode,
         "primary_category": primary_item.get("category", ""),
         "primary_intent": primary_item.get("intent", ""),
         "answer_parts": {
