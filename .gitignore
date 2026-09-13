@@ -1,26 +1,55 @@
+# ---- Python ----
 venv/
-local_models/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# ---- 环境变量与密钥 ----
 .env
-.venv/
+.env.local
+
+# ---- 工具缓存 ----
 .cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- 本地下载的依赖/模型（不入库，用下载脚本获取）----
+local_models/
+models/takeout-qwen-lora-*/
 .codex_deps/
 .codebase-memory/
-eval_outputs/
+
+# ---- 运行时产物 ----
 reports/
-models/takeout-qwen-lora-*/
-data/faiss_store/
-output/pdf/
+eval_outputs/
 tmp/
+output/pdf/
+data/faiss_store/
 data/knowledge_backups/
-README - 副本.md
+*.db
+*.sqlite3
 *.safetensors
 *.bin
 *.pt
 *.pth
 *.gguf
-*.sqlite3
-*.db
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# ---- 历史遗留副本 ----
+README - 副本.md
+
+# 说明：reports/ 下的评测报告是运行产物，不入库。
+# 需要复现数字时用 scripts/ 下的评测脚本重新生成；
+# 单文件体积上限由 scripts/check_repo_data_size.py 在 CI 中守护（默认 1MB）。
+
+# ---- 本地工作记忆（不入库）----
+.workbuddy/

@@ -1464,7 +1464,7 @@ def main() -> None:
         )
         print()
         print(f"Saved report: {output_path}")
-   
+
 
 if __name__ == "__main__":
     main()

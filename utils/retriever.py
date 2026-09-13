@@ -119,7 +119,7 @@ def explain_knowledge_item_score(query: str, query_terms: set[str], item: dict) 
         "score": score,
         "details": details,
     }
-    
+
 
 def normalize_answer_text(text: str) -> str:
     punctuation = string.punctuation + "，。！？；：、（）《》“”‘’"

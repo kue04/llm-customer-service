@@ -1,0 +1,20 @@
+# CI / 本地轻量开发依赖。
+#
+# 与 requirements.txt 的区别：
+# requirements.txt 包含 torch / transformers / peft / sentence-transformers 等重型依赖，
+# 完整安装需要数 GB，不适合在 GitHub Actions 上每次拉取。
+#
+# 本项目在缺失 torch / transformers / peft / sentence-transformers 时会走降级分支
+# （见 services/chat_service.py 与 utils/vector_retriever.py 顶部的 try/except），
+# 单元测试通过 mock 覆盖检索与生成，因此 CI 只需要下面这些包即可跑通 ruff + pytest。
+#
+# 需要实际跑模型推理、embedding 或 reranker 时，请安装完整 requirements.txt。
+
+fastapi==0.136.0
+uvicorn==0.46.0
+pydantic==2.13.3
+numpy==2.4.4
+faiss-cpu==1.13.2
+httpx==0.28.1
+pytest==9.1.1
+ruff==0.14.5
