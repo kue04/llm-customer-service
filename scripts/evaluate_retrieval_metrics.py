@@ -25,6 +25,8 @@ scripts/evaluate_vector_retrieval.py 只统计 Top1 命中 / Top3 召回但 Top1
     python scripts/evaluate_retrieval_metrics.py
     python scripts/evaluate_retrieval_metrics.py --limit 10 --save-report
     python scripts/evaluate_retrieval_metrics.py --compare-modes
+    # 复用 grounding 评测集（自带 expected_intent），把检索评测集从 12 条扩到 120 条
+    python scripts/evaluate_retrieval_metrics.py --cases-file data/chat_grounding_cases.jsonl
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 import sys
@@ -50,6 +53,33 @@ from utils.vector_retriever import (  # noqa: E402
 
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "reports" / "retrieval_metrics"
 DEFAULT_KS = (1, 5, 10)
+
+
+def load_cases_from_jsonl(path: Path | str) -> list[dict]:
+    """从 grounding 评测集读入检索评测用例。
+
+    grounding 用例自带 expected_intent 字段，可以直接当检索的金标用，
+    这样检索评测集不用重新标注就能从 12 条扩到 120 条。
+    """
+    cases = []
+    with Path(path).open("r", encoding="utf-8") as file:
+        for line in file:
+            if not line.strip():
+                continue
+
+            row = json.loads(line)
+            expected = row.get("expected_intents")
+            if not expected:
+                expected = [row["expected_intent"]] if row.get("expected_intent") else []
+
+            cases.append(
+                {
+                    "query": row["query"],
+                    "expected_intents": list(expected),
+                    "error_type": row.get("case_type", "") or row.get("error_type", ""),
+                }
+            )
+    return cases
 
 
 def is_relevant(candidate: dict, expected_intents: list[str]) -> bool:
@@ -135,17 +165,38 @@ def summarize(results: list[dict], limit: int) -> dict:
         summary["ndcg"][f"@{k}"] = round(
             sum(item["ndcg"][f"@{k}"] for item in results) / total, 4
         )
+
+    summary["by_case_type"] = summarize_by_case_type(results)
     return summary
+
+
+def summarize_by_case_type(results: list[dict]) -> dict[str, dict]:
+    """按 case_type 分层，看哪一类问题掉得最狠。"""
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for item in results:
+        grouped[item.get("error_type") or "未标注"].append(item)
+
+    breakdown = {}
+    for case_type, items in sorted(grouped.items()):
+        count = len(items)
+        top1_hit = sum(1 for item in items if item.get("first_relevant_rank") == 1)
+        breakdown[case_type] = {
+            "count": count,
+            "recall@1": round(top1_hit / count, 4),
+            "mrr": round(sum(item.get("rr", 0.0) for item in items) / count, 4),
+        }
+    return breakdown
 
 
 def run_evaluation(
     limit: int,
     use_hybrid: bool,
     rerank_weight: float,
+    cases: list[dict] | None = None,
     verbose: bool = True,
 ) -> tuple[list[dict], dict]:
     results = []
-    for case in EVAL_QUERIES:
+    for case in cases if cases is not None else EVAL_QUERIES:
         result = evaluate_case(case, limit=limit, use_hybrid=use_hybrid, rerank_weight=rerank_weight)
         results.append(result)
         if verbose:
@@ -168,6 +219,16 @@ def print_summary(summary: dict, mode: str) -> None:
     for k, value in summary["ndcg"].items():
         print(f"NDCG{k}: {value:.4f}")
 
+    by_case_type = summary.get("by_case_type") or {}
+    if len(by_case_type) > 1:
+        print()
+        print("按 case_type 分层：")
+        print(f"{'case_type':<18}{'数量':>6}{'Recall@1':>12}{'MRR':>10}")
+        for case_type, stats in by_case_type.items():
+            print(
+                f"{case_type:<18}{stats['count']:>6}{stats['recall@1']:>12.4f}{stats['mrr']:>10.4f}"
+            )
+
 
 def save_report(
     results: list[dict],
@@ -175,6 +236,7 @@ def save_report(
     mode: str,
     limit: int,
     output_dir: str | Path = DEFAULT_REPORT_DIR,
+    cases_file: str = "",
 ) -> Path:
     created_at = datetime.now().astimezone()
     run_id = created_at.strftime("%Y-%m-%d_%H-%M-%S")
@@ -184,6 +246,7 @@ def save_report(
         "script": "scripts/evaluate_retrieval_metrics.py",
         "mode": mode,
         "limit": limit,
+        "cases_file": cases_file,
         "rag_config": get_rag_config_dict(),
         "summary": summary,
         "cases": results,
@@ -210,11 +273,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--compare-modes", action="store_true", help="Run hybrid and vector-only side by side.")
     parser.add_argument("--save-report", action="store_true", help="Save JSON report under reports/retrieval_metrics/.")
+    parser.add_argument(
+        "--cases-file",
+        type=Path,
+        default=None,
+        help=(
+            "从 JSONL 读入评测用例（需含 query 与 expected_intent）。"
+            "用 data/chat_grounding_cases.jsonl 可以把检索评测集从 12 条扩到 90 条。"
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main() -> None:
     args = parse_args()
+    cases = load_cases_from_jsonl(args.cases_file) if args.cases_file else None
 
     if args.compare_modes:
         for mode in ("hybrid", "vector"):
@@ -222,6 +295,7 @@ def main() -> None:
                 limit=args.limit,
                 use_hybrid=(mode == "hybrid"),
                 rerank_weight=args.rerank_weight,
+                cases=cases,
                 verbose=False,
             )
             print_summary(summary, mode)
@@ -231,10 +305,13 @@ def main() -> None:
         limit=args.limit,
         use_hybrid=(args.mode == "hybrid"),
         rerank_weight=args.rerank_weight,
+        cases=cases,
     )
     print_summary(summary, args.mode)
     if args.save_report:
-        path = save_report(results, summary, args.mode, args.limit)
+        path = save_report(
+            results, summary, args.mode, args.limit, cases_file=str(args.cases_file or "")
+        )
         print()
         print(f"Saved report: {path}")
 

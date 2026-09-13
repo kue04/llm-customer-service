@@ -3,11 +3,13 @@ from contextlib import redirect_stdout
 from io import StringIO
 import json
 import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts.evaluate_retrieval_metrics import (
     evaluate_case,
     first_relevant_rank,
+    load_cases_from_jsonl,
     ndcg_at_k,
     parse_args,
     recall_at_k,
@@ -15,6 +17,7 @@ from scripts.evaluate_retrieval_metrics import (
     relevance_grades,
     save_report,
     summarize,
+    summarize_by_case_type,
 )
 
 
@@ -140,6 +143,87 @@ class SummarizeTest(unittest.TestCase):
 
     def test_summarize_returns_empty_for_no_results(self) -> None:
         self.assertEqual(summarize([], limit=10), {})
+
+
+class LoadCasesFromJsonlTest(unittest.TestCase):
+    def test_reads_query_and_expected_intent_from_grounding_cases(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "cases.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "id": "c1",
+                                "query": "外卖超时了怎么办",
+                                "expected_intent": "超时取消追问",
+                                "case_type": "oral",
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "id": "c2",
+                                "query": "优惠券不能用",
+                                "expected_intents": ["优惠券不可用", "优惠叠加咨询"],
+                            },
+                            ensure_ascii=False,
+                        ),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            cases = load_cases_from_jsonl(path)
+
+        self.assertEqual(len(cases), 2)
+        self.assertEqual(cases[0]["expected_intents"], ["超时取消追问"])
+        self.assertEqual(cases[0]["error_type"], "oral")
+        self.assertEqual(cases[1]["expected_intents"], ["优惠券不可用", "优惠叠加咨询"])
+        self.assertEqual(cases[1]["error_type"], "")
+
+    def test_skips_blank_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "cases.jsonl"
+            path.write_text(
+                '\n{"query": "a", "expected_intent": "x"}\n\n',
+                encoding="utf-8",
+            )
+
+            cases = load_cases_from_jsonl(path)
+
+        self.assertEqual(len(cases), 1)
+
+    def test_real_grounding_case_file_loads_ninety_cases(self) -> None:
+        path = Path(__file__).resolve().parents[1] / "data" / "chat_grounding_cases.jsonl"
+
+        cases = load_cases_from_jsonl(path)
+
+        self.assertEqual(len(cases), 90)
+        self.assertTrue(all(case["expected_intents"] for case in cases))
+
+
+class SummarizeByCaseTypeTest(unittest.TestCase):
+    def test_groups_metrics_by_case_type(self) -> None:
+        results = [
+            {"error_type": "oral", "first_relevant_rank": 1, "rr": 1.0},
+            {"error_type": "oral", "first_relevant_rank": 0, "rr": 0.0},
+            {"error_type": "multi_intent", "first_relevant_rank": 3, "rr": 1 / 3},
+        ]
+
+        breakdown = summarize_by_case_type(results)
+
+        self.assertEqual(breakdown["oral"]["count"], 2)
+        self.assertEqual(breakdown["oral"]["recall@1"], 0.5)
+        self.assertEqual(breakdown["oral"]["mrr"], 0.5)
+        self.assertEqual(breakdown["multi_intent"]["count"], 1)
+        self.assertEqual(breakdown["multi_intent"]["recall@1"], 0.0)
+        self.assertEqual(round(breakdown["multi_intent"]["mrr"], 4), 0.3333)
+
+    def test_unlabelled_cases_are_grouped_together(self) -> None:
+        breakdown = summarize_by_case_type([{"error_type": "", "first_relevant_rank": 1, "rr": 1.0}])
+
+        self.assertIn("未标注", breakdown)
 
 
 class ReportAndCliTest(unittest.TestCase):
