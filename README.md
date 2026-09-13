@@ -119,16 +119,16 @@ flowchart TD
 
 | 项目 | 数值 | 来源 |
 | --- | --- | ---: |
-| 知识库条目数 | **515** | `data/takeout_customer_service_seed.jsonl` 行数 |
+| 知识库条目数 | **781**（人工种子 515 + 京东帮助中心真实 FAQ 清洗入库 266）| `data/takeout_customer_service_seed.jsonl` 行数 |
 | 覆盖 category / intent | 14 / 117 | 同上，按字段去重 |
-| 向量库 | 515 条 × 512 维，FAISS `IndexFlatIP` | `faiss.read_index` 读取 `data/faiss_store/real_vector.index` |
+| 向量库 | 781 条 × 512 维，FAISS `IndexFlatIP` | `faiss.read_index` 读取 `data/faiss_store/real_vector.index` |
 | 切分方式 | **未切分，1 条知识 = 1 个片段** | `utils/vector_retriever.py:build_document_text` |
 | 知识库文件体积 | 299.4 KB | 磁盘实测 |
 | 固定评测集 / 盲测集 / 高风险集 | 90 / 30 / 4 | `data/chat_grounding_*.jsonl` 行数 |
 | 检索评测集 | 12 | `scripts/evaluate_vector_retrieval.py:EVAL_QUERIES` |
 | SFT 数据 all / train / val / test | 500 / 400 / 50 / 50 | `data/messages/*.jsonl` 行数 |
 
-> 全部为合成数据，不含真实平台数据、用户手机号或订单号（见 `data/dataset_sources.md`）。
+> 知识库主体为合成数据（种子 515 条），2026-09-14 起混入 266 条京东帮助中心公开 FAQ（真实话术，已做领域中性化，见 3.2 节数据来源）。评测用例不含真实用户手机号或订单号（见 `data/dataset_sources.md`）。
 
 ### 3.2 检索质量（12 条原始集 + 90/30 条扩容集，limit=10）
 
@@ -144,7 +144,21 @@ flowchart TD
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | 原始内嵌集（hybrid） | 12 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
 | **固定集（hybrid）** | **90** | **0.9667** | 0.9889 | 1.0000 | **0.9773** | 0.9827 |
-| **盲测集（hybrid）** | **30** | **0.9333** | 0.9667 | 0.9667 | **0.9444** | 0.9500 |
+| **盲测集（hybrid）** | **30** | **0.9000** | 0.9667 | 0.9667 | **0.9222** | 0.9333 |
+
+> **扩库影响（2026-09-14，知识库 515 → 781 条）**：固定集指标与扩库前**完全持平**（Recall@1 0.9667 / MRR 0.9773）。盲测集 Recall@1 从 0.9333 → 0.9000（-3.3pp），归因：新增的唯一 miss 是口语化模糊 query「票子去哪儿开」，被京东 FAQ 来源的泛化条目（时效咨询/常见问答）抢占 top1；其余 2 条 miss 是扩库前就存在的安全意图拦截（inducement 类）。这暴露了跨领域知识混入的真实代价，后续可做来源先验（source prior）或意图分类校准。
+
+### 数据来源：京东帮助中心真实 FAQ 爬取管道
+
+```bash
+.venv/Scripts/python.exe scripts/crawl_jd_help.py            # 爬取 help.jd.com 全量 FAQ（685 篇）
+.venv/Scripts/python.exe scripts/expand_knowledge_base.py --dry-run   # 清洗规则预览
+.venv/Scripts/python.exe scripts/expand_knowledge_base.py --merge     # 备份 + 合并入库
+```
+
+管道说明：爬取 672 条有效 FAQ → 领域过滤（剔除自提/PLUS/白条等京东特有业务 187 条、跨域分类 169 条、答案过短等）→ 「京东→平台」机械中性化 → 与现有库双重去重（精确 + difflib≥0.82）→ **266 条**入库，知识库 515 → 781。合并前自动备份种子文件到 `data/raw/backups/`。
+
+备用数据源（路线 A）：JDDC 京东客服对话数据集（100 万轮），可经 GitHub 竞赛基线仓库免注册获取（如 `SimonJYang/JDDC-Baseline-Seq2Seq` 的 `data/chat.txt`，21MB 真实对话），蒸馏管道待建。
 
 12 条原始集上的消融（hybrid vs 纯向量）：hybrid Recall@1 **1.0000** vs vector only **0.9167**（+8.3pp）。
 
@@ -241,7 +255,7 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 | 端到端 min / max | 1430 / 10611 ms | max 是冷启动首条；去掉后 P50 4207、P95 6121 |
 | 并发压测 | **未实测** | 没有做过 QPS / 并发测试 |
 
-延迟构成：本地 1.5B 模型生成（max_new_tokens=256）占大头，检索侧 embedding + FAISS + cross-encoder rerank 在 515 条库上是毫秒级。
+延迟构成：本地 1.5B 模型生成（max_new_tokens=256）占大头，检索侧 embedding + FAISS + cross-encoder rerank 在 781 条库上是毫秒级。
 
 ---
 
@@ -332,7 +346,7 @@ Top1 错了，回答整个跑偏到「退款到账时间」。根因是 cross-en
 2. **评测集仍偏小**。检索已从 12 条扩到 90/30 条（Recall@1 0.9667 / 0.9333），但 120 条仍是同一批作者标注；grounding 盲测 30 条偏小。下一步：扩到 100–300 条并做独立人工标注，同时统一「安全意图改写」与金标之间的口径冲突（见 3.2 的 inducement 分析）。
 3. **规则硬编码，换领域要重写**。`detect_intent_hint` 是 30+ 条 `if` 判断，`direction_penalty` / `keyword_bonus` 是面向已知 bad case 的手工调参。这是「可控性」换「泛化性」的取舍，不是可长期维护的方案。
 4. **LLM-as-judge 用的是 1.5B 模型给自己打分**。同模型既生成又评判，存在系统性偏差。已用 `suggested_layer: judge` 做人工复核分流，但没做 judge 与外部模型的一致性校验。
-5. **没有切分（chunking）**。1 条知识 = 1 个片段，515 条刚好够用，长文档场景不适用。
+5. **没有切分（chunking）**。1 条知识 = 1 个片段，781 条刚好够用，长文档场景不适用。
 6. **订单状态是 mock + SQLite**，不是真实外卖平台接口。
 7. **未实测的部分**：并发/QPS 压测、在线模型（需 API Key）路径、LoRA adapter 对最终回复质量的增量、真实对抗集上的拦截率、auto 模式下的盲测集重跑。这些都没有跑过，不要当成已有结论。
 8. **知识库运营有副作用**：`scripts/build_takeout_training_data.py` 会把扩增结果**回写到** `data/takeout_customer_service_seed.jsonl`（知识库本身），重复运行会让知识库不断膨胀。跑之前先备份。
@@ -386,7 +400,7 @@ llm-customer-service/
 
 | 文件 | 大小 | 用途 |
 | --- | ---: | --- |
-| `data/takeout_customer_service_seed.jsonl` | 299 KB | 主知识库，515 条 |
+| `data/takeout_customer_service_seed.jsonl` | ~460 KB | 主知识库，781 条（515 种子 + 266 京东 FAQ）|
 | `data/messages/takeout_sft_messages_all.jsonl` | 474 KB | SFT 全量，500 条 |
 | `data/messages/takeout_sft_train.jsonl` | 379 KB | SFT 训练集，400 条 |
 | `data/chat_grounding_cases.jsonl` | 36 KB | 固定评测集，90 条 |
