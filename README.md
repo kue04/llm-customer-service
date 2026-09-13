@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml/badge.svg)](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-242%20passed-brightgreen.svg)](#测试与质量门禁)
+[![Tests](https://img.shields.io/badge/tests-252%20passed-brightgreen.svg)](#测试与质量门禁)
 [![Last updated](https://img.shields.io/badge/updated-2026--09--14-lightgrey.svg)](#实测数据)
 
 **建议仓库 topics**：`rag`、`retrieval-augmented-generation`、`reranker`、`hybrid-search`、`fastapi`、`llm`、`customer-service`、`evaluation`
@@ -27,7 +27,7 @@ cd llm-customer-service
 python -m venv .venv
 .venv/Scripts/pip install -r requirements-dev.txt   # 约 9 个包，无 torch
 
-.venv/Scripts/python.exe -m pytest -q              # 实测：242 passed，4.5s
+.venv/Scripts/python.exe -m pytest -q              # 实测：252 passed，4.5s
 .venv/Scripts/python.exe -m ruff check .           # 实测：All checks passed!
 .venv/Scripts/python.exe scripts/check_repo_data_size.py   # 实测：通过，没有超标文件
 ```
@@ -130,49 +130,93 @@ flowchart TD
 
 > 全部为合成数据，不含真实平台数据、用户手机号或订单号（见 `data/dataset_sources.md`）。
 
-### 3.2 检索质量（12 条评测集，limit=10）
+### 3.2 检索质量（12 条原始集 + 90/30 条扩容集，limit=10）
 
 ```bash
 .venv/Scripts/python.exe scripts/evaluate_retrieval_metrics.py --limit 10 --save-report
 .venv/Scripts/python.exe scripts/evaluate_retrieval_metrics.py --limit 10 --compare-modes
+# 复用 grounding 用例集（自带 expected_intent），把检索评测集从 12 条扩到 90/120 条，零额外标注
+.venv/Scripts/python.exe scripts/evaluate_retrieval_metrics.py --limit 10 --cases-file data/chat_grounding_cases.jsonl --save-report
+.venv/Scripts/python.exe scripts/evaluate_retrieval_metrics.py --limit 10 --cases-file data/chat_grounding_blind_cases.jsonl --save-report
 ```
 
-| 配置 | Recall@1 | Recall@5 | Recall@10 | MRR | NDCG@10 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| **hybrid**（向量 + 关键词加权 − 方向惩罚） | **1.0000** | 1.0000 | 1.0000 | **1.0000** | **1.0000** |
-| vector only（纯向量） | 0.9167 | 1.0000 | 1.0000 | 0.9583 | 0.9692 |
+| 评测集 | 问题数 | Recall@1 | Recall@5 | Recall@10 | MRR | NDCG@10 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 原始内嵌集（hybrid） | 12 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| **固定集（hybrid）** | **90** | **0.9667** | 0.9889 | 1.0000 | **0.9773** | 0.9827 |
+| **盲测集（hybrid）** | **30** | **0.9333** | 0.9667 | 0.9667 | **0.9444** | 0.9500 |
+
+12 条原始集上的消融（hybrid vs 纯向量）：hybrid Recall@1 **1.0000** vs vector only **0.9167**（+8.3pp）。
+
+固定集按 case_type 分层，可以看出哪类问题最弱：
+
+| case_type | 数量 | Recall@1 | MRR |
+| --- | ---: | ---: | ---: |
+| baseline | 46 | 0.9783 | 0.9855 |
+| boundary_promise | 9 | 1.0000 | 1.0000 |
+| inducement | 9 | **0.8889** | 0.9028 |
+| long_context | 8 | 1.0000 | 1.0000 |
+| multi_intent | 8 | **0.8750** | 0.9375 |
+| oral | 10 | 1.0000 | 1.0000 |
+
+盲测集上同样如此：inducement 类 Recall@1 只有 **0.3333**（3 条里 2 条被安全意图改写）。两条失败的 query 都是「绕开平台」类，`detect_intent_hint` 把它们重定向到了 `站外交易风险`，而金标是 `商家电话咨询` / `联系商家咨询`。
+
+> **这算不算失败？** 从业务角度看，把「要走平台外渠道」的问题导向安全话术是正确行为；但从评测口径看，它确实没命中金标。这说明**金标标注与安全策略之间存在口径冲突**，扩评测集时要先统一这个口径，否则会误判为检索 bug。
 
 原有的 `scripts/evaluate_vector_retrieval.py` 另有一套口径：Top1 命中 **12/12**，Top3 召回但 Top1 错误 0，未命中 0，Rerank 改变 Top1 **0 次**。
 
-> **诚实说明**：12 条评测集已经饱和，Recall@1 = 1.0 说明它不再有区分度，不能当作泛化能力证据。混合召回相对纯向量的 +8.3pp Recall@1 也是在 12 条上测出来的，样本太小。扩展评测集是本项目当前第一优先的欠账。
+> **诚实说明**：12 条原始集已经饱和（Recall@1 = 1.0），只剩锚点作用；扩容后的 0.9667 / 0.9333 才是可信参考。消融对比（+8.3pp）仍只在 12 条上测的，样本太小。
 
 ### 3.3 回答质量（grounding 评测，本地 Qwen2.5-1.5B 生成 + 本地 Qwen 作 judge）
+
+**默认模式是 `auto`（条件介入）**，可用 `RAG_ANSWER_COMPOSER_MODE` 或 `--composer-mode` 切换，见 3.3.1 的 A/B。
 
 ```bash
 .venv/Scripts/python.exe scripts/evaluate_chat_grounding.py --use-local-judge --save-report
 .venv/Scripts/python.exe scripts/analyze_grounding_report.py reports/chat_grounding/<报告>.json
 ```
 
+#### 3.3.1 composer 三种模式的 A/B（90 条固定集，同一 judge 口径）
+
+| 模式 | judge_pass | 证据关键词覆盖 | forbidden 命中 | 模型输出被保留 | P50 / P95 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `off`（纯模型输出） | 0.6444（58/90） | 0.6630 | 0 | — | 2956 / 5172 ms |
+| `auto`（条件介入，**默认**） | **0.7556**（68/90） | **0.7624** | **0** | **54 / 90** | 2660 / 5349 ms |
+| `on`（总是用主证据重组） | 0.8333（75/90） | 0.8370 | 0 | 0 / 90 | 2966 / 6053 ms |
+
+结论：
+
+1. **规则模板一共贡献了 18.9pp**（0.6444 → 0.8333）。这就是"大模型在当前链路里到底贡献了什么"的量化答案。
+2. `auto` 条件介入只拿回了其中的 11.1pp，但保留了 **60%** 场景下的模型原文——那剩余 7.8pp 是"模型输出被判低质量、但重组后仍然更好的部分"，改进方向是优化 `reply_needs_composer()` 的判定，而不是退回全规则。
+3. **forbidden 三种模式都是 0**：安全边界靠的是 `reply_rules`（无条件生效），不依赖 composer。所以把 composer 改成条件介入**没有牺牲安全性**。
+4. `top1_intent_hit_rate` 三组完全相同（0.8778），验证了检索与生成解耦、改动没有串扰。
+5. 延迟差异（2660 vs 2956ms）在 CPU 噪声范围内，composer 不是延迟瓶颈——延迟大头是本地 1.5B 生成。
+
+一个已知误报：`risky_promises` 在 auto 下有 3 条、on 下有 5 条，逐条检查后**全部是「延误补偿」这个合法意图词命中了关键词表里的"补偿"**，并不是真实的承诺泄漏（judge 对这 3 条的标注均为拒绝赔付）。`RISKY_PROMISE_TERMS` 需要给合法业务词加豁免。
+
+#### 3.3.2 默认模式（auto）下的分集指标
+
 | 指标 | 固定集 90 条 | 盲测集 30 条 | 高风险集 4 条 |
 | --- | ---: | ---: | ---: |
-| top1_intent_hit_rate | **0.8778**（79/90） | **0.8333**（25/30） | 未单独统计 |
-| evidence_keyword_coverage | **0.837**（303/362） | **0.750**（90/120） | 未单独统计 |
-| judge_pass_rate（direct_answer=yes） | **0.8333**（75/90） | **0.7667**（23/30） | 4/4 |
-| grounded = yes | 75（partial 1 / no 14） | 23（no 7） | 4 |
+| top1_intent_hit_rate | 0.8778（79/90） | 0.8333（25/30） | 未单独统计 |
+| evidence_keyword_coverage | 0.7624（276/362） | 未重跑 | 未单独统计 |
+| judge_pass_rate（direct_answer=yes） | 0.7556（68/90） | 0.7667（23/30）* | 4/4 |
 | **forbidden_hit_count（高风险词命中）** | **0** | **0** | **0** |
-| risky_promises（承诺类词） | 0 | 0 | 0 |
 | judge 调用成功率 | 90/90 | 30/30 | 4/4 |
-| manual_review_count | 5 | 3 | 0 |
-| used_primary_evidence | 22/90 | 8/30 | 未单独统计 |
+| used_primary_evidence | 35/90 | 未重跑 | 未单独统计 |
 
-失败归因（`analyze_grounding_report.py` 输出）：
+> \* 盲测集的 0.7667 是 `on` 模式下测的（2026-09-14 早些时候），auto 模式未重跑，两种模式的数字不能直接混着比。
 
-| 归因 | 固定集 | 盲测集 |
-| --- | ---: | ---: |
-| pass | 75 | 23 |
-| retrieval_failure（召回/重排问题） | 8 | 4 |
-| generation_not_using_evidence（生成未用上证据） | 7 | 3 |
-| 建议修复层 judge（判定偏严，非链路问题） | 5 | 4 |
+失败归因（`analyze_grounding_report.py`，auto 模式，固定集 90 条）：
+
+| 归因 | 数量 | 说明 |
+| --- | ---: | --- |
+| pass | 67 | 通过 |
+| retrieval_failure | 7 | 召回/重排问题 |
+| generation_not_using_evidence | 15 | 生成未用上证据（auto 下暴露得更充分） |
+| evidence_insufficient | 1 | 知识库缺证据 |
+
+> **注意**：`on` 模式下 `generation_not_using_evidence` 只有 7 条，`auto` 下变成 15 条——因为 auto 保留了模型原文，模型没用上证据的问题暴露得更多。这 15 条里有一部分在 `on` 模式下是被模板"掩盖"的，并不是真的不存在。这是理解这份报告时必须知道的口径差异。
 
 ### 3.4 高风险场景拦截
 
@@ -190,7 +234,7 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 
 | 指标 | 数值 | 说明 |
 | --- | --- | --- |
-| pytest 用例总数 / 通过率 | **242 / 100%** | 精简依赖 4.5s，完整依赖 23.5s |
+| pytest 用例总数 / 通过率 | **252 / 100%** | 精简依赖 4.5s，完整依赖 23.5s |
 | 测试文件数 | 25 | `tests/` |
 | 端到端 P50 | **4220 ms** | 90 条固定集 `trace.latency_ms`，CPU 推理 |
 | 端到端 P90 / P95 / P99 | 5553 / **6147** / 7409 ms | 同上 |
@@ -209,7 +253,7 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 
 **做法**：`utils/rag_context.py` 把 Top1 标成 `primary`，其余标成 `supporting`，并给 supporting 写死约束「只能补充流程、凭证、入口等通用信息，不能覆盖主证据的业务意图」。还加了一层保护：当 Top1 与 Top2 的 `rerank_score` 差距 < 0.08 时，primary 额外标记 `close_match`，prompt 里明确提示「避免引用辅助证据中的不同业务结论」。
 
-**效果**：90 条里 `mixed_supporting_intent` 只有 3 条。但 `used_primary_evidence` 只有 22/90——说明判定口径偏严，这是已知待改进项。
+**效果**：`auto` 模式下 90 条里 `mixed_supporting_intent` 只有 2 条。`used_primary_evidence` 为 35/90——比 `on` 模式的 22/90 更高（保留模型原文时反而更多落在主证据上），但整体仍偏低，判定口径需要复核，这是已知待改进项。
 
 ### 4.2 业务方向惩罚解决什么
 
@@ -237,13 +281,23 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 
 **效果**：定性收益，无独立量化指标。当前 `/chat/prompt` 会无条件把 `need_human_review` 设为 `true`（v1 策略是「客服确认后发送」），所以记忆错误不会直接触达用户。
 
-### 4.5 answer_composer：是安全网，也是当前最大的架构债
+### 4.5 answer_composer：从无条件覆盖改成条件介入（并量化了取舍）
 
 `services/answer_composer.py` 把主证据拆成「结论 + 动作 + 限制」三段再渲染。它确实在干活——实测里有模型只吐出 10 个字的退化输出，被 composer 救成了 97 字的完整回答。
 
-**但必须说清楚**：`compose_answer_if_needed()` **无条件返回组合结果**，不看模型输出质量。实测 15 条样本里，**只有 1 条的最终回复与大模型原始输出一致**，其余 14 条都被 composer / reply_rules 完全重写；90 条固定集中 `answer_composer_applied = 90/90`。
+**这一节曾经是本项目最大的架构债，现在已经修掉并用数据量化了。**
 
-也就是说：**默认配置下，最终回复实际上由「主证据 + 规则模板」决定，大模型的生成文本被覆盖了**。这让回答非常稳定、grounding 分很高，但也意味着「生成」这一环在当前链路里贡献有限——这是本项目最该被追问、也最该继续改造的地方。详见「局限」。
+**问题**：旧版 `compose_answer_if_needed()` 无条件返回组合结果，不看模型输出质量。实测 15 条样本里只有 1 条最终回复与大模型原始输出一致。而代码里其实早就实现了低质量判断 `reply_needs_composer()`（空回复 / 过短 / 复读 query / 泛化话术 / 与主证据无重叠），只是返回值被拿去填 `reason` 了，没用来做分支。
+
+**做法**：把那个判断接上，并拆成三种模式（`RAG_ANSWER_COMPOSER_MODE` / `--composer-mode`）：
+
+- `on`：总是重组（历史行为，保留用于对照）
+- `off`：完全不介入
+- `auto`（**新默认**）：只在模型输出低质量时介入，否则保留模型原文（仅做去套话清理）
+
+**效果**（90 条固定集 A/B，见 3.3.1）：纯模型 0.6444 → 条件介入 **0.7556**（+11.1pp，同时保留 60% 的模型原文）→ 全规则 0.8333（+18.9pp）。`forbidden` 三组都是 0，安全边界由 `reply_rules` 兜底，与 composer 无关，所以这次改动没有牺牲安全性。
+
+**还没做到位的**：auto 距离全规则还差 7.8pp，说明 `reply_needs_composer()` 的判定偏松——有相当一部分"被判合格"的模型输出其实仍不如重组结果。下一步是收紧判定或引入分级介入，而不是退回全规则。
 
 ---
 
@@ -274,16 +328,17 @@ Top1 错了，回答整个跑偏到「退款到账时间」。根因是 cross-en
 
 按严重程度排序，这些是我认为面试官最该追问、也最该诚实回答的点：
 
-1. **默认链路里大模型的贡献有限**。`compose_answer_if_needed()` 无条件覆盖生成结果（实测 15 条里 14 条被重写）。下一步：让 composer 只在模型输出低质量时介入（`reply_needs_composer()` 其实已经实现了这个判断，但结果没被用上），并做一组 composer on/off 的 A/B 评测，量化「规则兜底」与「模型生成」各自的贡献。
-2. **评测集太小且已饱和**。检索只有 12 条、Recall@1 已 1.0，无法证明泛化。grounding 固定集 90 条已经调优过很多轮，盲测集 30 条才是真实参考（0.7667）。下一步：评测集扩到 100–300 条并做人工标注。
+1. **composer 条件介入仍偏松**。已从无条件覆盖改成条件介入并完成 A/B（纯模型 0.6444 → auto 0.7556 → 全规则 0.8333），但 auto 距离全规则还差 7.8pp——有相当一部分"被判合格"的模型输出其实仍不如重组结果。下一步：收紧 `reply_needs_composer()` 的判定，或引入按意图分级的介入策略。
+2. **评测集仍偏小**。检索已从 12 条扩到 90/30 条（Recall@1 0.9667 / 0.9333），但 120 条仍是同一批作者标注；grounding 盲测 30 条偏小。下一步：扩到 100–300 条并做独立人工标注，同时统一「安全意图改写」与金标之间的口径冲突（见 3.2 的 inducement 分析）。
 3. **规则硬编码，换领域要重写**。`detect_intent_hint` 是 30+ 条 `if` 判断，`direction_penalty` / `keyword_bonus` 是面向已知 bad case 的手工调参。这是「可控性」换「泛化性」的取舍，不是可长期维护的方案。
 4. **LLM-as-judge 用的是 1.5B 模型给自己打分**。同模型既生成又评判，存在系统性偏差。已用 `suggested_layer: judge` 做人工复核分流，但没做 judge 与外部模型的一致性校验。
 5. **没有切分（chunking）**。1 条知识 = 1 个片段，515 条刚好够用，长文档场景不适用。
 6. **订单状态是 mock + SQLite**，不是真实外卖平台接口。
-7. **未实测的部分**：并发/QPS 压测、在线模型（需 API Key）路径、LoRA adapter 对最终回复质量的增量、真实对抗集上的拦截率。这些都没有跑过，不要当成已有结论。
+7. **未实测的部分**：并发/QPS 压测、在线模型（需 API Key）路径、LoRA adapter 对最终回复质量的增量、真实对抗集上的拦截率、auto 模式下的盲测集重跑。这些都没有跑过，不要当成已有结论。
 8. **知识库运营有副作用**：`scripts/build_takeout_training_data.py` 会把扩增结果**回写到** `data/takeout_customer_service_seed.jsonl`（知识库本身），重复运行会让知识库不断膨胀。跑之前先备份。
+9. **`RISKY_PROMISE_TERMS` 有误报**：「延误补偿」这个合法意图词会命中关键词"补偿"，导致 risky_promises 计数虚高。需要给合法业务词加豁免。
 
-后续方向：评测集扩容 → composer 改成条件介入并 A/B → 用轻量意图分类替代部分硬编码规则 → 引入切分与更大知识库验证 FAISS 收益。
+后续方向：收紧 composer 判定 → 评测集扩容与口径统一 → 用轻量意图分类替代部分硬编码规则 → 引入切分与更大知识库验证 FAISS 收益。
 
 ---
 
@@ -317,7 +372,7 @@ llm-customer-service/
 │   ├── build_release_evaluation_report.py
 │   └── check_repo_data_size.py          # 仓库单文件体积守护（本次新增）
 ├── data/                        # 知识库、评测集、SFT 数据（见下）
-├── tests/                       # 25 个测试文件 / 242 用例
+├── tests/                       # 25 个测试文件 / 252 用例
 ├── docs/                        # 评测报告、bad case 复盘、阶段经验
 ├── requirements.txt             # 完整依赖（含 torch，约 3GB）
 ├── requirements-dev.txt         # 轻量依赖（CI / 不跑模型时用）
