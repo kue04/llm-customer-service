@@ -5,7 +5,7 @@
   2. 每个分类页 list-<id>.html 列出文章链接 <catid>-<aid>.html
   3. 每篇文章页：问题在 div.help-tit1，答案在 #pdfContainer .contxt 的段落里（GBK 编码）
 
-输出：data/raw/jd_help_faq.jsonl
+输出：data/raw/jd_help_faq.jsonl.gz（gzip，控制仓库体积在 1MB 门槛内）
   {url, cat_id, category, parent_category, question, answer, crawled_at}
 
 支持断点续爬：已存在的 URL 会被跳过（按 --resume）。
@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import re
 import sys
@@ -33,7 +34,7 @@ import urllib.request
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
 ISSUE_HOME = "https://help.jd.com/user/issue.html"
-OUTPUT_PATH = PROJECT_ROOT / "data" / "raw" / "jd_help_faq.jsonl"
+OUTPUT_PATH = PROJECT_ROOT / "data" / "raw" / "jd_help_faq.jsonl.gz"
 SLEEP_SECONDS = 0.3
 
 TREE_LI_RE = re.compile(
@@ -107,7 +108,8 @@ def parse_article(html: str) -> tuple[str, str]:
 def load_crawled_urls(path: Path) -> set[str]:
     if not path.exists():
         return set()
-    with open(path, encoding="utf-8") as f:
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt", encoding="utf-8") as f:
         return {json.loads(line)["url"] for line in f if line.strip()}
 
 
@@ -140,7 +142,7 @@ def crawl(args: argparse.Namespace) -> None:
     print(f"待爬文章：{len(articles)} 篇（已完成 {len(done)}）")
 
     written = 0
-    with open(OUTPUT_PATH, "a", encoding="utf-8") as out:
+    with gzip.open(OUTPUT_PATH, "at", encoding="utf-8") as out:
         for url, meta in sorted(articles.items()):
             if url in done:
                 continue

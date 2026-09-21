@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import gzip
 import json
 import re
 import sys
@@ -27,7 +28,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-RAW_FAQ_PATH = PROJECT_ROOT / "data" / "raw" / "jd_help_faq.jsonl"
+RAW_FAQ_PATH = PROJECT_ROOT / "data" / "raw" / "jd_help_faq.jsonl.gz"
 SEED_PATH = PROJECT_ROOT / "data" / "takeout_customer_service_seed.jsonl"
 BACKUP_DIR = PROJECT_ROOT / "data" / "raw" / "backups"
 
@@ -199,7 +200,9 @@ def main() -> None:
         return
 
     raw_records = [
-        json.loads(line) for line in RAW_FAQ_PATH.read_text(encoding="utf-8").splitlines() if line.strip()
+        json.loads(line)
+        for line in gzip.open(RAW_FAQ_PATH, "rt", encoding="utf-8").read().splitlines()
+        if line.strip()
     ]
     print(f"原始 FAQ：{len(raw_records)} 条")
 
