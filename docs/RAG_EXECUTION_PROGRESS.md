@@ -64,7 +64,7 @@
 | B5 | 3.1 Chunk 配置 + 3.2 结构化切分器 | `config/chunking_config.py`、`services/ingestion/chunkers/*`、`tests/test_chunking.py` | ✅ 完成（2026-09-23） |
 | B6 | 3.3 幂等流水线 + 3.4 FAISS manifest | `services/ingestion/{pipeline,worker,index_builder,index_manifest}.py`、改造 `queue.py` / `repository.py` / `utils/vector_retriever.py`、`tests/test_ingestion_pipeline.py` | ✅ 完成（2026-09-23） |
 | B7 | 4.1 权限规则 + 4.2 路由改造 + 4.3 检索 API | `services/retrieval_access.py`、整体重写 `routers/retrieval.py`、改 `routers/documents.py`（+索引重建端点）/`routers/knowledge.py`/`services/auth_context.py`/`services/auth_service.py`/`schemas/retrieval_schema.py`、修 `services/ingestion/{repository,index_builder,index_manifest}.py`（B14）、`tests/{test_retrieval_isolation,test_retrieval_api,test_tenant_isolation,test_auth_context,retrieval_fixtures}.py`、`README.md` | ✅ 完成（2026-09-23） |
-| B8 | 阶段 7 总审查与发布门禁 | `reports/rag_ingestion_auth_review/*`（review.txt 结论） | ⏳ 未开始 |
+| B8 | 阶段 7 总审查与发布门禁（拆三步：① 回滚资产 ② 接线 AST 守卫 ③ 四格式端到端） | `routers/documents.py`（回滚端点）、`schemas/document_schema.py`、`services/auth_context.py`、`services/ingestion/index_builder.py`、`tests/test_{index_rollback,wiring_guards,release_gate}.py`、`reports/rag_ingestion_auth_review/B8_*` 与 `stage7_review.txt` | ✅ 完成（2026-09-23） |
 
 分批原则：一批 = 一个可独立验证、可回滚的闭环；每批结束跑一次该阶段的检查命令，
 把结果写进第 3 节。**阶段审查为 NEEDS_WORK 时不进入下一批。**
@@ -78,7 +78,7 @@
 | 阶段 2 解析与接入 | **PASS**（2.1 / 2.2 / 2.3 全部完成） | `reports/rag_ingestion_auth_review/stage2_review.txt` | 2026-09-23 |
 | 阶段 3 切分与索引 | **PASS**（3.1 / 3.2 / 3.3 / 3.4 全部完成，阶段级结论已回填） | `reports/rag_ingestion_auth_review/stage3_review.txt`（第五节回填 + `B5_task_level_review.txt` + `B6_task_level_review.txt`） | 2026-09-23 |
 | 阶段 4 权限与隔离 | **PASS**（4.1 / 4.2 / 4.3 全部完成，阶段级结论见 § 五）★ **不含发布门禁** | `reports/rag_ingestion_auth_review/stage4_review.txt`（+ `B7_task_level_review.txt`） | 2026-09-23 |
-| 阶段 7 发布门禁 | 待审（**已知 2 条阻断**：7.2 四格式端到端未做、7.4 索引回滚无测试） | — | — |
+| 阶段 7 发布门禁 | **PASS**（7.1~7.4 全部通过；开工前登记的两条阻断项已消除；**含三条限制声明**：判据范围只到计划第 7 节 / roadmap 两条 P3 未做 / 检索质量无结论） | `reports/rag_ingestion_auth_review/stage7_review.txt`（+ `B8_step1~3_*_review.txt`） | 2026-09-23 |
 
 ## 3. 任务执行记录（按时间追加）
 
@@ -1725,261 +1725,119 @@ F1 双轨制与 B14 的静默零命中，都是"两段各自全绿、接口对�
 7.4 的两条已知阻断项**至此全部消除**（索引回滚 → B8-1；四格式端到端 → 本批）。
 下一步只剩：**7.3 六条逐项证据 + `stage7_review.txt` + 发布门禁结论**。
 
+### [T-7.3 / T-7.4] 阶段 7 总审查与发布门禁：PASS（2026-09-23）
+
+#### 7.3 安全审查逐项（六条，全部可指认）
+
+| # | 判据 | 可指认用例 | 结论 |
+| --- | --- | --- | --- |
+| 1 | 伪造 `X-User-Role` 不提升权限 | `test_auth_context.py::test_forged_role_header_cannot_elevate_privileges`（另 2 条 scopes 提权用例） | ✅ |
+| 2 | body / 查询串的 `tenant_id` 不影响范围 | `test_document_upload_api.py::test_tenant_id_in_query_string_is_ignored`、`test_retrieval_api.py::test_client_supplied_tenant_and_filter_are_ignored`、`test_retrieval_isolation.py::test_tenant_filter_comes_from_identity_not_from_content` | ✅ |
+| 3 | 跨租户 404/403 且**不泄漏存在性** | `test_document_upload_api.py` 的 4 条 `*_cross_tenant_is_indistinguishable_from_missing` | ✅ |
+| 4 | 无 ACL 文档不出现（结果 / 引用 / trace / 错误信息） | `test_retrieval_isolation.py`：`TestAclIsolation` + `TestFilterIsMandatory`(5) + `TestCrossTenantIsolation`(5) | ✅（**trace / 错误信息**维度未专项覆盖，判为低风险，见审查第六节） |
+| 5 | 未发布 / 归档 / 过期 / 旧版本不进索引 | `TestVersionVisibility` 3 条 + `repository.list_published_chunk_refs` 只取已发布 | ✅（证据形式是「用例名 + 实现机制」，**非独立实测报告**） |
+| 6 | 索引构建失败不破坏旧版本 | `test_ingestion_pipeline.py::TestStageFailures` 2 条 + `test_index_rollback.py` 全套 8 条 | ✅ |
+
+#### 7.4 阶段完成条件（六条）
+
+| # | 判据 | 结论 |
+| --- | --- | --- |
+| 1 | 全部自动测试通过 | **通过**（918 / 0 / 0 / 0） |
+| 2 | 四种文件端到端通过 | **通过**（`B8_e2e_four_formats.txt`，四格式逐条 PASSED） |
+| 3 | 权限负向测试全部通过 | **通过**（7.3 六条） |
+| 4 | 索引原子切换 / 回滚通过 | **通过**（切换 B6 已有 + 回滚 B8-1 新增 8 条） |
+| 5 | 审查材料保存 | **通过**（`reports/rag_ingestion_auth_review/`） |
+| 6 | 结论写 PASS / NEEDS_WORK 并引用测试结果 | **`stage7_review.txt` 出具 PASS** |
+
+#### 阶段 7（发布门禁）结论：**PASS**
+
+全量 **918 / 0 failures / 0 errors / 0 skipped**（阶段 4 收尾 884 → 本阶段 **+34 条**，零回归），
+warning 5 条未新增，ruff / compileall / 体积检查全通过。
+
+**三条限制（必须与 PASS 一起引用）**：
+
+1. 判据范围**只到计划第 7 节的四条**；不覆盖检索质量、真实 OCR、病毒扫描、限流、压测、成本账本；
+2. roadmap 建议归入 B8 的两条 P3（真实 OCR 复验、压测 P95/P99）**未做**，不阻断本 PASS；
+3. **检索质量无结论** —— `test_release_gate.py` 验的是**链路连通性**，
+   不得读作「检索效果已验收」。
+
+**另如实记录**：本阶段两次「红」都**未落盘原始输出**
+（B8-1 的权限枚举断言、B8-3 的 docx 准入 415），
+已写入对应任务级审查与踩坑 D16 / D17，但**证据不完整**，不假装留了现场。
+
+**未做（不阻断，如实标注）**：PostgreSQL 复验（roadmap 8.1 把它写进了 B8 的内容，
+但计划 7.1~7.4 均未要求）；真实模型下的端到端。
+
+### [T-7 收尾] 交接提示词重写 + 暂停点改写（2026-09-23）
+
+- **`docs/RAG_NEXT_WINDOW_PROMPT.md` 重写为「项目收尾交接版」**（462 → 322 行）：
+  - 新增 **0.4「发布门禁 PASS + 三条限制」** —— 专治最容易犯的错：
+    把 PASS 读成"什么都验收了"；
+  - 第 2 步从「本批任务」改为 **候选工作项六条**（计划已走完，剩下的都是"还能更好"）；
+  - 补 0.2 的「索引回滚已接线」与「接线守卫锁着哪几条约束」；
+  - 0.5 的已知问题表逐条更新状态（F2 / F4 / F5 / PostgreSQL / trace 维度）；
+  - 附录 A 补 D15 / D16 / D17 提示；附录 B 命令更新到 **918** 基线；
+  - 附录 C 自检清单拆成「开工前 / 交付前」两组。
+- **台账 §4 执行暂停点改写为收尾状态**（按约定覆盖更新，**255 → 52 行**）：
+  原文（B8 开工规划）已全部执行完毕；新内容 =「当前停在项目收尾」+ 下一步候选 +
+  文档入口表 + 执行纪律。
+- **改写方式**：整节 / 整份替换一律**用脚本 + 断言**（限定替换区间、
+  校验关键小节存在与围栏奇偶），不手工大段编辑 —— 与 **E1**（并行编辑丢改动）同源的自我保护。
+- **本批未新增坑**：收尾过程本身没有产生新的踩坑条目
+  （用到的两条经验 —— 脚本化批量替换、覆盖前加断言 —— 已分别记在 E1 与 D14 的延伸里）。
+
 ## 4. 执行暂停点（下次从这里继续）
 
-**当前停在：B7 结束（任务 4.1 + 4.2 + 4.3 全部完成，阶段 4 已 PASS），
-等待开始 B8（阶段 7 总审查与发布门禁）。**
+> **2026-09-23 收尾 —— 本节是「当前指针」，按约定覆盖更新。**
+> 原内容（B8 开工规划）**已全部执行完毕**，故改写为收尾状态。
+> **全部批次结束：B1~B8 完成，阶段 0~7 全部 PASS。**
 
-> **暂停点更新时间：2026-09-23**
-> 下一批的**完整作业规程**（进度快照 + 五步闭环 + 记录格式模板）见
-> **`docs/RAG_NEXT_WINDOW_PROMPT.md`** —— 新开窗口**整份粘贴**即可，不要改写。
-> 该规程要求的五步闭环：核对基线 → 读进度与约束 → 干活 → 门禁自检 → 审查 → 记录
-> （四处记录**全部必须带日期**）。
+### 当前停在：项目收尾（发布门禁 PASS）
 
-上次收尾状态（B7）：**~~工作区包含 B5 + B6 + B7 全部改动（尚未提交）~~**
-→ **2026-09-23 校正：B5 + B6 + B7 已由用户提交并推送**
-（`HEAD = 624d4968…`，提交信息「B7: 检索 API 正式接线（chunk 级 + 权限过滤），阶段 4 收尾 PASS」），
-工作区干净、与 `origin/optimize/interview-ready` **同 SHA**。
+- **全量测试 918 / 0 failures / 0 errors / 0 skipped**（JUnit XML 口径，`B8_step3_junit.xml`）；
+- **发布门禁 PASS** —— `reports/rag_ingestion_auth_review/stage7_review.txt`。
+  **引用时必须带上它的「三条限制声明」**（判据范围只到计划第 7 节 / roadmap 两条 P3 未做 /
+  检索质量无结论），否则构成过度声明；
+- 本阶段分三步交付，详见 §3 的 `[B8-1]` / `[B8-2]` / `[B8-3]` / `[T-7.3 / T-7.4]`：
 
-> ⚠️ 随之失效的一处陈述（**不要照旧做**）：`stage4_review.txt` 第三节写的
-> 「回滚点：本阶段全部改动尚未提交，`git checkout --` / `git stash` 可回到 B6 状态」
-> **已不成立**。现在要回到 B6 状态只能靠 `git revert` / `git reset`，属**改写历史**的操作 ——
-> **提交/推送/历史一律归用户，不要动。**
+| 步 | 内容 | 提交 |
+| --- | --- | --- |
+| B8-1 | 索引回滚做成真能力（回滚端点 + 8 条测试，6 个符号全部有归属） | `f934a26` |
+| B8-2 | 接线 AST 守卫（18 条，含守卫自身的假绿防护） | `1155af2` |
+| B8-3 | 四格式端到端（7 条，项目**首条**从 HTTP 入口到检索结果的测试） | `135d280` |
 
-本批结束后全量 **884 tests / 0 failures / 0 errors**（JUnit XML 口径 = 880 passed + 4 subtests，
-起点 843 = 839 + 4 subtests，新增 41 条，零回归）、`ruff check .` 干净、
-`compileall` 退出码 0、`check_repo_data_size.py` 通过、warning **5 条**（未新增）。
-新窗口开工前先 `git status -sb` + `git rev-parse HEAD` 复核实际状态
-（B7 收尾当时 HEAD 是 `a670373185cd074b4ceae0c4008e55135276f341`；
-**2026-09-23 校正**：B7 提交后为 `624d4968366f095b6ffcb32d27dee41ffe08d382`）。
+### 下一步可以做什么（都是「还可以更好」，不是「未完成」）
 
-**2026-09-23 开 B8 前的实测复核（本次校正的依据）**：
+1. **推送** —— 本地领先远端 6 个提交；按 §5 的坑 2，直连与代理要**交替重试**，
+   别一次失败就换策略；
+2. **F4 残留** —— README 三处测试数（`332 passed` → **918**）+ 测试文件数重数；
+3. **PostgreSQL 复验** —— roadmap 8.1 把它写进了 B8 的内容，但计划 7.1~7.4 未要求，**未做**；
+4. **roadmap 8.2 的两条 P3** —— 真实 OCR 引擎复验、压测与 P95/P99 聚合；
+5. **F2 检索评测口径修正**（`scripts/evaluate_retrieval_metrics.py:85` 按 intent 判相关）
+   —— 修完才谈得上 M10 Recall@k；
+6. **验收规范 §1.0 的其余未实现项** —— 解析质量门禁、限流、病毒扫描、成本账本、
+   总 deadline / 背压 / 死信。
 
-- 全量测试 **884 / 0 failures / 0 errors / 0 skipped**（JUnit XML：`tmp/b8_baseline_junit.xml`，43.8s）；
-- ⚠️ 跑的过程 **A6 那个环境守卫再次出现**（`SAFE_DELETE_BULK_CONFIRM_REQUIRED {"count":108,"threshold":50,"scope":"turn"}`）
-  → 进度条全绿到 `[100%]`、**无汇总行**、退出码 1 —— **测试实际全绿**，按 JUnit XML 取数；
-- 回滚一族 6 个符号**仍零调用点零测试**（前置项 1 未做，`rebuild_index` 仍是唯一接线的入口）；
-- B7 的检索接线**仍在**：`routers/retrieval.py:46/55/151/153` 引用
-  `build_chunk_access_filter` / `retrieve_chunk_items`，`tenant|acl` 命中 **10 处**（B6 时是 0）；
-- **F4 的范围比登记的更大**：README 的 `332 passed` 出现在 **3 处**
-  （第 8 行 badge、第 286 行「测试文件数 30」表、第 427 行目录树注释），
-  不是"一行的事"；三处都要改，测试文件数也要重数。
+### 项目文档入口（新窗口先看这几份）
 
-> **⚠️ 门禁取数口径在 B7 变了（踩坑 A6）—— B8 必读，否则会把绿读成红**
->
-> | | B5 收尾那次（A5） | B7 收尾起（A6） |
-> | --- | --- | --- |
-> | 现象 | `1 failed, 789 passed` | 进度条全绿到 `[100%]`，但**没有汇总行**、退出码 1 |
-> | 异常 | `SystemExit`（环境删除守卫） | 同左：`[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":1542,...}` |
-> | 真伪 | **假红**（测试其实绿） | **假红**（测试其实绿），但这次连"绿"的证据都被吃掉 |
-> | 处置 | 不改代码 | **改读 `--junitxml`** |
->
-> **B7 起的固定做法**（照做）：
-> 1. `pytest -q --junitxml=reports/rag_ingestion_auth_review/<批次>_full_test_junit.xml`
->    → `tests / failures / errors` 三个属性就是权威计数；
-> 2. warning 条数用 `pytest --collect-only -q` 的 warnings summary 取（只收集不执行，
->    不产生批量删除）；
-> 3. **判据是「输出里有没有 F／E」＋ JUnit XML，不是退出码、也不是汇总行**；
-> 4. **一轮只跑一次全量**（A5）——逐符号/逐文件的核实一律用 `--collect-only` 或定向跑单文件。
->
-> `--basetemp` 与 `PYTEST_DEBUG_TEMPROOT` 都试过了：前者无效，后者直接卡死。
+| 想干什么 | 看哪份 |
+| --- | --- |
+| 接手继续做 | `docs/RAG_NEXT_WINDOW_PROMPT.md`（**已重写为收尾交接版**） |
+| 「做到什么算合格」 | `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md`（v2.1；§1.0 现状总览 / §17 作业规程） |
+| 「现在还差多远」 | `docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md` |
+| 「做过什么、踩过什么」 | 本文件 §3 + `docs/RAG_DEV_PITFALLS.md`（47 条） |
+| 提交 / 推送的环境坑 | 本文件 §5（坑 1~4，**每次 commit 必踩坑 1**） |
 
-> **⚠️ 「门禁红了」的判据（A5 + D12 + A6 三条合并）**
-> ① 先看**异常类型** —— `AssertionError` / 业务异常 = 逻辑信号；
-> `SystemExit` / `PermissionError` / 断连 = 环境信号；
-> ② 再看**抛出点** —— 在项目代码里就是真的；
-> ③ 最后**单独复跑那一条**（不要重跑全量）；
-> ④ **新增（A6）**：如果输出里**没有** `F` / `E`，先怀疑是守卫把汇总行吃了，
-> 去读 JUnit XML 再下结论。
->
-> **证据文件的红/绿双份约定**：B6（`B6_baseline_test.txt`）、B7
-> （`B7_index_multitenant_RED.txt` ↔ `_GREEN.txt`）都保留了"问题现场"。
-> **问题现场的证据不要删** —— 只留绿色那份，"这里红过、为什么红、怎么修的"整段历史就消失了。
+### 执行纪律（跨批次适用，继续沿用）
 
-### B8 本批要做什么（阶段 7：总审查与发布门禁）
-
-**B8 与前 6 批性质不同：前面都是"写代码"，B8 主要是「出证据 + 做终审」。**
-计划第 7 节的四小节（7.1 自动检查 / 7.2 文件链路验收 / 7.3 安全审查 / 7.4 阶段完成条件）
-就是 B8 的作业清单，逐条出证据，最后写结论。
-
-**B8 要交付什么**：
-
-1. **7.1 自动检查**（四件套）—— 重跑取最终数字，落 `B8_*` 证据。
-   注意用 A6 的取数口径（JUnit XML）。
-2. **7.2 四种文件端到端链路**（**B7 遗留，未做**）——
-   PDF / DOCX / HTML / Markdown **各跑一次**：上传 → 解析 → 切分 → 落库 → 进索引 → 检索，
-   确认文档版本 / 解析块 / Chunk / manifest / 检索结果都能由 `document_id` 串联；
-   长文档至少 2 个 chunk；每个 chunk 有来源、租户、版本、页码或标题路径、ACL；
-   重复上传不产生重复有效版本；失败任务可查错和重试。
-   `tests/fixtures/` 下已有四种格式的可复现样本（B3 的 `scripts/make_parser_fixtures.py` 生成）。
-3. **7.3 安全审查逐项**（六条，逐条出证据）——
-   伪造 `X-User-Role` 不提升权限 / body 的 `tenant_id` 不影响范围 / 跨租户资源返回 404
-   且不泄漏存在性 / 无 ACL 文档不出现在结果、引用、trace 和错误信息 /
-   未发布、归档、过期、旧版本不进入索引 / 索引构建失败不破坏旧版本。
-   现状：B7 时已声称"大部分已覆盖"（见 `stage4_review.txt` 第六节 C 表），
-   B8 要把它们从"已覆盖"变成**逐条可指认的证据文件**。
-4. **7.4 阶段完成条件** —— 全部自动测试通过 / 四种文件端到端通过 /
-   权限负向测试全部通过 / **索引原子切换与回滚通过** / 审查材料落
-   `reports/rag_ingestion_auth_review/` / 结论写 `PASS` 或 `NEEDS_WORK`。
-   ★ **「回滚通过」目前无法判定** —— 见下方"必须先处置的 3 件事"第 1 条。
-5. **结论文件** `reports/rag_ingestion_auth_review/release_gate_review.txt`
-   （或按批次命名 `B8_task_level_review.txt` + `stage7_review.txt`），
-   明确 PASS / NEEDS_WORK。**NEEDS_WORK 时不得进入后续阶段。**
-
-### ★ 必须先处置的 3 件事（B8 开工第一小时就做）
-
-按优先级排列。前两条是 B7 明确挂出来、**不处置就没有资格写发布门禁 PASS** 的：
-
-**1. 索引「回滚 / 版本枚举」一组导出资产（阻断 7.4）**
-
-   `services/ingestion/index_builder.py` 里这 **6 个导出符号全部零调用点、零测试**：
-   `rollback_index` / `available_versions` / `active_index_version` / `index_root_for` /
-   `build_entries` / `ERROR_INDEX_ROLLBACK_FAILED`。
-   计划 3.4 原文要求「增加索引版本**回滚**接口/函数**和测试**」—— 函数有、测试没有。
-   **三选一并登记**：① 补测试（推荐，成本最低：`rollback_index` 只改指针、不重建不删文件，
-   现有 fixture 就能测）；② 补 API 出口；③ 明确声明为"预留能力，不在本次验收范围"并说明理由。
-   **不能既不测、不用、也不声明。**
-   （复核命令：`for fn in rollback_index available_versions active_index_version index_root_for
-   build_entries ERROR_INDEX_ROLLBACK_FAILED; do grep -rn "\b$fn\b" --include=*.py . |
-   grep -v venv | grep -v index_builder.py; done` → 全部无输出）
-
-**2. 给 B7 的新接线补 AST 守卫**
-
-   B6 有 `TestProductionCallPoints`（AST 逐函数查形参，沿用 D1 的教训），
-   但它只扫 `services/ingestion/pipeline.py` 与 `queue.py`。
-   B7 的「API → 检索层」接线**只有手工 grep 复核**，没有断言守着。
-   建议补三条：
-   · `routers/retrieval.py` 必须引用 `retrieve_chunk_items` 与 `build_chunk_access_filter`；
-   · `search_chunk_index` 的 `access` 参数**必须没有默认值**（防"顺手加个默认全库"）；
-   · 路由层不得 import `jwt`（防在 router 里重建身份解析）。
-   B7 未补的理由已记录在 `B7_task_level_review.txt` 遗留 1：本轮环境删除配额已耗尽（A6），
-   此时加测试并重跑有制造假红的实际风险。
-
-**3. 7.2 的四种文件端到端链路**（见上）
-
-### ⚠️ 「已建未启用」资产清单（2026-09-23 B7 收尾后复核）
-
-**背景**：复核发现整仓存在**双轨制** —— ingestion 子系统与线上检索链路长期没接上。
-B5 / B6 接通了数据侧，**B7 接通了检索侧**。下表是复核后剩下的状态。
-（划掉的行 = 已被某批补上调用点，**保留在表里**是为了让"曾经欠过账"这件事可见。）
-
-| 资产 | 定义位置 | 生产调用点 | 测试调用点 |
-| --- | --- | --- | --- |
-| ~~`chunk_document()`~~ | `services/ingestion/chunkers/chunker.py` | ✅ B6 接上（`pipeline.py:252`） | 有（B5，235 例） |
-| ~~`insert_chunks()` / `delete_chunks()`~~ | `repository.py:545` / `:597` | ✅ B6 接上（`pipeline.py:576-577`） | 有 |
-| ~~queue 消费端（`xreadgroup` / `xack`）~~ | `services/ingestion/queue.py` | ✅ B6 接上（`worker.py`） | 有 |
-| ~~`index_builds.manifest_uri`~~ | `models.py:430` | ✅ B6 接上（`index_builder.py`） | 有 |
-| ~~`search_chunk_index()`~~ | `utils/vector_retriever.py:1083` | ✅ **B7 接上**（`utils/vector_retriever.py:1205`，`retrieve_chunk_items` 内） | 有（B6 入口守卫 + **B7 端到端 23 例**） |
-| ~~`ChunkAccessFilter`~~ | `utils/vector_retriever.py:969` | ✅ **B7 接上**（构造：`services/retrieval_access.py:162`；消费：`routers/retrieval.py:151`） | 有 |
-| ~~检索层 tenant / ACL 过滤的 API 出口~~ | `routers/retrieval.py` | ✅ **B7 接上**（`POST /retrieval/search`） | 有（`TestChunkRetrievalApi` 9 例） |
-| `queue.publish()` | `queue.py` | ✅ `routers/documents.py` | 有 |
-| **`rollback_index()`** | `index_builder.py:416` | ❌ **无（也没有 API 出口）** | ❌ **无** ← B8 处置 |
-| **`available_versions()` / `active_index_version()` / `index_root_for()` / `build_entries()` / `ERROR_INDEX_ROLLBACK_FAILED`** | `index_builder.py` | ❌ 无 | ❌ 无 ← B8 一并处置 |
-
-**读法**：B7 之后，**「检索侧」的欠账已清空**；剩下的欠账集中在
-`index_builder.py` 的**回滚 / 版本枚举**这一族，且它直接卡住 7.4 的一条判据。
-
-B7 复核的其余结论（详见 `B7_task_level_review.txt` 与 `stage4_review.txt`）：
-
-1. **`data/rag_metadata.db` 不存在** → alembic 0001 从未落到开发库（与 B1~B6 相同）；
-2. **检索评测口径失真**（F2，**仍未修**）：`scripts/evaluate_retrieval_metrics.py:85` 按 intent
-   匹配判相关，报出的 recall@1 **不是文档 / Chunk 级指标** → 该数字不得作为检索能力证据；
-3. **~~`tests/test_tenant_isolation.py` 只测数据层~~** → ✅ **F3 已消除**（B7）：
-   新增 `tests/test_retrieval_isolation.py` 23 条检索层用例 + 真实路由层 `TestAclOnRealRoutes` 7 条，
-   数据层 14 条**保留**，两套并存。`docs/RAG_DEV_PITFALLS.md` 的 F3 条目已回填「修复于 B7」；
-4. **README badge 数字**（F4，**部分推进**）：B7 已加第 0 节「两条检索路径：哪条是真的」表格，
-   但 badge 里的测试数是否同步到 **884** 未核对（文档维护项，不在代码门禁内）；
-5. **worker 有 CLI 入口但没有进程编排**（F5，**仍未修**）：
-   `python -m services.ingestion.worker` 可用且 `main(argv)` 有测试，
-   但 `main.py` 的 lifespan 不启动它，`docker-compose.yml` 只有 `api` / `postgres` / `redis`
-   → **容器化部署后队列仍然没人消费**；
-6. **7.2 四种文件端到端链路至今未做**（B4 时归入"阶段 3 与阶段 7"，B7 仍未做）→ B8；
-7. **真实引擎全部未复验**：PostgreSQL / Redis Stream / 真实 tokenizer + embedding / OCR
-   （本机无 Docker、无 psql、无 Redis）→ B8 门禁（或明确声明为已知限制）；
-8. **索引重建的并发竞态未测**（两个请求同时重建的版本号竞态），单机 SQLite 难以构造。
-
-**执行纪律补充（B6 立、B7 沿用，B8 仍适用）**：
-每个新模块必须登记**生产调用点** —— 定义在、测试在、但没人调用等于未完成；
-权限隔离测试必须**数据层与检索层各写一套**，不允许用前者代替后者；
-指标命名必须精确（`intent_hit_rate` 不能叫 `recall`）；
-**"问题现场"的证据文件要保留**（见本节开头的红/绿双份约定）；
-**新增（B7）**：门禁取数用 JUnit XML（A6），一轮只跑一次全量（A5）。
-
-**B8 开工前必读：**
-
-- 本文件第 5 节「四个环境坑」—— **commit/push 前必读**，尤其坑 1（嵌套 ref）每次 commit 必踩、
-  坑 2 的结论是「代理与直连都间歇抽风，只能交替重试并以远端 SHA 为准」、
-  坑 3 的 venv 是轻量版（pip 必须显式加 `--trusted-host mirrors.aliyun.com -i https://...`）；
-  另有第五条环境坑（pytest 删除守卫）见踩坑记录 **A6**，它只影响**跑测试**、不影响 commit；
-- **`reports/rag_ingestion_auth_review/stage4_review.txt`** —— 阶段 4 的阶段级审查，
-  第六节 C 表列了 **7.1 / 7.2 / 7.3 / 7.4 每一条的"当前状态 + 处置建议"**，
-  这是 B8 的工作清单来源；
-- **`reports/rag_ingestion_auth_review/B7_task_level_review.txt`** —— B7 的任务级审查，
-  含 9 处**偏离计划原文的方向标注** + 第八节**测试盲区 7 条** + 第十节 **8 条遗留问题**；
-- **`docs/RAG_DEV_PITFALLS.md`（踩坑记录）**：每批结束后**必须**把新踩的坑追加进去
-  （格式：现象 → 根因 → 解决 → 面试怎么讲）。这是 `docs/goal.md` 明确要求的面试复盘素材。
-  B7 新增 **A6**（环境删除守卫吃掉 pytest 汇总行 → 改用 JUnit XML）、
-  **B14**（多租户索引互相覆盖：缺失决策，不是编码错误）共 2 条，
-  并**回填 F3**（修复于 B7）。**禁止断更**，无新坑也要写「本批未新增坑」；
-- `docs/RAG_EXECUTION_PLAN_DATA_INGESTION_CHUNKING_AUTH.md` 第 7 节
-  （7.1~7.4 的计划原文 = B8 的范围来源）。
-
-B8 继续时的入口动作：
-
-0. 先读第 5 节环境坑 + 踩坑 A6，再 `git status -sb` + `git rev-parse HEAD` 复核仓库状态；
-1. 复读第 1 节分批表，确认 B8 范围 = 阶段 7（7.1 + 7.2 + 7.3 + 7.4）；
-2. 跑一次全量，用 A6 的口径取数（`--junitxml`），确认起点是 **884 / 0 failures / 0 errors**；
-3. **先处置「必须先做的 3 件事」**（回滚资产 → 接线 AST 守卫 → 四格式端到端），
-   再走 7.3 的逐项安全审查；
-4. 必须沿用的既有约定（**一条都不要顺手放宽**）：
-   * `search_chunk_index()` 的 `access` 是**必填关键字参数**，显式传 `None` 也抛错 ——
-     **不要给它加默认值全库**；
-   * `ChunkAccessFilter` **只允许服务端构造**（唯一构造点 `services/retrieval_access.py:162`），
-     不由客户端传入；`routers/retrieval.py` 的请求模型里**不得**新增 tenant/acl/filter/row_id 字段；
-   * 过滤用 FAISS **原生预过滤**（`SearchParameters(sel=IDSelectorBatch(...))`），
-     **不要改成"先全局 top-k 再后筛"**（后过滤在长尾租户上会静默返回 0 条）；
-   * **无权限对查询者 = 零命中**（不是 403）、**缺 filter 对调用方 = 报错** ——
-     拍板记录见 **[D-12]**；
-   * ACL 语义：无记录 = 租户内可见；`write` 不隐含 `read`；`group` fail closed ——
-     见 **[D-13]**（改这三条必须补新的决策记录）；
-   * 切分入口签名冻结：`chunk_document(document, *, context: ChunkContext, config: ChunkConfig)`，
-     `tenant_id` 只能经 `ChunkContext` 传；改回去会挂 B5 的 AST 守卫；
-   * 版本创建走 `repository.create_document_version()`，判重走 `find_version_by_content_hash()`；
-   * 任务状态推进只走 `repository.fail_ingestion_job` / `update_ingestion_job`；
-   * 警告固定在 `document_versions.metadata_json["warnings"]`（形状 `{code, message, detail}`）；
-   * 删除某版本全部 chunk **必须是一条 DELETE 语句**（B13 的教训）；
-   * 读回 chunk 顺序**只能信 `metadata_json["ordinal"]`**；
-   * **索引是全局一份**（B14 的教训）：`rebuild_index` 默认 `all_tenants=True`，
-     版本号必须**全局**递增，manifest `extra["scope"]` / `extra["tenants"]` 必须留痕；
-     **不要退回"按租户分片"**（B7 之前的状态会让先入库的租户静默消失）；
-   * 鉴权走 `services/auth_context.py`，**不要在 router 里重建身份解析**；
-   * 发布（`document:publish`）与索引重建（`index:rebuild`）**分开授权且集合不同**，
-     `index:rebuild` = {supervisor, admin} 的收窄是有意的，不要放宽；
-5. 每个新模块/新函数必须登记**生产调用点**（B7 刚在 `rollback_index` 上吃过这个亏）；
-6. 门禁跑完后回到本文件**追加**一条记录（不覆盖历史），并把证据落到
-   `reports/rag_ingestion_auth_review/`（**B8 的证据文件统一用 `B8_` 前缀**）。
-
-需要注意的既有约束（仍适用，B8 必读）：
-
-- 解析器**不接收 tenant_id、不写数据库**，两条已有测试兜底；
-  切分器同理（B5 的 9 条 AST 守卫，含「签名逐参数冻结」）；
-  B6 又补了 5 条「生产调用点」AST 守卫（`TestProductionCallPoints`，**只覆盖 pipeline/queue**）
-  与 2 条契约守卫。
-- `document_versions.content_hash` 是**租户粒度唯一**；解析器只负责把 SHA-256 放进
-  `ParsedDocument.metadata["content_hash"]`，**判定在流水线**。
-- **上传接口不建版本**（[D-6]）：`document_versions` 由流水线在 `parsed` 阶段创建。
-- **切分器不接收裸 tenant_id**（[D-9]）：归属信息一律经 `ChunkContext` 传入；
-  **流水线是构造 `ChunkContext` 的唯一地方**。
-- 解析警告放 `document_versions.metadata_json` 的固定键 `"warnings"`；
-  若要独立列**必须**走 Alembic 新迁移并同步 `tests/test_ingestion_models.py` 的对照断言。
-- 切分配置留痕放 `document_versions.metadata_json["chunking"]`；
-  配置**越界即失败**（`invalid_chunking_config`），**不静默夹取**。
-- 新增依赖同步 `requirements.txt` 与 `requirements-dev.txt`：**测试会 import 的必须两侧都加**。
-- 测试跑在临时 SQLite 上，`tests/conftest.py` 已固定鉴权环境变量；
-  可用 `tests/auth_helpers.py` 自签令牌。
-  **B7 起还有一套现成的检索侧基建：`tests/retrieval_fixtures.py`**
-  （确定性假 embedder + `RetrievalEnv`，两租户入库/重建/授权一条龙）—— B8 做端到端优先复用它。
-- `tests/fixtures/` 下的样本必须 < 1 MB；`.gitattributes` 已把两个文本样本锁成 LF。
+- **「问题现场」的证据文件要保留** —— 红 / 绿双份；
+- **门禁取数用 JUnit XML**（踩坑 A6），**一轮只跑一次全量**（A5）；
+- **warning 条数取自全量 stdout**，不是 `--collect-only`（D15）；
+- **阶段未完成不得写 PASS**；**阶段 PASS ≠ 发布门禁 PASS**，两者分别出具、分别声明范围；
+- **规范编号（`§N` / `I01~O01`）与项目编号（`B1~B8` / `阶段 N`）是两套**，引用必须带前缀
+  （规范 §17.5 有对照表）；
+- **接线守卫要防"静默变成空"**（D16）；**构造坏输入先搞清它会被哪一层拦下**（D17）；
+- **`git add` 一律用精确路径**（工作区可能有并行会话的产出，E2）。
 ## 5. 提交与仓库同步记录
 
 | 提交 | 内容 | 规模 |
