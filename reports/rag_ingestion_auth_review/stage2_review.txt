@@ -1,0 +1,238 @@
+阶段编号：2（本文件为**任务级**审查，覆盖 2.1 / 2.2）
+阶段目标：定义解析契约（2.1）、实现五种格式解析器与注册表（2.2）、
+         增加上传与异步任务 API（2.3）
+
+★ 重要范围声明（请先读这一条）★
+────────────────────────────────────────────────────────────────────
+阶段 2 在计划里由 2.1 / 2.2 / 2.3 三个任务组成，本批次（B3）只完成了 2.1 与 2.2。
+**2.3（上传与异步任务 API）尚未实现，因此阶段 2 还没有结束。**
+
+本文件因此**不给出阶段级最终结论**，只给出已覆盖任务（2.1 / 2.2）的结论。
+
+这里刻意不写「阶段结论：NEEDS_WORK」：按本执行计划第 3 条的纪律，
+NEEDS_WORK 会触发「停止后续任务、不得进入下一批」，而 2.3 恰恰属于**同一个阶段**
+的剩余工作 —— 用 NEEDS_WORK 标记一个「只差自己剩余部分」的阶段会导致自相矛盾的死锁。
+
+阶段级结论待 2.3 完成后回填到本文件。
+
+═══ 一、已完成任务 ═══
+
+2.1 定义解析契约
+  - services/ingestion/parsers/base.py（新增）
+      · DocumentParser：runtime_checkable 协议
+        （supported_types / parser_name / parser_version / parse(source, filename)）
+      · ParsedDocument：title / blocks / metadata / warnings（+ source_type /
+        parser_name / parser_version 三个自描述字段，见台账 [D-4]）
+      · Block：type / text / order / page / heading_path / table_json / image_ref
+      · ParseWarning：code / message / detail（可 JSON 直存，供任务查询接口读取）
+      · ParserError：结构化错误码 + parser_name / filename / detail + to_dict()
+      · TemplateDocumentParser：模板基类（统一算 hash、包错误、重编号、
+        title 兜底、产物自检）
+  - services/ingestion/parsers/_text.py（新增，计划外）
+      编码回退链与分段逻辑，被 plain_text / markdown / html 三个解析器共用
+
+2.2 实现格式解析器和注册表
+  - services/ingestion/parsers/plain_text.py / markdown.py / html.py / pdf.py / docx.py
+  - services/ingestion/parsers/ocr.py（只定义接口，默认不装 rapidocr-onnxruntime）
+  - services/ingestion/parser_registry.py（ParserRegistry + 懒加载 default_registry）
+  - tests/fixtures/sample.{md,html,docx,pdf}（脚本生成，均 < 1 MB）
+  - scripts/make_parser_fixtures.py（新增，计划外：样本生成器）
+  - .gitattributes（新增，计划外：文本样本锁 LF）
+  - tests/test_document_parsers.py（116 个测试）
+  - requirements.txt / requirements-dev.txt：两侧同步 4 个解析依赖
+
+  **未完成**：2.3 上传与异步任务 API（routers/documents.py、ObjectStore、
+  LocalObjectStore、Schema、OpenAPI、tests/test_document_upload_api.py）
+
+═══ 二、自动检查结果（证据见同目录） ═══
+
+证据文件：
+  B3_task2_2_test-output.txt    —— 本批新增测试文件
+  B3_stage2-check.txt           —— 计划第 7.1 节的阶段检查（pytest + ruff）
+  B3_full_test-output.txt       —— 全量回归
+  B3_fixture-size-output.txt    —— 样本体积校验
+
+1) python -m pytest tests/test_document_parsers.py -q
+   → 116 passed in 1.06s                                        [通过]
+2) python -m ruff check . → All checks passed!                  [通过]
+3) python -m compileall services routers schemas models alembic main.py scripts
+   → 退出码 0                                                    [通过]
+4) python scripts/check_repo_data_size.py → 通过，没有超标文件   [通过]
+5) python -m pytest -q（全量）→ 448 passed, 5 warnings, 4 subtests passed  [通过]
+   B2 收尾基线为 332 passed，本批新增 116 个测试，**零回归、零既有失败**。
+   warning 由 3 条增至 5 条：新增两条来自 fastapi.testclient / starlette.testclient
+   的 DeprecationWarning（本机依赖升级后出现），与本次改动无关，仓库无 -W error 门槛。
+6) python scripts/make_parser_fixtures.py --check
+   → 四个样本 767 B / 1,357 B / 37,210 B / 4,472 B，全部 OK     [通过]
+
+═══ 三、人工审查结果 ═══
+
+逐条核对计划 2.1 的要求：
+
+[√] 新增 services/ingestion/parsers/base.py，定义 DocumentParser 协议
+      supported_types / parser_name / parser_version /
+      parse(source: bytes, filename: str) -> ParsedDocument 四要素齐备。
+      runtime_checkable，测试对全部 5 个解析器做 isinstance 断言。
+
+[√] ParsedDocument 字段：title、blocks[]、metadata、warnings[]
+      四个字段齐备。额外加的三个自描述字段已在台账 [D-4] 记录理由。
+
+[√] 每个 block 含 type、text、order、page、heading_path、table_json、image_ref
+      七个字段齐备（Block.to_dict() 一一对应，测试断言）。
+
+[√] 解析器不得写数据库
+      不靠纪律，靠两条可执行断言：
+        · test_parser_modules_do_not_depend_on_database：源码扫描，出现
+          sqlalchemy / services.ingestion.repository / services.ingestion.db 即失败
+        · test_parsers_do_not_accept_tenant_id：断言 parse 签名恰好是
+          (source, filename)，从接口层面杜绝 tenant_id 渗入
+      实测：5 个解析器模块与 base.py / _text.py 全部零数据库引用。
+
+[√] 失败返回结构化错误，不能吞异常
+      实现方式为「抛 ParserError（带稳定 error_code）」而非返回错误对象，理由见台账
+      [T-2.1] 决策 1：返回值会留出「调用方忘记检查」的口子，后果是空文档静默进索引。
+      不吞异常的证明是 `__cause__` 断言，而不是「看起来会抛」：
+        · test_unexpected_exception_is_wrapped_without_being_swallowed
+          注入 RuntimeError → 断言 error_code=parse_failed 且 __cause__ 是原 RuntimeError
+        · test_parser_error_from_subclass_is_not_rewrapped
+          子类抛 ParserError → 原样上抛，不被二次包装丢错误码
+        · test_invalid_produced_document_is_rejected
+          解析器写出「表格块没有 table_json」的产物 → 在源头失败，不流到下游
+
+逐条核对计划 2.2 的要求：
+
+[√] PDF 保留页码
+      sample.pdf 实测：page_count=2，blocks 的 page 依次为 [1,1,1,1,1,2,2]；
+      第 2 页的标题块 heading_path 正确接上「年度服务报告 > 下半年计划」。
+
+[√] DOCX 保留标题层级和表格
+      sample.docx 实测：四级标题路径正确嵌套到三级
+      （('员工手册（DOCX 样本）','休假制度','年假天数')）；
+      表格输出 {columns:[班次,上班时间,下班时间], rows:[['早班','09:00','18:00'],['晚班','13:00','22:00']]}。
+      实现上按 w:body 子元素顺序遍历并下钻 w:sdt —— 只读 document.paragraphs
+      **看不到任何表格**，这是本任务最容易踩的坑，已用块序列断言锁定。
+
+[√] HTML 清理 script/style/nav/footer 等无关内容
+      样本同时含 script、style、nav、header、footer、aside、form；
+      断言这些内容一律不出现在结果里（含「站点页眉标题」「广告位」「版权所有」三条具体文本）。
+
+[√] 表格同时保留稳定 JSON 和可检索文本
+      全部表格统一走 build_table_json（形状固定 {columns, rows}，行跑齐长度）
+      + render_table_text（` | ` 连接、首行表头）；
+      测试对 Markdown / HTML / DOCX / PDF 四种来源的表格 JSON 做**精确相等**断言。
+      契约自检保证「是表格块却没有可检索文本」不可通过。
+
+[√] OCR 仅在可提取文本为空或低于配置阈值时调用
+      阈值默认 32 字符，可经 RAG_OCR_MIN_TEXT_CHARS 覆盖（构造期读取，配错即报错）。
+      四个场景全部有测试：
+        · 文本层充足           → 不调用 OCR（engine.calls == []）
+        · 文本层不足 + 引擎可用 → 整页渲染 2 倍 PNG 送 OCR，产出正文块，pdf_ocr_used=True
+        · 文本层不足 + 引擎缺失 → 不报错，写 no_text_layer 警告（detail.ocr_engine=None）
+        · 引擎可用但识别为空    → 同样写 no_text_layer 警告
+      边界断言：31 字符触发、32 字符不触发（「低于阈值」而非「为空」）。
+
+[√] 每份原文件计算 SHA-256
+      由模板统一计算并写入 metadata["content_hash"]；
+      四个样本均断言 == hashlib.sha256(原始字节).hexdigest()。
+
+[√] 解析警告必须可由任务查询接口读取
+      warnings 为结构化对象（code/message/detail），to_dict() 可直接 json.dumps，
+      且解析产物在返回前会做 JSON 序列化自检。
+      已定义 5 个警告码：encoding_fallback / no_text_layer / empty_section /
+      degraded_extraction / image_skipped。
+
+[√] 新增 fixture 四个文件
+      tests/fixtures/sample.{pdf,docx,html,md}，均由脚本生成，体积 767 B ~ 37 KB。
+      另补一条「文本样本与生成脚本常量一致」的断言，防止手工改动被重新生成覆盖、
+      导致后续断言悄悄失效。
+
+[√] 新增 tests/test_document_parsers.py，断言块顺序、标题路径、页码、表格结构、
+    OCR 触发条件和坏文件错误
+      六项全部覆盖，且都使用**精确断言**而非「包含某关键词」：
+        · 块顺序：断言 [b.order] == range(n)，并逐样本断言完整 block 类型序列
+        · 标题路径：断言精确元组，含「闭合层级不得被串起来」的专门用例
+          （## A → ### B → # C 之后 C 的路径必须是 ('C',) 而不是 ('C','A','B')）
+        · 页码：PDF 断言每块页码与 page_count；Markdown / HTML / DOCX 断言
+          page 全为 None 且 page_count == 0（不能把「无页码概念」写成 0 或 1）；
+          纯文本另测换页符 \f 产生的页码分段
+        · 表格结构：断言 table_json 精确相等 + 可检索文本精确字符串
+        · OCR 触发条件：见上
+        · 坏文件错误：空字节 / 纯空白 / 坏 PDF / 坏 DOCX / 未知扩展名 / 未预期异常 /
+          依赖缺失（用 sys.modules 置 None 模拟）/ 产物违约，共 8 条路径，
+          每条都断言具体 error_code
+
+阶段 2 额外加固（计划未显式要求，但属于同类风险）：
+  · **扩展名优先于 MIME**（parser_registry.detect_source_type），并有测试锁定。
+    若反过来，攻击者可以用「报表.pdf + Content-Type: text/html」绕过基于扩展名的
+    准入规则，让 HTML 解析器去处理本该被 PDF 规则约束的文件。
+  · **注册表拒绝重复注册与未知来源类型**，避免「解析行为取决于注册顺序」。
+  · **默认注册表懒加载**：OCR 阈值环境变量配错时在首次解析才暴露，
+    而不是在任何人 import 该模块的瞬间炸出一个看不懂的栈。
+  · **降级兜底必须是严格改进**：HTML 结构遍历结果不足时，只有 trafilatura 抽出的
+    文本**严格多于**结构结果才降级。否则一篇只有一句话的合法短页面会被无谓地
+    丢掉结构信息并平白多一条警告。两个失败用例都是在实现期被测试逼出来的，见下方风险 3。
+
+═══ 四、风险与回滚点 ═══
+
+风险 1（继承自 B2，未消除）：本机无 Docker / 无 PostgreSQL，
+  数据层只在 SQLite 上实测。缓解与复验安排同阶段 1，归入阶段 7。
+
+风险 2（新增）：**PDF 标题识别是启发式的**（字号倍数 + 长度 + 句末标点三个条件）。
+  会误判，但只影响 heading_path 的丰富程度，**不会丢内容** ——
+  最坏情况是一个段落被当成标题。若后续发现真实 PDF 的标题层级还原不准，
+  可考虑引入 pymupdf_layout（PyMuPDF 运行时会打印推荐该包的提示）。
+
+风险 3（新增，已在实现期消除，记录以备考）：HTML 降级兜底最初有两个缺陷 ——
+  (a) 送进 trafilatura 的是**未清洗**的 HTML，它会从已被判定为噪声的 nav/footer
+      里把内容捞回来，等于同一策略在两处得出互相矛盾的结论；
+  (b) 只要兜底结果非空就降级，于是 4 个字的合法短页面也会被判定为「降级」。
+  两者都不是靠 review 发现的，而是被 test_html_blockquote_text_is_not_duplicated
+  与 test_html_without_extractable_text_reports_empty_document 直接逼出来的。
+  修复：改送清洗后的 HTML，并要求兜底结果严格多于结构结果。
+
+风险 4（新增）：**扫描件 OCR 未在真实引擎上跑过**。
+  本机默认不装 rapidocr-onnxruntime，全部触发逻辑用注入的假引擎覆盖。
+  真实引擎的接入效果（识别质量、单页耗时、内存占用）需要单独复验，
+  归入阶段 7 发布门禁。
+
+回滚点：本批改动集中在
+  services/ingestion/parsers/（全新目录，可整目录删除）
+  services/ingestion/parser_registry.py（新增，可删）
+  services/ingestion/__init__.py（只改了 __all__ 与 docstring，可 git 恢复）
+  tests/test_document_parsers.py、tests/fixtures/、scripts/make_parser_fixtures.py、
+  .gitattributes（均为新增，可删）
+  requirements.txt / requirements-dev.txt（可 git 恢复）
+与阶段 1 的鉴权改动、迁移、仓储层**完全无耦合**，两个方向都能独立回滚。
+回滚命令（需用户确认后执行）：
+  git checkout -- requirements.txt requirements-dev.txt services/ingestion/__init__.py
+  rm -rf services/ingestion/parsers services/ingestion/parser_registry.py
+  rm -f tests/test_document_parsers.py tests/fixtures/sample.* scripts/make_parser_fixtures.py .gitattributes
+
+═══ 五、遗留问题（不阻塞本文件结论） ═══
+
+1. **2.3 未实现**，阶段 2 未结束，阶段级结论待回填。这是本文件唯一的功能性缺口。
+2. HTML 的列表项每项单独成块，而 Markdown 的连续列表合成一个块。
+   两者语义不同（<li> 是显式结构，Markdown 列表是纯文本推断），故未强行统一；
+   切分器（3.2）需要同时处理这两种形态。
+3. PDF 表格识别依赖 PyMuPDF find_tables() 的 lines 策略，只靠空格对齐的
+   「表格」不会被识别（符合预期）；识别失败时降级为正文而不中断解析。
+4. DOCX 单元格合并（w:gridSpan / w:vMerge）不做还原，合并区域的文字会在每个
+   参与合并的格子里各出现一次。这是有意取舍：还原 vMerge 需要状态机，
+   而错误还原会把内容错位到别的列，比重复出现更危险。
+5. 本机 venv 在 B3 期间被破坏过一次并已按轻量口径重建（不含 torch / transformers /
+   datasets / trl / peft / sentence-transformers）。这不影响任何测试与 lint 门槛
+   （tests/ 下零处导入这些包），但需要真实模型推理时得按 requirements.txt 补装。
+   细节记录在台账第 5 节坑 3。
+
+═══ 结论（覆盖范围：任务 2.1 / 2.2） ═══
+
+PASS
+
+依据：计划 2.1 的四项契约要求与 2.2 的八项实现要求逐条满足，且每条都有精确断言
+而非笼统的「看起来对」；计划指定的阶段检查（pytest + ruff + compileall + 体积检查）
+全部通过；全量 448 passed 相对 B2 基线 332 passed 零回归；
+「解析器不得写数据库」「不接收 tenant_id」「不吞异常」三条纪律都落成了可执行断言，
+不依赖后续人工 review。
+
+阶段 2 阶段级结论：**PENDING（未结束，2.3 待实现）** —— 不是 NEEDS_WORK，
+理由见文件开头的范围声明。允许进入批次 B4（任务 2.3）。

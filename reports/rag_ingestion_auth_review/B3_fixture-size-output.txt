@@ -1,0 +1,7 @@
+  sample.md           767 字节  OK
+  sample.html       1,357 字节  OK
+  sample.docx      37,210 字节  OK
+  sample.pdf        4,472 字节  OK
+
+样本目录：D:\llm\llm-customer-service\tests\fixtures
+结果：通过，全部样本均小于 1 MB。

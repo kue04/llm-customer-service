@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>客户服务手册（HTML 样本）</title>
+  <script>window.tracker = { sent: false };</script>
+  <style>.hidden { display: none; }</style>
+</head>
+<body>
+  <nav class="site-nav"><a href="/">首页</a><a href="/docs">文档</a></nav>
+  <header><h1>站点页眉标题</h1></header>
+  <main>
+    <h1>客户服务手册</h1>
+    <p>本页用于解析器的 HTML 分支测试，页眉、导航与脚本都不应出现在解析结果里。</p>
+    <h2>响应时限</h2>
+    <p>工作日 9:00 至 18:00 内提交的工单，<strong>两小时</strong>内首次响应。</p>
+    <ul>
+      <li>普通工单：两小时</li>
+      <li>紧急工单：三十分钟</li>
+    </ul>
+    <h2>服务等级</h2>
+    <table>
+      <thead>
+        <tr><th>等级</th><th>响应时限</th><th>适用客户</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>P0</td><td>30 分钟</td><td>签约客户</td></tr>
+        <tr><td>P1</td><td>2 小时</td><td>全部客户</td></tr>
+      </tbody>
+    </table>
+    <pre>curl -X POST https://api.example.com/v1/tickets</pre>
+    <img src="/static/images/flow.png" alt="工单流转图">
+  </main>
+  <aside class="ads">广告位</aside>
+  <form><input type="text" name="q"></form>
+  <footer><p>版权所有 2026 示例公司</p></footer>
+</body>
+</html>

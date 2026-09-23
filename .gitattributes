@@ -1,0 +1,11 @@
+# 解析器测试样本（tests/fixtures/）必须是**逐字节稳定**的测试数据。
+#
+# 为什么需要单独指定：
+# tests/test_document_parsers.py 里有一条断言「样本文件与
+# scripts/make_parser_fixtures.py 里的常量逐字节一致」，用来防止有人手工改样本
+# 之后被重新生成覆盖掉。如果 git 按 core.autocrlf=true 把 LF 转成 CRLF，
+# 这条断言会在别人的开发机上失败，而失败原因（换行符）和它想守的东西（内容）毫无关系。
+#
+# 只对文本样本指定；sample.docx / sample.pdf 是二进制，不在此列。
+tests/fixtures/*.md text eol=lf
+tests/fixtures/*.html text eol=lf

@@ -52,7 +52,7 @@
 | --- | --- | --- | --- |
 | B1 | 阶段 0 基线 + 1.1 数据模型与迁移 | `reports/execution_baseline/*`、`alembic/*`、`services/ingestion/models.py`、`repository.py`、`tests/test_ingestion_models.py` | ✅ 完成 |
 | B2 | 1.2 身份上下文（JWT）+ 阶段 1 审查 | `services/auth_context.py`、改造 `auth_service.py`/`main.py`/11 个 router、`tests/test_auth_context.py`、`tests/test_tenant_isolation.py`、`tests/conftest.py`、`tests/auth_helpers.py` | ✅ 完成 |
-| B3 | 2.1 解析契约 + 2.2 五种解析器与注册表 | `services/ingestion/parsers/*`、`parser_registry.py`、fixtures、`tests/test_document_parsers.py` | ⏳ 未开始 |
+| B3 | 2.1 解析契约 + 2.2 五种解析器与注册表 | `services/ingestion/parsers/*`、`parser_registry.py`、fixtures、`tests/test_document_parsers.py` | ✅ 完成 |
 | B4 | 2.3 上传与异步任务 API | `routers/documents.py`、对象存储、Schema、`tests/test_document_upload_api.py` | ⏳ 未开始 |
 | B5 | 3.1 Chunk 配置 + 3.2 结构化切分器 | `config/chunking_config.py`、`services/ingestion/chunkers/*`、`tests/test_chunking.py` | ⏳ 未开始 |
 | B6 | 3.3 幂等流水线 + 3.4 FAISS manifest | `services/ingestion/pipeline.py`、`worker.py`、改造 `utils/vector_retriever.py`、`tests/test_ingestion_pipeline.py` | ⏳ 未开始 |
@@ -68,7 +68,7 @@
 | --- | --- | --- | --- |
 | 阶段 0 保存基线 | PASS | `reports/execution_baseline/review.txt` | 2026-09-23 |
 | 阶段 1 数据库与身份 | **PASS** | `reports/rag_ingestion_auth_review/stage1_review.txt` | 2026-09-23 |
-| 阶段 2 解析与接入 | 待审 | — | — |
+| 阶段 2 解析与接入 | 2.1 / 2.2 **PASS**；阶段未结束（2.3 待做） | `reports/rag_ingestion_auth_review/stage2_review.txt` | 2026-09-23 |
 | 阶段 3 切分与索引 | 待审 | — | — |
 | 阶段 4 权限与隔离 | 待审 | — | — |
 | 阶段 7 发布门禁 | 待审 | — | — |
@@ -307,46 +307,247 @@ OIDC Provider）都能自报权限提权，等于把授权决策外包给了令�
 
 验证结果：`tests/test_ingestion_models.py` **20 passed**、全量 **272 passed**、ruff 通过。
 
+### [T-2.1] 阶段 2：定义解析契约
+
+任务编号：2.1
+修改文件（新增）：
+- `services/ingestion/parsers/__init__.py`
+- `services/ingestion/parsers/base.py` —— 解析契约本尊
+- `services/ingestion/parsers/_text.py` —— 私有文本工具（**计划外新增**，见下方说明）
+
+新增契约内容：
+
+| 名称 | 内容 |
+| --- | --- |
+| `DocumentParser` | `runtime_checkable` 协议：`supported_types` / `parser_name` / `parser_version` / `parse(source, filename)` |
+| `ParsedDocument` | `title` / `blocks[]` / `metadata` / `warnings[]` + 自描述三字段 |
+| `Block` | `type` / `text` / `order` / `page` / `heading_path` / `table_json` / `image_ref` |
+| `ParseWarning` | `code` / `message` / `detail`，可 JSON 直存 |
+| `ParserError` | `error_code` / `message` / `parser_name` / `filename` / `detail`，带 `to_dict()` |
+| `TemplateDocumentParser` | 模板基类：统一算 hash、包错误、重编号、title 兜底、产物自检 |
+
+执行命令：
+```
+python -m pytest tests/test_document_parsers.py -q
+python -m pytest -q
+python -m ruff check .
+python scripts/check_repo_data_size.py
+```
+
+测试结果：见 [T-2.2]（同一批交付，测试文件合并统计）
+
+验收结果：PASS
+
+关键实现决策（都已写进 `base.py` 的 docstring，并在测试里锁定）：
+
+1. **失败用抛异常而不是返回错误对象**。计划写的是「失败返回结构化错误，不能吞异常」。
+   做成返回值会留出「调用方忘记检查」的口子，而忘记检查的后果是把空文档当成功结果
+   送进索引 —— 这是**静默的数据损坏**，比一次显式失败严重得多。
+   因此定为「抛 `ParserError`（结构化、带稳定 error_code）」。
+2. **未预期异常必须保留 `__cause__`**。模板用 `raise ParserError(...) from exc` 包装，
+   测试 `test_unexpected_exception_is_wrapped_without_being_swallowed` 断言
+   `excinfo.value.__cause__` 是原始异常。只包不链等于吞掉 traceback。
+3. **`heading_path` 的语义固定下来**：标题块**包含自己**，正文块是当前标题栈。
+   这样切分器（3.2）只看 block 就能分组，不必重建层级。
+4. **`content_hash` 由模板统一写入 `metadata`**（与第 4 节的既有约定一致），
+   解析器不各自算，避免同一文件在不同解析路径下算出不同 hash 让重复抑制失效。
+5. **产物自检前置**：模板返回前跑 `validation_errors()`（表格块必须有 `table_json`、
+   图片块必须有 `image_ref`、`order` 必须从 0 连续、metadata 必须可 JSON 序列化），
+   违反即抛 `parse_failed`。测试 `test_invalid_produced_document_is_rejected` 锁定。
+
+计划外新增 `_text.py` 的说明：编码回退链与分段逻辑被 plain_text / markdown / html
+三个解析器共用。若各写一份，同一个 GBK 文件在不同格式下可能得到不同乱码结果，
+而这种不一致表现为「检索不到那份文档」，极难排查。放私有模块（下划线前缀）
+表明它是实现细节，不进入契约面。
+
+### [T-2.2] 阶段 2：实现格式解析器和注册表
+
+任务编号：2.2
+修改文件（新增）：
+- `services/ingestion/parsers/plain_text.py`
+- `services/ingestion/parsers/markdown.py`
+- `services/ingestion/parsers/html.py`
+- `services/ingestion/parsers/pdf.py`
+- `services/ingestion/parsers/docx.py`
+- `services/ingestion/parsers/ocr.py`
+- `services/ingestion/parser_registry.py`
+- `scripts/make_parser_fixtures.py` —— 样本生成器（**计划外新增**，见下方说明）
+- `tests/fixtures/sample.md` / `sample.html` / `sample.docx` / `sample.pdf`
+- `tests/test_document_parsers.py` —— 116 个测试
+- `.gitattributes` —— 把两个文本样本锁成 LF（**计划外新增**，见下方说明）
+
+修改文件（已存在）：
+- `services/ingestion/__init__.py` —— 导出 `parsers` / `parser_registry`
+- `requirements.txt` / `requirements-dev.txt` —— 新增 pymupdf / python-docx / beautifulsoup4 / trafilatura
+
+各解析器的关键行为：
+
+| 解析器 | 结构还原要点 |
+| --- | --- |
+| `plain_text` | 按空行分段、**保留段内换行**；识别 ASCII 换页符 `\f` 产生页码；不猜标题（猜错标题会污染标题路径分组） |
+| `markdown` | ATX + Setext 标题、围栏代码块、GFM 表格、有序/无序列表、引用、独立图片；行内标记清洗但代码块原样保留 |
+| `html` | 先删 script/style/nav/footer/header/aside/form/iframe/svg 等噪声，再按文档顺序遍历；`pre`→代码块、`img`→图片引用；结构提取不足时降级 trafilatura |
+| `pdf` | 按 PyMuPDF block（≈段落）成块并带页码；用字号分布推断正文字号再识别标题层级；`find_tables()` 的结果从正文块剔除；文本层不足才整页渲染送 OCR |
+| `docx` | 按 `w:body` 子元素顺序遍历（只读 `document.paragraphs` **看不到表格**），并下钻 `w:sdt`；标题层级三路兜底（style.name → style_id → `w:outlineLvl`）；列表靠 `w:numPr` / 样式名；图片记 `docx:<rId>` 引用 |
+
+OCR 触发条件（用注入的假引擎测试，不需要真装 rapidocr）：
+
+| 场景 | 行为 |
+| --- | --- |
+| 文本层充足 | **不调用** OCR（对已能取到文字的页面做 OCR 只会引入识别错误），`pdf_ocr_used=False`，无警告 |
+| 文本层低于阈值（默认 32 字符）且引擎可用 | 整页渲染 2 倍 PNG → OCR，产出正文块，`pdf_ocr_used=True`，无警告 |
+| 文本层低于阈值且引擎不可用 | **不报错**，写 `no_text_layer` 警告（`detail.ocr_engine=None`） |
+| 引擎可用但识别为空 | 同样写 `no_text_layer` 警告，`detail.ocr_engine` 记引擎名 |
+
+「引擎不可用时不报错」是有意的：文件已经存进对象存储了，让任务失败只会让用户
+反复重传一个必然失败的文件；正确做法是入库成功 + 一条可查询的警告。
+
+执行命令：
+```
+python -m pytest tests/test_document_parsers.py -q
+python -m pytest -q
+python -m ruff check .
+python -m compileall services routers schemas models alembic main.py scripts
+python scripts/check_repo_data_size.py
+```
+
+测试结果：
+- `tests/test_document_parsers.py`：**116 passed in 1.06s**
+- 全量：**448 passed, 5 warnings, 4 subtests passed in 6.67s**
+  （B2 结束时 332 → 现在 448，本批新增 116 个测试，**零回归**）
+- `ruff check .`：All checks passed
+- `compileall`：退出码 0
+- `check_repo_data_size`：通过（四个样本 767 B / 1,357 B / 37,210 B / 4,472 B，均远低于 1 MB）
+- warning 由 3 条增至 5 条：新增两条来自 `fastapi.testclient` / `starlette.testclient`
+  的 DeprecationWarning（本机依赖升级后出现），与本次改动无关，无 `-W error` 门槛。
+
+样本文件实测解析结果（开发期核对用，摘录）：
+
+```
+sample.md  title=客户服务知识库测试文档 blocks=12
+  [5] table  hp=('客户服务知识库测试文档','退款政策')
+      columns=['订单状态','处理时限','责任人'] rows=[['待发货','1 个工作日','客服组'],['已发货','3 个工作日','物流组']]
+  [11] image hp=(...,'抬头修改') img=images/invoice-sample.png
+sample.pdf title=年度服务报告 pages=2
+  [0] heading p=1 hp=('年度服务报告',)                 # 字号 20 / 正文 11
+  [2] heading p=1 hp=('年度服务报告','营收概览')        # 字号 15 / 正文 11
+  [4] table   p=1 hp=('年度服务报告','营收概览')        # 表格文字未在正文块里重复出现
+  [5] heading p=2 hp=('年度服务报告','下半年计划')
+sample.docx title=员工手册（DOCX 样本） blocks=11
+  [9] heading hp=('员工手册（DOCX 样本）','休假制度','年假天数')   # 三级嵌套正确
+sample.html title=客户服务手册（HTML 样本） blocks=10
+      站点页眉 / 导航 / 广告位 / 版权 / script / style 均未进入结果
+```
+
+验收结果：PASS
+
+计划外新增 `scripts/make_parser_fixtures.py` 的说明：计划只要求「新增 fixture 四个文件」。
+但样本一旦提交为二进制，就没人知道里面是什么、也没法重新生成（PDF 的字号、DOCX 的
+样式名都是断言依据）。改为「内容写死在脚本里 + 脚本生成样本」，好处是样本可复现、
+断言依据人可读、并且脚本末尾会校验体积不超过 1 MB（与 CI 门槛同源）。
+测试 `test_text_fixtures_match_the_generator_script` 断言文本样本与脚本常量一致，
+防止有人手工改样本后被重新生成覆盖、让断言悄悄失效。
+
+计划外新增 `.gitattributes` 的说明：本机 `core.autocrlf=true`，样本文件在别人机器上
+会被检出成 CRLF，届时「与生成脚本逐字节一致」的断言会以一个和它想守的东西
+（内容是否被改过）毫无关系的原因失败。因此把两个文本样本的 `eol` 锁成 LF。
+二进制样本（docx / pdf）不受影响。
+
+未解决问题：
+1. **PDF 标题识别是启发式的**（字号倍数 + 长度 + 句末标点）。会误判，但只影响
+   `heading_path` 的丰富程度，不丢内容。若后续发现有价值的 PDF 标题层级还原不准，
+   可考虑引入 `pymupdf_layout`（PyMuPDF 运行时会打印推荐提示）。
+2. **扫描件 OCR 未在真实引擎上跑过**：本机默认不装 `rapidocr-onnxruntime`，
+   所有 OCR 触发逻辑都用注入的假引擎覆盖。真实引擎的接入效果归入阶段 7 门禁复验。
+3. `html` 的列表项每项单独成块，而 `markdown` 的连续列表合成一个块。两者语义不同
+   （`<li>` 是显式结构，Markdown 列表是纯文本推断），因此未强行统一；
+   切分器（3.2）需要同时处理这两种形态。
+4. PDF 表格识别依赖 PyMuPDF `find_tables()` 的 lines 策略，只靠空格对齐的
+   「表格」不会被识别（这符合预期）；识别失败时不中断解析。
+
+下一任务：2.3 增加上传和异步任务 API（批次 B4）
+
+### [D-4] 决策记录：解析产物自带 `parser_name` / `parser_version` / `source_type`
+
+计划 2.1 只列出 `ParsedDocument` 的四个字段（`title` / `blocks` / `metadata` / `warnings`），
+本批额外加了三个自描述字段。
+
+理由：`document_versions` 表需要落 `parser_name` 与 `parser_version`，而流水线（3.3）
+在「解析成功」与「写库」之间可能失败重试、可能换 worker 执行。
+如果这几个值只挂在解析器对象上，重启后就必须靠 registry 再猜一次
+（而 registry 是可被覆盖的，测试里就换过）。让产物自带身份，
+一条历史版本记录就能脱离运行环境被解释。
+
+### [D-5] 决策记录：解析器模块禁止依赖数据库，用测试而不是纪律来保证
+
+计划 2.1 要求「解析器不得写数据库」。这条要求如果只写在文档里，
+下一次「顺手在解析器里查一下文档是否已存在」就会破功。
+
+因此落成两条可执行断言：
+- `test_parser_modules_do_not_depend_on_database`：扫描 `services/ingestion/parsers/*.py`
+  源码，出现 `sqlalchemy` / `services.ingestion.repository` / `services.ingestion.db` 即失败；
+- `test_parsers_do_not_accept_tenant_id`：断言每个解析器的 `parse` 签名恰好是
+  `(source, filename)`，从接口层面杜绝「顺手把 tenant_id 传进来」。
+
+第二条同时也是对阶段 1「解析器与仓储层都不接收 tenant_id」的延续确认。
+
+### 阶段 2 补充的关键设计取舍
+
+| 取舍 | 决定 | 理由 |
+| --- | --- | --- |
+| 解析失败 | 抛 `ParserError`（结构化） | 返回错误对象会留出「忘记检查」的口子，后果是空文档静默进索引 |
+| 表格表示 | 只有一种形状 `{columns, rows}`，跑齐每行长度 | 三个解析器各自发明一种 dict 形状，下游就得写三套读取逻辑 |
+| 表格文本 | 同时产出可检索文本（` \| ` 连接，首行表头） | 只存 JSON 则向量检索永远匹配不到单元格内容 |
+| 编码回退链 | 集中在 `_text.py`，BOM 优先，最后 `latin-1` 兜底 | 三个解析器各写一份会导致同一文件在不同格式下解出不同乱码 |
+| OCR 引擎缺失 | 降级为警告，不中断入库 | 文件已在对象存储，让任务失败只会让用户反复重传必然失败的文件 |
+| OCR 触发 | 「低于阈值」而非「为空」 | 只识别出页眉页脚的扫描件文本量很少但非零，只判空会永远不触发 |
+| 扩展名 vs MIME | 扩展名永远优先，MIME 仅兜底 | 反过来会让「报表.pdf + Content-Type: text/html」绕过基于扩展名的准入规则 |
+| 解析器版本 | 每个解析器自带 `parser_version` | 解析行为变化时能识别「同一文件的旧解析结果」，为重建索引提供依据 |
+
 ## 4. 执行暂停点（下次从这里继续）
 
-**当前停在：B2 结束（阶段 1 已判 PASS，代码已提交并推送到 GitHub），等待开始 B3（任务 2.1 + 2.2）。**
+**当前停在：B3 结束（任务 2.1 + 2.2 完成，任务级审查 PASS），等待开始 B4（任务 2.3）。**
 
-上次收尾状态：`HEAD = 0ea5834`，工作区干净，远端 `origin/optimize/interview-ready` 与本地一致，
-全量测试 **332 passed**。新窗口可直接开工，无需重做 B1/B2。
+上次收尾状态：`HEAD = <B3 提交号>`，工作区干净，全量测试 **448 passed**（B2 收尾时 332），
+`ruff check .` 干净，`check_repo_data_size.py` 通过。新窗口可直接开工，无需重做 B1/B2/B3。
 
 下次继续时的入口动作：
-0. 先读本文件第 5 节「两个环境坑」——提交/推送必须按那里写的特殊姿势来，
-   否则会出现「commit 成功但分支不动」和「push 被死代理挡住」两种情况；
-1. 复读本文件第 1 节分批表，确认 B3 范围 = 任务 2.1 解析契约 + 任务 2.2 五种解析器与注册表；
-2. 跑一次 `python -m pytest -q` 确认起点仍是 **332 passed**；
-3. 开始任务 2.1：新增 `services/ingestion/parsers/base.py`，
-   定义 `DocumentParser` 协议（`supported_types` / `parser_name` / `parser_version` /
-   `parse(source: bytes, filename: str) -> ParsedDocument`）与 `ParsedDocument`
-   （`title` / `blocks[]` / `metadata` / `warnings[]`）；
-   每个 block 含 `type` / `text` / `order` / `page` / `heading_path` / `table_json` / `image_ref`。
-   **解析器不得写数据库；失败返回结构化错误，不能吞异常。**
-4. 任务 2.2：实现 `plain_text.py` / `markdown.py` / `html.py` / `pdf.py` / `docx.py` /
-   `ocr.py` + `parser_registry.py`；补 `tests/fixtures/` 四个样本文件；
-   写 `tests/test_document_parsers.py`（块顺序、标题路径、页码、表格结构、
-   OCR 触发条件、坏文件错误）。
-   需先装依赖：`pymupdf`、`python-docx`、`beautifulsoup4`、`trafilatura`
-   （OCR 的 `rapidocr-onnxruntime` 定义接口即可，默认不装）。
-5. 阶段 2 的检查命令（计划第 7.1 节）：`python -m pytest -q` + `python -m ruff check .`；
-6. 回到本文件追加 T-2.1 / T-2.2 记录；阶段 2 结束时写
-   `reports/rag_ingestion_auth_review/stage2_review.txt`。
+0. 先读本文件第 5 节「两个环境坑」——**两个坑的内容在 B3 期间都发生了变化**，
+   尤其是「代理已从失效变为可用、直连反而被重置」，仍按旧记录操作会一直失败；
+   另外第 5 节还新增了「venv 重建」一条，说明为什么本机 venv 是重新装的；
+1. 复读第 1 节分批表，确认 B4 范围 = 任务 2.3 上传与异步任务 API：
+   新增路由 `POST /knowledge-bases/{kb_id}/documents`、`GET /documents/{id}`、
+   `GET /documents/{id}/versions`、`POST /documents/{id}/reprocess`、
+   `GET /ingestion-jobs/{job_id}`，以及 `ObjectStore` 接口 + `LocalObjectStore`、
+   Schema、OpenAPI 更新、`tests/test_document_upload_api.py`；
+2. 跑一次 `python -m pytest -q` 确认起点仍是 **448 passed**；
+3. 任务 2.3 直接复用本批成果：**调用 `services.ingestion.parser_registry.parse_document()`
+   即可**，不要在 router 里自己选解析器。上传接口只做「鉴权 → 类型/大小检查
+   → 对象存储 → 建任务」，真正解析在 worker 里跑（阶段 3.3）。
+   准入白名单直接用 `parser_registry.ALLOWED_EXTENSIONS`，保证「允许上传的扩展名」
+   与「能解析的扩展名」永远同源；
+4. 阶段 2 的检查命令（计划第 7.1 节）：`python -m pytest -q` + `python -m ruff check .`；
+5. 回到本文件追加 T-2.3 记录；**阶段 2 到那时才真正结束**，
+   届时把 `reports/rag_ingestion_auth_review/stage2_review.txt` 更新为完整的阶段级结论
+   （现在这份只覆盖 2.1 / 2.2，已在文件里显式标注「阶段未结束」）。
 
-需要注意的既有约束（B3 必读）：
-- 阶段 1 已把身份边界固定下来：解析器与仓储层**都不接收 tenant_id 参数**，
-  租户由调用方（API 层的 `AuthContext`）传入并写入记录，解析器本身保持无状态、无数据库依赖。
-  这正好满足计划对解析器的要求「解析器不得写数据库」。
-- `document_versions.content_hash` 已是**租户粒度唯一**，重复文件检测靠
-  `repository.find_version_by_content_hash(session, tenant_id, hash)`，
-  解析器只负责算 SHA-256 并放进 `ParsedDocument.metadata`，判定逻辑放流水线（B6）。
-- 新增依赖记得同步 `requirements.txt` 与 `requirements-dev.txt`；
-  纯 Python 包放 requirements-dev，需要编译/体积大的放 requirements.txt。
+需要注意的既有约束（B4 必读）：
+- 解析器**不接收 tenant_id、不写数据库**，这两条已有测试兜底
+  （`test_parsers_do_not_accept_tenant_id`、`test_parser_modules_do_not_depend_on_database`）。
+  写库与租户归属是 API / 流水线的职责。
+- `document_versions.content_hash` 是**租户粒度唯一**，重复文件检测靠
+  `repository.find_version_by_content_hash(session, tenant_id, hash)`；
+  解析器只负责把 SHA-256 放进 `ParsedDocument.metadata["content_hash"]`，
+  判定逻辑放流水线（B6）。上传接口**不要**在这里做重复判定。
+- 解析警告要通过任务查询接口可见：`ParsedDocument.warnings[*].to_dict()` 已可直接
+  `json.dumps`，落到 `ingestion_jobs` 相关字段时不需要再转换。
+- 新增依赖记得同步 `requirements.txt` 与 `requirements-dev.txt`。
+  **注意：解析器依赖必须两侧都加** —— `tests/test_document_parsers.py` 没有 skip 分支，
+  只放完整安装那一侧会让 CI 直接红掉。
 - 测试仍跑在临时 SQLite 上，`tests/conftest.py` 已固定鉴权环境变量，
   新增测试无需再处理 JWT 密钥。
-- `tests/fixtures/` 下的样本文件必须小于 1 MB（`check_repo_data_size.py` 会卡 CI）。
+- `tests/fixtures/` 下的样本文件必须小于 1 MB；`.gitattributes` 已把两个文本样本
+  锁成 LF，新增文本 fixture 建议一并加进去。
 
 ## 5. 提交与仓库同步记录
 
@@ -366,7 +567,10 @@ OIDC Provider）都能自报权限提权，等于把授权决策外包给了令�
 - `.gitignore` 已把 `reports/execution_baseline/`、`reports/rag_ingestion_auth_review/` 两个目录
   从 `reports/*` 的忽略中排除（计划明确要求这两处评审材料落盘，属交付证据，体积均在 10 KB 内）。
 
-### ⚠️ 本仓库的两个环境坑（后续每次提交都会遇到，务必按此操作）
+### ⚠️ 本仓库的环境坑（后续每次提交都会遇到，务必按此操作）
+
+> B1/B2 期间只有两条（坑 1、坑 2）；B3 期间坑 2 的可用性发生翻转，并新增坑 3（venv 重建）
+> 与坑 4（自动化执行环境的通道差异）。四条都按最新实测更新过。
 
 **坑 1：git 无法自动创建嵌套 ref 目录，导致 commit「成功」但分支指针不前进。**
 
@@ -396,16 +600,79 @@ git rev-parse HEAD                # 必须输出上面那个完整 SHA
 > 注意 2：`mkdir` 与写入务必放在**同一条命令**里执行，因为 `optimize/` 目录
 > 随时可能被 git 的 ref 更新动作清掉。
 
-**坑 2：git 配置的代理 `127.0.0.1:7890` 已失效，直接 push 会失败。**
+**坑 2：代理与直连的可用性会**翻转**，不能把任一条路径写死。（2026-09-23 B3 期间实测修订）**
 
-报错为 `Failed to connect to github.com:443 over proxy 127.0.0.1:7890`，
-但 GitHub 其实**可直连**（`curl --noproxy '*' -o /dev/null -w '%{http_code}' https://github.com` → 200）。
-该代理同时写在 local 与 global 配置里。推送时绕过代理：
+原记录写的是「代理 `127.0.0.1:7890` 已失效，GitHub 可直连，push 时要绕过代理」。
+**B3 期间实测发现两者恰好反过来了**：
+
+| 时间 | 直连 github.com:443 | 经代理 127.0.0.1:7890 |
+| --- | --- | --- |
+| B1/B2 期间 | 可用（curl 200） | 失效（连接被拒） |
+| **B3 期间** | **不可用**（`Empty reply from server` / 21 秒超时） | **可用**（`ls-remote` 与 `push` 均成功） |
+
+所以正确做法不是「永远绕过代理」或「永远走代理」，而是**先探测再决定**：
+
 ```bash
+# 1) 先探直连
 env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
-  git -c http.proxy= -c https.proxy= push origin optimize/interview-ready
+  git -c http.proxy= -c https.proxy= ls-remote origin refs/heads/optimize/interview-ready
+# 报 Empty reply / timeout → 直连不通，改走代理：
+git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 \
+  ls-remote origin refs/heads/optimize/interview-ready
+# 哪条能返回 SHA 就用哪条推送
 ```
-推送后远端跟踪 ref 也可能因坑 1 不更新；若 `git status -sb` 显示莫名的 ahead，
+
+B3 的两次实际命令（走代理全部成功）：
+
+```bash
+git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 \
+  push origin optimize/interview-ready
+# → 99fd798..69ddd0e  optimize/interview-ready -> optimize/interview-ready
+```
+
+推送后远端跟踪 ref 也可能因坑 1 不更新；若 `git status -sb` 显示莫名的 ahead/behind，
 手动写 `.git/refs/remotes/origin/optimize/interview-ready` 为远端实际 SHA 即可
 （用 `git ls-remote origin refs/heads/optimize/interview-ready` 查远端真实值）。
+
+**坑 3（新增）：本机 venv 在 B3 期间被破坏过一次，已重建为轻量版。**
+
+现象：`venv/Lib/site-packages` 整个目录消失，venv 从会话开始时的 20473 个文件
+变成只剩 46 个（`Scripts/` 下的 `pip.exe` / `pytest.exe` 等包装器还在，但没有包体），
+`./venv/Scripts/python.exe -m pytest` 直接报 `No module named pytest`。
+已确认不是 git 造成（`venv/` 在 `.gitignore` 里），回收站里也没有痕迹，
+**无法原样恢复**，坏掉的 venv 已移到
+`%TEMP%\venv-broken-20260923`（未删除，可自行清理）。
+
+重建方式（按 requirements-dev.txt 的轻量口径，用户确认）：
+
+```bash
+# 注意：本机 pip 默认指向 mirrors.aliyun.com 的 http 源，会因「非可信主机」被忽略，
+# 必须显式指定 HTTPS 源 + trusted-host：
+./venv/Scripts/python.exe -m pip install --no-cache-dir \
+  --trusted-host mirrors.aliyun.com -i https://mirrors.aliyun.com/pypi/simple/ \
+  -r requirements-dev.txt
+./venv/Scripts/python.exe -m pip install --no-cache-dir \
+  --trusted-host mirrors.aliyun.com -i https://mirrors.aliyun.com/pypi/simple/ \
+  pymupdf python-docx beautifulsoup4 trafilatura
+```
+
+重建后 `venv` 里**没有** torch / transformers / datasets / trl / peft /
+sentence-transformers（原 venv 装过完整 requirements.txt）。
+这不影响任何测试与 lint 门槛：`tests/` 下零处导入这些包，
+`requirements-dev.txt` 的注释也写明「本项目在缺失这些包时会走降级分支」。
+需要跑真实模型推理时，按 `requirements.txt` 补装即可。
+
+**坑 4（自动化执行环境补充）：通过 AI 代理跑命令时，Bash 与 PowerShell 两个通道的能力不互补。**
+
+- **Bash（Git Bash）通道**：能跑 `git`，但沙箱会拦掉出网请求
+  （表现为 `Connection reset` / 超时；同为直连，PowerShell 里能通）。
+  需要出网的命令（`git push`、`pip install`）要显式申请放行；
+- **PowerShell 通道**：能出网（`Invoke-WebRequest` 正常），但沙箱会**静默**拦掉
+  启动外部程序 —— `git.exe` 存在（`Test-Path` 为真）却没有任何输出、也没有退出码，
+  且 `git` 不在 PowerShell 的 PATH 上（机器上的 git 是
+  `%USERPROFILE%\.workbuddy\binaries\PortableGit\...\mingw64\bin\git.exe`）；
+- 另外 `cmd.exe` 在 PowerShell 通道被安全策略禁止，不要用它做桥接。
+
+结论：**提交/推送要放在 Bash 通道并申请出网放行**；网络可用性探测可以用
+PowerShell 的 `Invoke-WebRequest` 做交叉验证。
 
