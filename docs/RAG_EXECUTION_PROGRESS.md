@@ -1609,6 +1609,61 @@ B7 记的"warning 5 条"其实来自全量 stdout。本批证据文件改名 **`
 
 B8 剩余三步：① 接线 AST 守卫；② 四格式端到端（7.2 判据）；③ 7.3 逐项证据 + 总审查 + 发布门禁。
 
+### [B8-2] 接线 AST 守卫：把 B7 的接线从「人工核对」变成「测试锁定」（2026-09-23）
+
+**性质**：B8 第二步（作业规程的「前置项 2」）。
+
+#### 背景：为什么需要
+
+B7 把检索从 A 轨（种子 FAQ，无 tenant / ACL）切到 B 轨（chunk 级 + 服务端权限过滤），
+但这次切换**此前只有人工核对**。谁把 `routers/retrieval.py` 里那两行改回去，
+或给 `search_chunk_index` 的 `access` 加个默认值，**测试仍然会全绿** ——
+要等线上检索越权才暴露。这正是 F1「已建未启用」的复现方式，所以用 AST 钉死（踩坑 D1）。
+
+#### 交付物
+
+`tests/test_wiring_guards.py`（**新文件**，18 条）：
+
+| 守卫 | 断言 |
+| --- | --- |
+| 1 | `routers/retrieval.py` 必须**引用并调用** `retrieve_chunk_items` + `build_chunk_access_filter`（**只 import 不算**） |
+| 2 | `utils/vector_retriever.py::search_chunk_index` 的 `access` **无默认值**（位置参数与 keyword-only 两侧都查） |
+| 2b | `access` 注解必须存在，且**不含 `None` / `Optional`**（堵"先软化注解、再给默认值"的写法） |
+| 3 | `routers/*.py` 一律不得 import `jwt`（12 个 router parametrize） |
+
+**外加两条「守卫自身的健全性检查」**：目标文件必须存在；扫到的 router 文件数不得少于 10
+（否则 parametrize 拿到空列表会让测试**静默变绿**）。
+**再加一条反向验证**：用临时文件构造违规样例，确认守卫**真的会红** ——
+否则前面所有断言都可能是装饰（记入踩坑 **D16**）。
+
+#### 关键判断：守卫自己也要有测试
+
+守卫最坏的失效方式是**静默变成空** —— 目标被改名或挪走，断言再无对象可执行，测试照样绿。
+因此三件事一起做：① `_function_def` 取不到函数时**直接报错**（不返回 None）；
+② 文件数健全性检查；③ 反向验证。
+
+#### 门禁（证据 `reports/rag_ingestion_auth_review/B8_step2_*`）
+
+| 项 | 结果 |
+| --- | --- |
+| 全量 | **911 / 0 failures / 0 errors / 0 skipped**（`B8_step2_junit.xml`，28.2s） |
+| 基线对比 | 893 → 911，**新增 18 条**（守卫），**零回归** |
+| stdout | `907 passed, 5 warnings, 4 subtests passed` |
+| warning | **5 条持平** |
+| ruff / compileall / 体积检查 | 全部通过 |
+
+#### 位置选择说明
+
+规程允许加在 `test_ingestion_pipeline.py` **或新文件**，本批选**新文件**：
+接线守卫是一类**跨模块的架构约束**（不是流水线内部行为），
+且"随时能加一条守卫"不该每次去动那个已经很大的既有测试文件。
+AST 辅助函数**有意未抽公共模块**（抽取需要改动既有测试），理由写在文件 docstring 里。
+
+#### 下一步
+
+③ 四格式端到端（7.2 判据，交付 `tests/test_release_gate.py` + 证据 `B8_e2e_four_formats.txt`）
+→ 7.3 逐项证据 → 阶段 7 总审查与发布门禁。
+
 ## 4. 执行暂停点（下次从这里继续）
 
 **当前停在：B7 结束（任务 4.1 + 4.2 + 4.3 全部完成，阶段 4 已 PASS），

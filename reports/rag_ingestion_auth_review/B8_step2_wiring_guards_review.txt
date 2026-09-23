@@ -1,0 +1,97 @@
+任务级审查：B8 第二步（接线 AST 守卫）
+审查日期：2026-09-23
+审查人：AI（B8 第二步）
+审查范围：把 B7 的检索接线从「人工核对」升级为「测试锁定」（B8 作业规程「前置项 2」）
+依据：docs/RAG_NEXT_WINDOW_PROMPT.md 第「前置 3 件事」第 2 条（三条断言清单）；
+      docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md（§17.3 接线判据）；
+      docs/RAG_DEV_PITFALLS.md D1（AST 守卫 > 字符串匹配）
+
+────────────────────────────────────────────────────────────────────
+本步一句话结论
+────────────────────────────────────────────────────────────────────
+B7 那次「双轨制合流」是靠人工核对确认的 —— 这是个**脆弱状态**：
+谁把 `routers/retrieval.py` 里那两行改回去，或给 `access` 加个默认值，
+**测试仍会全绿**，要等线上越权才暴露。本步用 AST 把这个状态锁死，
+并且**顺手把守卫自己也锁住**（防它静默变空、变成装饰）。
+
+═══ 一、门禁结果（证据 reports/rag_ingestion_auth_review/B8_step2_*） ═══
+
+  B8_step2_junit.xml           全量（JUnit XML，权威口径）→ tests=911 failures=0 errors=0 skipped=0
+  B8_step2_full_test-output.txt 全量 stdout → `907 passed, 5 warnings, 4 subtests passed`
+  B8_step2_ruff-output.txt      ruff check . → All checks passed!
+  B8_step2_compileall-output.txt compileall → 退出码 0，无输出
+  B8_step2_data-size-output.txt 体积检查 → 通过
+
+起点 / 终点对比：
+
+  step1 收尾 **893** → 本步 **911**，**新增 18 条**（全部为接线守卫），**零回归**；
+  warning **5 条持平**。
+
+═══ 二、三条守卫 ↔ 作业规程规格逐条对照 ═══
+
+| 规程要求 | 本批实现 | 位置 |
+|---|---|---|
+| `routers/retrieval.py` 必须引用 `retrieve_chunk_items` 与 `build_chunk_access_filter` | ✅ 且**额外要求"真的被调用"** —— 只 import 不用同样等于退回 A 轨 | `test_retrieval_router_calls_the_chunk_path_and_the_access_filter` |
+| `search_chunk_index` 的 `access` **必须没有默认值**（AST 查 annotation + defaults） | ✅ 位置参数与 keyword-only **两侧都查**；另加"注解不许含 `None`/`Optional`" | `test_search_chunk_index_requires_access_without_default` + `test_access_annotation_is_neither_missing_nor_optional` |
+| `routers/*.py` 不得 import `jwt` | ✅ 12 个 router parametrize；判定覆盖 `jwt` 与 `jwt.*` | `test_routers_do_not_import_jwt` |
+
+**超出规格的部分（按 B10 标注方向：更严）**：
+
+1. 「引用」之外再查「调用」—— 规程只要求引用，但只 import 不调用会让行为退回 A 轨；
+2. 注解不许含 `None` / `Optional` —— 堵"先软化注解、再给默认值、再在函数体里
+   `if access is None: 全库检索`"这条软化路径（那样安全要求会变成可选行为）；
+3. **两条守卫自身的健全性检查** + **一条反向验证**（见下）。
+
+═══ 三、关键判断：守卫自己也要有测试 ═══
+
+补守卫时发现一个陷阱：这类断言都长成 `assert "X" in names`。如果**目标本身消失**
+（函数改名、文件挪走、glob 返回空），则：
+
+* "在某集合里找 X" → 失败（可见）；
+* **"集合里不该有 X"、"parametrize 到空列表" → 必然通过（假绿）**。
+
+假绿比假红危险：假红会被追查，假绿会被当成"守卫正在工作"。因此三条一起做：
+
+1. **取不到就报错** —— `_function_def` 找不到函数时抛 `AssertionError`（写明"守卫已失效"），
+   不返回 `None`；
+2. **健全性检查** —— `test_guarded_files_exist`（目标文件存在）+
+   `test_router_files_were_actually_found`（router 数 ≥ 10，防空 parametrize）；
+3. **反向验证** —— `test_guards_actually_detect_violations` 用临时文件构造三种违规
+   （带默认值的签名 / `import jwt` / 被改名的函数），确认守卫真的会红。
+
+这条已登记为踩坑 **D16**。
+
+═══ 四、位置选择 ═══
+
+规程允许加在 `tests/test_ingestion_pipeline.py` 或新文件，本批选**新文件**
+`tests/test_wiring_guards.py`：接线守卫是**跨模块的架构约束**，不是流水线内部行为；
+且"随时能加一条守卫"不该每次都去动那个已经很大的既有测试文件。
+
+AST 辅助函数（`_referenced_names` / `_called_names` / `_imported_modules` / `_function_def`）
+与 `TestProductionCallPoints` 里的同名实现同源，**有意未抽公共模块**（抽取需要改动既有测试），
+理由写在文件 docstring 里。
+
+═══ 五、结论 ═══
+
+  【任务级结论】**PASS**
+
+  判据：
+  * 规程三条断言**全部实现**，且两处按"更严"方向标注（B10）；
+  * 守卫自身的假绿风险已处理（健全性检查 + 反向验证）；
+  * 全量 **911 / 0 failures / 0 errors / 0 skipped**，新增 18 条，零回归，warning 持平；
+  * ruff / compileall / 体积检查全过；证据 5 份落盘。
+
+  **声明范围**：
+  * 本结论只覆盖 B8 第二步；
+  * **不等于 7.4 判据通过** —— 7.4 还差 7.2 四格式端到端；
+  * **不等于 B8 PASS**，更不等于发布门禁 PASS（§17.2：两级分别出具）。
+
+═══ 六、下一步 ═══
+
+  1. **③ 四格式端到端**（7.2 判据）：PDF / DOCX / HTML / Markdown 各跑一次
+     上传 → 解析 → chunk → 索引 → 检索，交付 `tests/test_release_gate.py`
+     + 证据 `B8_e2e_four_formats.txt`；
+  2. 7.3 六条逐项证据；
+  3. 阶段 7 总审查（`stage7_review.txt`）+ 发布门禁结论（PASS / NEEDS_WORK 明确写出）。
+
+  本步**未提交**（提交由用户决定时机）。
