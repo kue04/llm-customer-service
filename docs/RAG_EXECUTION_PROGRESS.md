@@ -354,6 +354,7 @@ OIDC Provider）都能自报权限提权，等于把授权决策外包给了令�
 | --- | --- | --- |
 | `9760049` | `docs:` 加入 RAG 数据接入/切分/权限改造执行计划 | 1 文件 |
 | `0ea5834` | `feat(rag):` 阶段 1 数据模型迁移 + JWT 身份上下文（B1+B2） | 57 文件，+4779 / −236 |
+| `99fd798` | `docs:` 记录 B1+B2 提交结果与仓库提交/推送环境坑 | 1 文件，+53 / −1 |
 
 - 分支：`optimize/interview-ready`；远端 `origin` = `https://github.com/kue04/llm-customer-service.git`
 - 2026-09-23 推送成功，远端 `refs/heads/optimize/interview-ready` =
@@ -372,15 +373,24 @@ OIDC Provider）都能自报权限提权，等于把授权决策外包给了令�
 
 识别症状：`git log` 看不到刚提交的内容，但 `git reflog` 里能看到该提交。
 
-处理（每次 commit 后都要做，直到子目录存在且 git 能自行写入）：
+实测结论（2026-09-23 逐条验证过）：
+- `git status` / `git log` / `git rev-parse` 都**不会**动 `.git/refs/**`，只有 `git commit` 会踩坑；
+- 目录不存在时 `git update-ref refs/heads/optimize/<新名字> <sha>` 能成功写入；
+  但对**当前分支名** `interview-ready` 调用 `git update-ref`，会返回 0 却静默不落盘；
+- `git update-ref -d <嵌套 ref>` 会顺手把因此变空的父目录 `optimize/` 一起删掉，
+  连目录里的 ref 文件一并带走 —— **不要用它**。
+
+处理（每次 commit 后都要做）：
 ```bash
 mkdir -p .git/refs/heads/optimize .git/refs/remotes/origin/optimize
 git rev-parse <刚提交的短SHA>     # 取 40 位完整 SHA
 printf '%s\n' <完整SHA> > .git/refs/heads/optimize/interview-ready
-git rev-parse HEAD                # 校验确实指向新提交
+git rev-parse HEAD                # 必须输出上面那个完整 SHA
 ```
-> 注意：ref 文件里**必须写 40 位完整 SHA**。写 7 位缩写会让 git 直接报
-> `fatal: ambiguous argument 'HEAD'`，反而把仓库搞得读不出 HEAD。
+> 注意 1：ref 文件里**必须写 40 位完整 SHA**。写 7 位缩写会让 git 报
+> `fatal: ambiguous argument 'HEAD'`，把仓库搞得读不出 HEAD。
+> 注意 2：`mkdir` 与写入务必放在**同一条命令**里执行，因为 `optimize/` 目录
+> 随时可能被 git 的 ref 更新动作清掉。
 
 **坑 2：git 配置的代理 `127.0.0.1:7890` 已失效，直接 push 会失败。**
 
