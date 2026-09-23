@@ -355,6 +355,10 @@ OIDC Provider）都能自报权限提权，等于把授权决策外包给了令�
 | `9760049` | `docs:` 加入 RAG 数据接入/切分/权限改造执行计划 | 1 文件 |
 | `0ea5834` | `feat(rag):` 阶段 1 数据模型迁移 + JWT 身份上下文（B1+B2） | 57 文件，+4779 / −236 |
 | `99fd798` | `docs:` 记录 B1+B2 提交结果与仓库提交/推送环境坑 | 1 文件，+53 / −1 |
+| `df60946` | `docs:` 补全环境坑实测细节 | 1 文件，+14 / −4 |
+
+> 上表只列到 `df60946`；**本文件自身的后续文档提交不会再回填**（否则永远差一条）。
+> 需要最新提交号时直接 `git log --oneline -n 10`。
 
 - 分支：`optimize/interview-ready`；远端 `origin` = `https://github.com/kue04/llm-customer-service.git`
 - 2026-09-23 推送成功，远端 `refs/heads/optimize/interview-ready` =
