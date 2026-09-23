@@ -508,7 +508,7 @@ sample.html title=客户服务手册（HTML 样本） blocks=10
 
 **当前停在：B3 结束（任务 2.1 + 2.2 完成，任务级审查 PASS），等待开始 B4（任务 2.3）。**
 
-上次收尾状态：`HEAD = <B3 提交号>`，工作区干净，全量测试 **448 passed**（B2 收尾时 332），
+上次收尾状态：`HEAD = 1e3e53a`（B3 提交），工作区干净，全量测试 **448 passed**（B2 收尾时 332），
 `ruff check .` 干净，`check_repo_data_size.py` 通过。新窗口可直接开工，无需重做 B1/B2/B3。
 
 下次继续时的入口动作：
@@ -557,20 +557,28 @@ sample.html title=客户服务手册（HTML 样本） blocks=10
 | `0ea5834` | `feat(rag):` 阶段 1 数据模型迁移 + JWT 身份上下文（B1+B2） | 57 文件，+4779 / −236 |
 | `99fd798` | `docs:` 记录 B1+B2 提交结果与仓库提交/推送环境坑 | 1 文件，+53 / −1 |
 | `df60946` | `docs:` 补全环境坑实测细节 | 1 文件，+14 / −4 |
+| `1e3e53a` | `feat(rag):` 阶段 2 解析契约 + 五种格式解析器与注册表（B3） | 27 文件，+5095 / −46 |
 
-> 上表只列到 `df60946`；**本文件自身的后续文档提交不会再回填**（否则永远差一条）。
+> 上表只列到 `1e3e53a`；**本文件自身的后续文档提交不会再回填**（否则永远差一条）。
 > 需要最新提交号时直接 `git log --oneline -n 10`。
 
 - 分支：`optimize/interview-ready`；远端 `origin` = `https://github.com/kue04/llm-customer-service.git`
-- 2026-09-23 推送成功，远端 `refs/heads/optimize/interview-ready` =
-  `0ea5834738a031dfe0a7c6b0554c87a1fca50e11`（与本地一致，`git status -sb` 无 ahead/behind）
+- 2026-09-23（B1+B2）推送成功，远端 `refs/heads/optimize/interview-ready` =
+  `0ea5834738a031dfe0a7c6b0554c87a1fca50e11`
+- 2026-09-23（B3）推送成功，远端 `refs/heads/optimize/interview-ready` =
+  `1e3e53a1ef8ce2743222898aee7f4de54fb49a37`
+  验证方式：`git push` 输出 `69ddd0e..1e3e53a`，并用 GitHub API 交叉核对
+  `GET /repos/kue04/llm-customer-service/branches/optimize%2Finterview-ready`
+  返回的 `commit.sha` 与本地 `git rev-parse HEAD` 完全一致。
+  **推送实际重试了 5 次才成功**（前 4 次直连与代理都被拒），详见坑 2。
 - `.gitignore` 已把 `reports/execution_baseline/`、`reports/rag_ingestion_auth_review/` 两个目录
   从 `reports/*` 的忽略中排除（计划明确要求这两处评审材料落盘，属交付证据，体积均在 10 KB 内）。
 
 ### ⚠️ 本仓库的环境坑（后续每次提交都会遇到，务必按此操作）
 
-> B1/B2 期间只有两条（坑 1、坑 2）；B3 期间坑 2 的可用性发生翻转，并新增坑 3（venv 重建）
-> 与坑 4（自动化执行环境的通道差异）。四条都按最新实测更新过。
+> B1/B2 期间只有两条（坑 1、坑 2）；B3 期间坑 1 再次复现，坑 2 的结论被推翻重写为
+> 「间歇性、需交替重试」，并新增坑 3（venv 重建）与坑 4（自动化执行环境的通道差异）。
+> 四条都按最新实测更新过。
 
 **坑 1：git 无法自动创建嵌套 ref 目录，导致 commit「成功」但分支指针不前进。**
 
@@ -580,6 +588,13 @@ sample.html title=客户服务手册（HTML 样本） blocks=10
 `git rev-parse HEAD` 仍返回旧提交。
 
 识别症状：`git log` 看不到刚提交的内容，但 `git reflog` 里能看到该提交。
+
+**B3 提交实测再次完整复现**（说明这不是偶发，而是只要分支名含 `/` 就必然发生）：
+`git commit` 成功 → `git reflog` 里有 `1e3e53a`，但 `git rev-parse HEAD` 返回的是
+`e5d5bc3`（`packed-refs` 里的旧值），`.git/refs/heads/optimize/interview-ready`
+这个文件**根本不存在**（`optimize/` 目录被 git 的 ref 更新动作清掉了）。
+按下面的处理姿势 mkdir + 写 40 位 SHA 之后立即恢复正常。
+**推论：提交后绝不能只看 `git commit` 的输出就认为成功，必须 `git rev-parse HEAD` 复核。**
 
 实测结论（2026-09-23 逐条验证过）：
 - `git status` / `git log` / `git rev-parse` 都**不会**动 `.git/refs/**`，只有 `git commit` 会踩坑；
@@ -600,39 +615,49 @@ git rev-parse HEAD                # 必须输出上面那个完整 SHA
 > 注意 2：`mkdir` 与写入务必放在**同一条命令**里执行，因为 `optimize/` 目录
 > 随时可能被 git 的 ref 更新动作清掉。
 
-**坑 2：代理与直连的可用性会**翻转**，不能把任一条路径写死。（2026-09-23 B3 期间实测修订）**
+**坑 2：代理与直连**都会间歇性抽风**，唯一可靠的做法是「探测 + 交替重试」。（2026-09-23 B3 期间实测修订）**
 
 原记录写的是「代理 `127.0.0.1:7890` 已失效，GitHub 可直连，push 时要绕过代理」。
-**B3 期间实测发现两者恰好反过来了**：
+B3 期间的实测把这个结论推翻了两次，最终结论是：**两条路径都不是恒定的，取决于当下**。
 
-| 时间 | 直连 github.com:443 | 经代理 127.0.0.1:7890 |
-| --- | --- | --- |
-| B1/B2 期间 | 可用（curl 200） | 失效（连接被拒） |
-| **B3 期间** | **不可用**（`Empty reply from server` / 21 秒超时） | **可用**（`ls-remote` 与 `push` 均成功） |
+实测时间线（同一天、同一台机器）：
 
-所以正确做法不是「永远绕过代理」或「永远走代理」，而是**先探测再决定**：
+| 时刻 | 直连 github.com:443 | 经代理 127.0.0.1:7890 | 实际用哪条 |
+| --- | --- | --- | --- |
+| B1/B2 期间 | 可用（curl 200） | 失效（连接被拒） | 直连 |
+| B3 开头（推 `69ddd0e`） | 不可用（`Empty reply from server` / 21 秒超时） | **可用** | 代理 |
+| B3 收尾（推 `1e3e53a`） | 时好时坏：`ls-remote` 通、`push` 前 4 次被拒、**第 5 次成功** | 全程不可用（`Failed to connect ... over proxy`） | **直连** |
+
+所以正确做法不是「永远绕过代理」或「永远走代理」，而是：
 
 ```bash
-# 1) 先探直连
+# 1) 先各探一次，确认当下哪条能通（返回 SHA 才算通）
 env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
   git -c http.proxy= -c https.proxy= ls-remote origin refs/heads/optimize/interview-ready
-# 报 Empty reply / timeout → 直连不通，改走代理：
 git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 \
   ls-remote origin refs/heads/optimize/interview-ready
-# 哪条能返回 SHA 就用哪条推送
+
+# 2) 推送时两条交替重试。B3 收尾那次直连推到第 5 次才成功，
+#    「第一次失败就换策略」会误判成两条都不通。
+for i in 1 2 3 4 5; do
+  env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+    git -c http.proxy= -c https.proxy= push origin optimize/interview-ready && break
+  git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 \
+    push origin optimize/interview-ready && break
+  sleep 3
+done
 ```
 
-B3 的两次实际命令（走代理全部成功）：
+判据不要看 `push` 的返回码（实测失败时退出码仍可能是 0），要看远端 SHA：
 
 ```bash
-git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 \
-  push origin optimize/interview-ready
-# → 99fd798..69ddd0e  optimize/interview-ready -> optimize/interview-ready
+git -c http.proxy= -c https.proxy= ls-remote origin refs/heads/optimize/interview-ready
+# 或绕开 git 用 GitHub API 交叉核对（Bash 通道网络抖动时这条更稳）：
+#   GET https://api.github.com/repos/kue04/llm-customer-service/branches/optimize%2Finterview-ready
 ```
 
 推送后远端跟踪 ref 也可能因坑 1 不更新；若 `git status -sb` 显示莫名的 ahead/behind，
-手动写 `.git/refs/remotes/origin/optimize/interview-ready` 为远端实际 SHA 即可
-（用 `git ls-remote origin refs/heads/optimize/interview-ready` 查远端真实值）。
+手动写 `.git/refs/remotes/origin/optimize/interview-ready` 为远端实际 SHA 即可。
 
 **坑 3（新增）：本机 venv 在 B3 期间被破坏过一次，已重建为轻量版。**
 
