@@ -123,6 +123,39 @@ class IndexRebuildResponse(BaseModel):
     tenant_count: int = Field(default=0, ge=0)
 
 
+class IndexRollbackRequest(BaseModel):
+    """``POST /ingestion/indexes/rollback`` 的请求（B8 新增）。
+
+    ``index_version`` 必须是**磁盘上已存在且通过校验**的版本号 ——
+    回滚只改指针、不重建，因此目标版本不可用时必须**当场失败**，
+    而不是"先切过去、等下一次检索才炸"（理由见
+    ``services/ingestion/index_builder.py`` 里 ``rollback_index`` 的说明）。
+    """
+
+    index_version: int = Field(ge=1, description="要回滚到的索引版本号")
+    #: 回滚理由，写进审计。回滚是应急动作，留理由才能让事后复盘知道"当时为什么退"
+    reason: str = Field(default="", max_length=200)
+
+
+class IndexRollbackResponse(BaseModel):
+    """回滚结果。**只改生效指针，不重建、不删任何文件。**
+
+    ``previous_version`` 是回滚**前**生效的版本 —— 既用于确认"确实切了"，
+    也便于运维决定要不要再切回去（取不到时为 ``None``）。
+    ``available_versions`` 是当前磁盘上可选的版本列表（倒序），
+    让调用方在失败或想再切换时不必猜。
+    """
+
+    index_name: str
+    index_version: int = Field(ge=0, description="回滚后生效的版本")
+    previous_version: int | None = Field(default=None, ge=0)
+    chunk_count: int = Field(ge=0)
+    embedding_model: str = ""
+    manifest_uri: str = ""
+    switched: bool = False
+    available_versions: list[int] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------- 任务查询
 
 

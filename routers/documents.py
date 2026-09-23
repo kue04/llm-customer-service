@@ -32,6 +32,9 @@ POST /ingestion/indexes/rebuild                       # 整份重建 chunk 索�
 5. **索引重建单独授权**（阶段 4.2，B7）：``POST /ingestion/indexes/rebuild`` 要
    ``index:rebuild``，与发布知识（``document:publish``）分开 ——
    一次重建影响所有租户的检索结果（发布只影响一条知识）。
+6. **索引回滚再单独授权**（B8）：``POST /ingestion/indexes/rollback`` 要
+   ``index:rollback``。「能重建索引」≠「能把线上检索切回旧版本」——
+   回滚只改指针、不重建，但同样影响所有租户，因此两个动作各自成键。
 """
 
 from __future__ import annotations
@@ -52,6 +55,8 @@ from schemas.document_schema import (
     DocumentVersionListResponse,
     DocumentVersionSummary,
     IndexRebuildResponse,
+    IndexRollbackRequest,
+    IndexRollbackResponse,
     IngestionJobDetail,
     ParseWarningItem,
 )
@@ -68,8 +73,13 @@ from services.ingestion import db, models, parser_registry, repository
 from services.ingestion.content_sniff import matches_declared_type
 from services.ingestion.index_builder import (
     ERROR_INDEX_BUILD_FAILED,
+    ERROR_INDEX_BUILD_NOT_FOUND,
+    ERROR_INDEX_ROLLBACK_FAILED,
     IndexBuildError,
+    active_index_version,
+    available_versions,
     rebuild_index,
+    rollback_index,
 )
 from services.ingestion.index_manifest import DEFAULT_INDEX_NAME, IndexManifestError, load_active_manifest
 from services.ingestion.object_store import (
@@ -111,6 +121,9 @@ REPROCESS_OPERATION = "knowledge_rollback"
 DOCUMENT_UPLOAD_PERMISSION = "document:upload"
 DOCUMENT_READ_PERMISSION = "document:read"
 INDEX_REBUILD_PERMISSION = "index:rebuild"
+#: 索引回滚**单独授权**（B8）：能重建索引 ≠ 能把线上检索切回旧版本。
+#: 两者角色集合当前相同，但各自成键，理由见 ``services/auth_context`` 的三条划分。
+INDEX_ROLLBACK_PERMISSION = "index:rollback"
 
 #: 允许写知识库的成员角色。存在成员关系但只是 viewer / reviewer 时，仍应 403 ——
 #: 「有成员关系」不等于「有写权限」。
@@ -231,7 +244,7 @@ def _resolve_principal_user_id(session: Session, auth: AuthContext) -> str | Non
 #: 几乎必然含这么长的数字串 —— 统一脱敏会把审计摘要里的 ID 变成不可关联的乱码，
 #: 使「按 ID 追一条操作」这件事直接失效。结构化 ID 由服务端生成、不含个人信息，
 #: 因此保持原样；自由文本（客户端文件名、User-Agent）必须脱敏。
-MASKED_SUMMARY_KEYS = frozenset({"filename", "user_agent", "error_message"})
+MASKED_SUMMARY_KEYS = frozenset({"filename", "user_agent", "error_message", "reason"})
 
 
 def _record_audit(
@@ -730,4 +743,107 @@ def rebuild_chunk_index(
         skipped=result.skipped,
         skip_reason=result.skip_reason,
         tenant_count=tenant_count,
+    )
+
+
+# ---------------------------------------------------------------- 索引回滚（B8）
+
+
+@router.post(
+    "/ingestion/indexes/rollback",
+    response_model=IndexRollbackResponse,
+    summary="回滚索引到指定版本（需要 index:rollback）",
+    description=(
+        "把**生效指针**切回磁盘上已存在的旧版本：不重建、不删文件，只改指针。\n\n"
+        "与**重建**分开授权（B8）：`index:rebuild` 是「建一份新的」，"
+        "`index:rollback` 是「把线上切回旧的」—— 两者都影响所有租户的检索结果，"
+        "但动作不同，因此各自成键（当前角色集合相同：supervisor / admin）。\n\n"
+        "目标版本**必须已存在且通过校验**：回滚前会重新校验旧索引文件，"
+        "宁可在回滚时就明确失败，也不让指针指向一份坏索引 ——"
+        "后者要等下一次检索才炸，排查难度高得多。"
+    ),
+)
+def rollback_chunk_index(
+    payload: IndexRollbackRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    meta: RequestMeta = Depends(get_request_meta),
+    session: Session = Depends(get_session),
+) -> IndexRollbackResponse:
+    """回滚索引。**只改指针**；失败时指针保持不动（与发布共用同一段切换代码）。
+
+    错误分两类而不是一律 503，调用方能据此决定「换个版本重试」还是「等一会再来」：
+
+    * **409**：目标版本不存在 / 不属于该租户 / ``index_builds`` 里没有记录
+      （请求指向了一个不可达的状态）；
+    * **503**：环境没准备好（faiss 或模型缺失等，与重建端点一致）。
+    """
+
+    require_resource_scope(INDEX_ROLLBACK_PERMISSION, auth)
+
+    root = default_index_root()
+
+    # 先记下"当前生效的是哪一版"：它既是响应里 previous_version 的来源，
+    # 也是审计里判断"这次回滚到底生效没有"的依据。还没有生效索引时取不到，不算错误。
+    try:
+        previous_version: int | None = active_index_version(root, DEFAULT_INDEX_NAME)
+    except IndexManifestError:
+        previous_version = None
+
+    try:
+        result = rollback_index(
+            session,
+            tenant_id=auth.tenant_id,
+            root=root,
+            index_version=payload.index_version,
+            index_name=DEFAULT_INDEX_NAME,
+        )
+    except (IndexBuildError, IndexManifestError) as error:
+        error_code = getattr(error, "error_code", ERROR_INDEX_ROLLBACK_FAILED)
+        logger.warning(
+            "index rollback rejected for tenant %s -> v%s: %s",
+            auth.tenant_id,
+            payload.index_version,
+            error,
+        )
+        request_side = error_code in (ERROR_INDEX_ROLLBACK_FAILED, ERROR_INDEX_BUILD_NOT_FOUND)
+        raise HTTPException(
+            status_code=(
+                status.HTTP_409_CONFLICT if request_side else status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail={"error_code": error_code, "message": error.message},
+        ) from error
+
+    # 回滚成功后给出"现在还能切到哪些版本"，让运维不必猜；取不到也不影响回滚结果本身
+    try:
+        versions = available_versions(root, DEFAULT_INDEX_NAME)
+    except (IndexManifestError, OSError):
+        versions = []
+
+    _record_audit(
+        session,
+        auth,
+        meta,
+        action="index_rollback",
+        resource_type="index",
+        resource_id=result.index_name,
+        summary={
+            "index_name": result.index_name,
+            "from_version": previous_version,
+            "to_version": result.index_version,
+            "chunk_count": result.chunk_count,
+            "switched": result.switched,
+            "reason": payload.reason,
+        },
+    )
+    session.commit()
+
+    return IndexRollbackResponse(
+        index_name=result.index_name,
+        index_version=result.index_version,
+        previous_version=previous_version,
+        chunk_count=result.chunk_count,
+        embedding_model=result.embedding_model,
+        manifest_uri=result.manifest_uri,
+        switched=result.switched,
+        available_versions=versions,
     )

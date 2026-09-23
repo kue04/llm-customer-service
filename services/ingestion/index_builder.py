@@ -62,7 +62,6 @@ from services.ingestion.index_manifest import (
     IndexManifest,
     IndexManifestError,
     ManifestEntry,
-    index_root,
     list_versions,
     load_active_manifest,
     publish_build_directory,
@@ -513,10 +512,6 @@ def available_versions(root: str | Path, index_name: str = DEFAULT_INDEX_NAME) -
     return list_versions(root, index_name)
 
 
-def index_root_for(root: str | Path, index_name: str = DEFAULT_INDEX_NAME) -> Path:
-    return index_root(root, index_name)
-
-
 def _cleanup_building_dir(directory: Path) -> None:
     if not directory.exists():
         return
@@ -552,7 +547,6 @@ __all__ = [
     "active_index_version",
     "available_versions",
     "build_entries",
-    "index_root_for",
     "rebuild_index",
     "rollback_index",
 ]

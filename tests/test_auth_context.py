@@ -289,7 +289,14 @@ def test_role_scopes_is_exact_inversion_of_policy_tables() -> None:
 
 
 def test_resource_scopes_follow_the_plan_enumeration() -> None:
-    """计划 4.1 点名的九个资源级权限必须**逐个**存在，且键名即完整 scope。"""
+    """计划 4.1 点名的九个资源级权限必须**逐个**存在，且键名即完整 scope。
+
+    计划之外**新增**了 ``index:rollback``（B8）：回滚与重建分开授权
+    （理由见 ``services.auth_context``：授权的单元是"动作"，不是资源类别）。
+
+    这里刻意继续用 ``==`` 而不是 ``>=``：**任何新增权限都必须在这个测试里显式登记**，
+    否则"加一道门"会变成静默变更 —— 而权限表的变更本就该是一次显式决策（见 B10）。
+    """
 
     plan_permissions = {
         "knowledge_base:read",
@@ -302,9 +309,35 @@ def test_resource_scopes_follow_the_plan_enumeration() -> None:
         "index:rebuild",
         "audit:read",
     }
-    assert set(RESOURCE_SCOPE_ROLES) == plan_permissions
-    for permission in plan_permissions:
+    #: 计划之外、经显式决策新增的权限（B8 索引回滚）
+    added_beyond_plan = {"index:rollback"}
+
+    assert set(RESOURCE_SCOPE_ROLES) == plan_permissions | added_beyond_plan
+    for permission in plan_permissions | added_beyond_plan:
         assert resource_scope(permission) == permission
+
+
+def test_index_rollback_is_granted_separately() -> None:
+    """B8：回滚与重建是**两道独立的门** —— 虽然当前角色集合相同。
+
+    独立成键的意义不在"现在谁能做什么"，而在**将来能单独收窄**：
+    把 ``index:rollback`` 收成只给 admin 时，不必动 ``index:rebuild`` 的授权。
+    """
+
+    # 是独立 scope，不是 index:rebuild 的别名
+    assert resource_scope("index:rollback") == "index:rollback"
+    assert "index:rollback" in RESOURCE_SCOPE_ROLES
+
+    agent = make_auth_context(roles=["agent"])
+    assert not agent.has_scope(resource_scope("index:rollback"))
+    assert not agent.has_scope(resource_scope("index:rebuild"))
+
+    # 发布知识的人（knowledge_ops）不能回滚索引 —— 与 index:rebuild 同档
+    knowledge_ops = make_auth_context(roles=["knowledge_ops"])
+    assert not knowledge_ops.has_scope(resource_scope("index:rollback"))
+
+    supervisor = make_auth_context(roles=["supervisor"])
+    assert supervisor.has_scope(resource_scope("index:rollback"))
 
 
 def test_publish_and_index_rebuild_are_granted_separately() -> None:

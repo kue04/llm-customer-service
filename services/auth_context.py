@@ -19,7 +19,7 @@ scope 词汇表
   ``read:`` / ``write:`` / ``review:`` 前缀 + 既有 operation 名，
   身份来源已从 header 换成 JWT。
 * **资源维度**（阶段 4.1 落地，B7）：``knowledge_base:read``、``document:upload``、
-  ``document:publish``、``index:rebuild``、``audit:read`` 等九个权限，
+  ``document:publish``、``index:rebuild``、``index:rollback``、``audit:read`` 等十个权限，
   见 :data:`RESOURCE_SCOPE_ROLES`。
 
 两者都倒排进 :data:`ROLE_SCOPES`，调用方统一用 ``AuthContext.require_scope(...)``
@@ -111,12 +111,17 @@ REVIEW_ACTION_ROLES: dict[str, frozenset[str]] = {
 #: 资源级权限 -> 允许的角色（阶段 4.1 的计划枚举，B7 落地）。
 #:
 #: 与上面三张表的区别：上面三张是**操作**维度（`read:chat_generate` 这类，
-#: 沿用既有接口的授权表），这张是**资源**维度（计划原文点名的九个权限）。
+#: 沿用既有接口的授权表），这张是**资源**维度（计划原文点名的九个权限，
+#: 加上 B8 新增的 ``index:rollback``，共十个）。
 #: 键名就是完整的 scope 字符串（自带冒号），因此倒排时前缀为空。
 #:
-#: 两个刻意的授权划分：
+#: 三个刻意的授权划分：
 #: * ``document:publish`` 与 ``index:rebuild`` **分开授权**（计划 4.2 明文要求）——
 #:   发布一条审核过的知识 ≠ 允许重建全量索引；后者影响所有租户的检索结果。
+#: * ``index:rollback`` 与 ``index:rebuild`` **再分一层**（B8 新增）——
+#:   「能重建索引」≠「能把线上检索切回旧版本」。两者当前角色集合相同
+#:   （supervisor / admin），**但独立成键**：将来要单独收窄（例如只给 admin）、
+#:   或单独授予某个角色时，不必改动已有授权。授权的单元是**动作**，不是资源类别。
 #: * ``audit:read`` 只给安全/质量角色，``document:delete`` 不给 knowledge_ops。
 RESOURCE_SCOPE_ROLES: dict[str, frozenset[str]] = {
     "knowledge_base:read": frozenset({"agent", "supervisor", "knowledge_ops", "qa", "admin"}),
@@ -127,6 +132,7 @@ RESOURCE_SCOPE_ROLES: dict[str, frozenset[str]] = {
     "document:publish": frozenset({"supervisor", "knowledge_ops", "admin"}),
     "document:delete": frozenset({"supervisor", "admin"}),
     "index:rebuild": frozenset({"supervisor", "admin"}),
+    "index:rollback": frozenset({"supervisor", "admin"}),
     "audit:read": frozenset({"supervisor", "qa", "admin"}),
 }
 

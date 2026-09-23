@@ -1546,6 +1546,69 @@ B 入库 → **`v2` 含 12 条（B 6 + A 6）**；两租户各只命中自己的
 即**踩坑记录自己踩了记在 D13 里的同一个坑**。已改为「围栏 + 取消缩进」。
 校验：58 个标题 0 缺失、表格 9 = 9、`<code>python` 残留 0、两个代码块均正常渲染。
 
+### [B8-1] 回滚资产做成真能力：回滚 API + 8 条测试（2026-09-23）
+
+**性质**：B8 的第一步（B8 共四步：回滚资产 / AST 守卫 / 四格式端到端 / 门禁与总审查）。
+**用户决策**：回滚资产三选一 → 选「**补测试 + 接 ops 回滚入口**」。
+
+#### 交付物
+
+| 文件 | 改动 |
+| --- | --- |
+| `services/auth_context.py` | 新增资源级权限 **`index:rollback`**（第 10 个）；注释改为「三个刻意的授权划分」 |
+| `schemas/document_schema.py` | 新增 `IndexRollbackRequest` / `IndexRollbackResponse`（含 from→to 版本 + 可选版本列表） |
+| `routers/documents.py` | 新增 **`POST /ingestion/indexes/rollback`**；常量 `INDEX_ROLLBACK_PERMISSION`；`MASKED_SUMMARY_KEYS` + `reason`；模块 docstring 第 6 条 |
+| `tests/test_index_rollback.py` | **新文件**，8 条 |
+| `tests/test_auth_context.py` | 权限枚举断言更新（**保留 `==`**）+ 新增「回滚与重建分开授权」 |
+| `services/ingestion/index_builder.py` | **删除 `index_root_for`**（零调用零测试的 1 行别名，同时清掉随之无用的 import 与 `__all__` 条目） |
+
+#### 接线登记（规范 §17.3）
+
+`rollback_index` / `active_index_version` / `available_versions` /
+`ERROR_INDEX_ROLLBACK_FAILED` / `ERROR_INDEX_BUILD_NOT_FOUND`
+→ 生产调用点 `routers/documents.py::rollback_chunk_index`；
+`build_entries` → `rebuild_index` 内部（B6 起）。
+**`index_root_for` 已删除** → **回滚一族 6 个符号全部有归属，「已建未启用」状态解除。**
+
+> 关键判断：**只补测试不够。** 按 §17.3，测试在但无人调用仍记未完成 ——
+> 所以真正的交付物是**端点**，测试只是它的证据。
+> 没有归属的东西（`index_root_for`）正确处置是**删掉**，而不是补个测试让它"看起来完成"。
+
+#### 门禁（证据在 `reports/rag_ingestion_auth_review/B8_*`）
+
+| 项 | 结果 |
+| --- | --- |
+| 全量 | **893 / 0 failures / 0 errors / 0 skipped**（`B8_full_test_junit.xml`，29.5s） |
+| 基线对比 | 884 → 893，**新增 9 条**（8 回滚 + 1 权限独立性），**零回归** |
+| stdout | `889 passed, 5 warnings, 4 subtests passed`，**退出码 0**（本轮未触发 A6 守卫） |
+| warning | **5 条，与基线持平** |
+| ruff / compileall / 体积检查 | 全部通过（`B8_ruff-output.txt` 等） |
+
+#### 中途红了一条（判定与处置，详见审查文件第四节）
+
+`tests/test_auth_context.py::test_resource_scopes_follow_the_plan_enumeration` ——
+它断言「权限枚举与计划**完全相等**」，而本批加了第 10 个权限。
+判据（D12）：AssertionError + 抛出点在项目测试 + 稳定复现 → **真信号，不是环境噪声**；
+但它守的是**有意的设计决策** → 改的是**测试期望**，且**保留 `==`**（不放宽成 `>=`），
+让「加一道门」必须在这个测试里显式登记（B10）。
+
+#### 口径修正（记入踩坑 D15）
+
+`pytest --collect-only -q` **取不到 warning 条数**（它不执行测试）。
+B7 的 `B7_collectonly_warnings.txt` 文件名有歧义 —— 内容只有测试清单，
+B7 记的"warning 5 条"其实来自全量 stdout。本批证据文件改名 **`B8_collectonly_tests.txt`**
+（名副其实：取测试数），warning 改从**全量 stdout** 取。已同步修正 MEMORY.md 第 8 节。
+
+#### 审查
+
+`reports/rag_ingestion_auth_review/B8_step1_rollback_review.txt` —— 任务级 **PASS**。
+声明范围：**不等于 7.4 判据通过**（7.4 是整组，回滚只是其中一条，另有 7.2 未做），
+**不等于 B8 PASS**，更不等于发布门禁 PASS（§17.2 两级分别出具）。
+
+#### 下一步
+
+B8 剩余三步：① 接线 AST 守卫；② 四格式端到端（7.2 判据）；③ 7.3 逐项证据 + 总审查 + 发布门禁。
+
 ## 4. 执行暂停点（下次从这里继续）
 
 **当前停在：B7 结束（任务 4.1 + 4.2 + 4.3 全部完成，阶段 4 已 PASS），
