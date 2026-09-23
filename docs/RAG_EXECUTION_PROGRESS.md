@@ -1664,6 +1664,67 @@ AST 辅助函数**有意未抽公共模块**（抽取需要改动既有测试）
 ③ 四格式端到端（7.2 判据，交付 `tests/test_release_gate.py` + 证据 `B8_e2e_four_formats.txt`）
 → 7.3 逐项证据 → 阶段 7 总审查与发布门禁。
 
+### [B8-3] 四格式端到端：7.2 判据通了（2026-09-23）
+
+**性质**：B8 第三步（作业规程「前置 3 件事」里的四格式端到端）。
+
+#### 交付物
+
+`tests/test_release_gate.py`（**新文件**，7 条 = 4 格式 parametrize + 3 条专项）
++ 证据 `reports/rag_ingestion_auth_review/B8_e2e_four_formats.txt`。
+
+覆盖 7.2 的八条：
+
+| # | 要求 | 实现 |
+| --- | --- | --- |
+| 1 | 走**真实路由**上传 | `POST /knowledge-bases/{id}/documents`（multipart） |
+| 2 | 消费任务跑完流水线 | 测试内 `IngestionPipeline.process_job`（规程允许） |
+| 3 | 重建索引 | `POST /ingestion/indexes/rebuild`（真实端点） |
+| 4 | 检索**命中本文档 chunk** | `POST /retrieval/search`；断言 `retrieval_path == "chunk-index"` 且命中集合与本文档 chunk 有交集 |
+| 5 | 链路串联 | 命中的 `document_id` / `document_version_id` / `document_version` / `tenant_id` / `source_type` 一致，且 `text` 与库内 chunk **逐字相同** |
+| 6 | 长文档 ≥ 2 chunk | Markdown 样本断言 |
+| 7 | 重复上传不产生重复有效版本 | 两次上传同一文件 → `list_document_versions` 仍为 1 |
+| 8 | 失败可查错 + 可重试 | 构造"过准入但解析失败"的 docx → `error_code` 非空 + `/reprocess` 新建 job |
+
+#### 为什么这条测试非有不可
+
+其它测试都是**分段**的：上传测到"建了 job"、流水线测到"跑完 8 阶段"、
+检索测到"能按权限过滤"。**没有一条把它们串起来** —— 而 7.2 要的正是"串起来能跑通"。
+F1 双轨制与 B14 的静默零命中，都是"两段各自全绿、接口对上才暴露"的产物。
+
+夹具同时挂**上传与检索两个 router**，并把**两组**生产默认值（上传一组、检索一组）
+都换成**同一个** `fake_embedding` —— 否则查询向量与索引向量不在同一空间，分数没有意义。
+
+#### 一个刻意的判断：query 取自文档自己的 chunk
+
+测试 embedder 是词袋哈希，query 必须与 chunk 共享 token 才可能有分。
+用文档自己的词构造 query ＝"用户问文档里写过的内容"，**验证的是链路通不通**，
+而不是检索质量 —— 后者属 M10 Recall@k，其口径修正尚未做（验收规范 §10.3 已标 N/A）。
+**不拿"链路测试"冒充"检索质量评测"**，这是本批的一条表述纪律。
+
+#### 中途走了一次弯路（记入踩坑 D17）
+
+第一版用 `b"PK\x03\x04" + 零字节` 当"损坏文件"，被**准入**以 415 拦下 ——
+说明「准入校验」与「解析校验」是**两层**，"坏文件"要针对**目标那一层**构造：
+准入只要求「合法 zip + 存在 `word/` 条目」（`content_sniff._is_docx_zip`）。
+改用 `zipfile` 造一个含 `word/document.xml`（内容为非法 XML）的**合法 zip**
+→ 过准入、解析失败。**副产品**：那次 415 是"准入确实在工作"的正面证据。
+
+#### 门禁（证据 `reports/rag_ingestion_auth_review/B8_step3_*`）
+
+| 项 | 结果 |
+| --- | --- |
+| 全量 | **918 / 0 failures / 0 errors / 0 skipped**（`B8_step3_junit.xml`，41.3s） |
+| 基线对比 | 911 → 918，**新增 7 条**，**零回归** |
+| stdout | `914 passed, 5 warnings, 4 subtests passed` |
+| warning | **5 条持平** |
+| ruff / compileall / 体积检查 | 全部通过 |
+
+#### 对阶段 7 门禁的影响
+
+7.4 的两条已知阻断项**至此全部消除**（索引回滚 → B8-1；四格式端到端 → 本批）。
+下一步只剩：**7.3 六条逐项证据 + `stage7_review.txt` + 发布门禁结论**。
+
 ## 4. 执行暂停点（下次从这里继续）
 
 **当前停在：B7 结束（任务 4.1 + 4.2 + 4.3 全部完成，阶段 4 已 PASS），
