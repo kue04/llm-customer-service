@@ -1862,6 +1862,25 @@ warning 5 条未新增，ruff / compileall / 体积检查全通过。
   **推送实际重试了 5 次才成功**（前 4 次直连与代理都被拒），详见坑 2。
 - `.gitignore` 已把 `reports/execution_baseline/`、`reports/rag_ingestion_auth_review/` 两个目录
   从 `reports/*` 的忽略中排除（计划明确要求这两处评审材料落盘，属交付证据，体积均在 10 KB 内）。
+- **2026-09-23 B8 收尾推送成功（本阶段共 7 个提交）**：`624d496..172a100`
+  （`optimize/interview-ready`）。
+
+  验证方式（**以远端 SHA 为准，不看命令输出**）：
+  `git ls-remote origin refs/heads/optimize/interview-ready`
+  → `172a100380593af63240c01bb2e36c5dd9f20b3e`，与本地 `git rev-parse HEAD` **完全一致**；
+  `git rev-list --count origin/optimize/interview-ready..HEAD` = **0**。
+
+  **本次直连第 1 轮即成功** —— 坑 2 描述的"直连/代理都会间歇失效"这次没有出现。
+  但**探测步骤仍然做了**（两条通道各 `ls-remote` 一次），因为坑 2 的结论是"取决于当下"，
+  不是"已经好了"。
+
+  **附带发现（坑 1 的连带影响，需补记）**：推送成功后本地 remote-tracking ref 仍是旧值，
+  `git status` 误报 `ahead 17`、`rev-list --count` 报 17 ——
+  因为 `refs/remotes/origin/optimize/` 这个目录同样会被 git 的 ref 更新动作清掉
+  （与坑 1 同一机制，只是发生在 remote ref 上）。
+  处置同姿势：`mkdir -p .git/refs/remotes/origin/optimize` 后写入远端真实的 40 位 SHA。
+  **判据**：remote-tracking ref 只是本地缓存，写它不影响远端；
+  但**不修就会误判"还没推上去"**，下次可能重复推或做出错误决策。
 
 ### ⚠️ 本仓库的环境坑（后续每次提交都会遇到，务必按此操作）
 

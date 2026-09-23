@@ -43,6 +43,24 @@
 > 三次复现（B1/B2、B3、本次）说明：**只要分支名含 `/` 就必然发生，不是偶发**。
 > 因此「提交后必须 `git rev-parse HEAD` 复核」是硬动作，不是可选项。
 
+> **2026-09-23 补记二（B8 收尾批次：第 4~7 次复现 + 一个此前没注意的面）**：
+> 本阶段四次 commit（`f934a26` / `1155af2` / `135d280` / `172a100`）**每次都复现**，
+> 每次都按本文姿势手工修 `refs/heads/optimize/interview-ready`。
+>
+> **新发现：`git push` 成功后，remote-tracking ref 也会是旧值。**
+> 推送成功（远端已是 `172a100`，`ls-remote` 实证）之后，
+> `git status` 却报 `ahead 17`、`git rev-list --count origin/…HEAD` 也报 17 ——
+> 因为 `refs/remotes/origin/optimize/` 这个目录**跟 `refs/heads/optimize/` 一样会被清掉**，
+> 于是 git 退回读 `packed-refs` 里的旧值。
+> 处置同姿势：`mkdir -p .git/refs/remotes/origin/optimize` 后写入远端真实的 40 位 SHA
+> （remote-tracking ref 只是本地缓存，写它不影响远端）。
+>
+> **教训扩展**：这条坑不只影响 commit，**也影响 push 之后的本地视图**。
+> 凡是"本地 ref 到底指向哪"的判断，都要用 **`ls-remote`（远端）** 或
+> **`rev-parse`（本地）** 去**实证** ——
+> **不能信 `status` 的 ahead / behind 数字**，它们在这台机器上会骗人。
+> 这与 A5 / A6 同源：**任何"汇总性指标"都要能追到它的取数方式**。
+
 ### A2. 代理与直连都会间歇性抽风，`git push` 只能"探测 + 交替重试"
 
 - **现象**：push 被拒。实测**重试 5 次才成功**（前 4 次直连与代理通道都被拒）。
