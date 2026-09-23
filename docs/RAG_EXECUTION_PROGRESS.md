@@ -309,9 +309,14 @@ OIDC Provider）都能自报权限提权，等于把授权决策外包给了令�
 
 ## 4. 执行暂停点（下次从这里继续）
 
-**当前停在：B2 结束（阶段 1 已判 PASS），等待开始 B3（任务 2.1 + 2.2）。**
+**当前停在：B2 结束（阶段 1 已判 PASS，代码已提交并推送到 GitHub），等待开始 B3（任务 2.1 + 2.2）。**
+
+上次收尾状态：`HEAD = 0ea5834`，工作区干净，远端 `origin/optimize/interview-ready` 与本地一致，
+全量测试 **332 passed**。新窗口可直接开工，无需重做 B1/B2。
 
 下次继续时的入口动作：
+0. 先读本文件第 5 节「两个环境坑」——提交/推送必须按那里写的特殊姿势来，
+   否则会出现「commit 成功但分支不动」和「push 被死代理挡住」两种情况；
 1. 复读本文件第 1 节分批表，确认 B3 范围 = 任务 2.1 解析契约 + 任务 2.2 五种解析器与注册表；
 2. 跑一次 `python -m pytest -q` 确认起点仍是 **332 passed**；
 3. 开始任务 2.1：新增 `services/ingestion/parsers/base.py`，
@@ -342,4 +347,51 @@ OIDC Provider）都能自报权限提权，等于把授权决策外包给了令�
 - 测试仍跑在临时 SQLite 上，`tests/conftest.py` 已固定鉴权环境变量，
   新增测试无需再处理 JWT 密钥。
 - `tests/fixtures/` 下的样本文件必须小于 1 MB（`check_repo_data_size.py` 会卡 CI）。
+
+## 5. 提交与仓库同步记录
+
+| 提交 | 内容 | 规模 |
+| --- | --- | --- |
+| `9760049` | `docs:` 加入 RAG 数据接入/切分/权限改造执行计划 | 1 文件 |
+| `0ea5834` | `feat(rag):` 阶段 1 数据模型迁移 + JWT 身份上下文（B1+B2） | 57 文件，+4779 / −236 |
+
+- 分支：`optimize/interview-ready`；远端 `origin` = `https://github.com/kue04/llm-customer-service.git`
+- 2026-09-23 推送成功，远端 `refs/heads/optimize/interview-ready` =
+  `0ea5834738a031dfe0a7c6b0554c87a1fca50e11`（与本地一致，`git status -sb` 无 ahead/behind）
+- `.gitignore` 已把 `reports/execution_baseline/`、`reports/rag_ingestion_auth_review/` 两个目录
+  从 `reports/*` 的忽略中排除（计划明确要求这两处评审材料落盘，属交付证据，体积均在 10 KB 内）。
+
+### ⚠️ 本仓库的两个环境坑（后续每次提交都会遇到，务必按此操作）
+
+**坑 1：git 无法自动创建嵌套 ref 目录，导致 commit「成功」但分支指针不前进。**
+
+分支名含 `/`（`optimize/interview-ready`），但 `.git/refs/heads/` 下**不存在** `optimize/` 子目录
+（该分支只活在于 `.git/packed-refs`）。git 写 loose ref 时未能自动补建该子目录，
+结果是：`git commit` 打印成功、commit 对象与 reflog 都已写入，**但分支指针不动**，
+`git rev-parse HEAD` 仍返回旧提交。
+
+识别症状：`git log` 看不到刚提交的内容，但 `git reflog` 里能看到该提交。
+
+处理（每次 commit 后都要做，直到子目录存在且 git 能自行写入）：
+```bash
+mkdir -p .git/refs/heads/optimize .git/refs/remotes/origin/optimize
+git rev-parse <刚提交的短SHA>     # 取 40 位完整 SHA
+printf '%s\n' <完整SHA> > .git/refs/heads/optimize/interview-ready
+git rev-parse HEAD                # 校验确实指向新提交
+```
+> 注意：ref 文件里**必须写 40 位完整 SHA**。写 7 位缩写会让 git 直接报
+> `fatal: ambiguous argument 'HEAD'`，反而把仓库搞得读不出 HEAD。
+
+**坑 2：git 配置的代理 `127.0.0.1:7890` 已失效，直接 push 会失败。**
+
+报错为 `Failed to connect to github.com:443 over proxy 127.0.0.1:7890`，
+但 GitHub 其实**可直连**（`curl --noproxy '*' -o /dev/null -w '%{http_code}' https://github.com` → 200）。
+该代理同时写在 local 与 global 配置里。推送时绕过代理：
+```bash
+env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+  git -c http.proxy= -c https.proxy= push origin optimize/interview-ready
+```
+推送后远端跟踪 ref 也可能因坑 1 不更新；若 `git status -sb` 显示莫名的 ahead，
+手动写 `.git/refs/remotes/origin/optimize/interview-ready` 为远端实际 SHA 即可
+（用 `git ls-remote origin refs/heads/optimize/interview-ready` 查远端真实值）。
 
