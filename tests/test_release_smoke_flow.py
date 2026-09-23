@@ -11,8 +11,10 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth_helpers import auth_headers
 
-ADMIN_HEADERS = {"X-User-Role": "admin", "X-Operator-Id": "release_smoke_admin"}
+
+ADMIN_HEADERS = auth_headers(roles=["admin"], user_id="release_smoke_admin")
 
 
 def build_fake_chat_service() -> types.ModuleType:

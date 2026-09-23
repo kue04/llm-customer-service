@@ -8,6 +8,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth_helpers import auth_headers
+
 
 class ChatPromptApiTest(unittest.TestCase):
     def test_chat_prompt_returns_retrieved_documents_and_trace(self) -> None:
@@ -88,7 +90,7 @@ class ChatPromptApiTest(unittest.TestCase):
 
             response = client.post(
                 "/chat/prompt",
-                headers={"X-User-Role": "agent", "X-Operator-Id": "agent_1"},
+                headers=auth_headers(roles=["agent"], user_id="agent_1"),
                 json={"message": "refund question"},
             )
         finally:
@@ -171,7 +173,7 @@ class ChatPromptApiTest(unittest.TestCase):
 
                 response = client.post(
                     "/chat/review-action",
-                    headers={"X-User-Role": "agent", "X-Operator-Id": "agent_1"},
+                    headers=auth_headers(roles=["agent"], user_id="agent_1"),
                     json={
                         "request_id": "req-review",
                         "action": "accepted",
@@ -219,7 +221,7 @@ class ChatPromptApiTest(unittest.TestCase):
 
                 response = client.post(
                     "/chat/review-action",
-                    headers={"X-User-Role": "knowledge_ops", "X-Operator-Id": "ops_1"},
+                    headers=auth_headers(roles=["knowledge_ops"], user_id="ops_1"),
                     json={"request_id": "req-forbid", "action": "accepted"},
                 )
             finally:
@@ -262,7 +264,7 @@ class ChatPromptApiTest(unittest.TestCase):
 
                 response = client.post(
                     "/chat/review-action",
-                    headers={"X-User-Role": "agent", "X-Operator-Id": "agent_1"},
+                    headers=auth_headers(roles=["agent"], user_id="agent_1"),
                     json={
                         "request_id": "req-handoff",
                         "action": "human_handoff",

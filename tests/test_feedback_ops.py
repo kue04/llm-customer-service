@@ -6,6 +6,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth_helpers import auth_headers
+
 
 class FeedbackOpsTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -23,12 +25,7 @@ class FeedbackOpsTest(unittest.TestCase):
         app.include_router(ops_router.router, prefix="/ops")
         self.app = app
         self.client = TestClient(app)
-        self.client.headers.update(
-            {
-                "X-User-Role": "admin",
-                "X-Operator-Id": "admin_1",
-            }
-        )
+        self.client.headers.update(auth_headers(roles=["admin"], user_id="admin_1"))
 
     def restore_db_path(self) -> None:
         self.feedback_service.DB_PATH = self.previous_db_path

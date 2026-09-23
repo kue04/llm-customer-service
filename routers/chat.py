@@ -8,7 +8,14 @@ from schemas.chat_schema import (
     ChatReviewActionRequest,
     ChatReviewActionResponse,
 )
-from services.auth_service import get_operator_context, require_read_operation_role, require_review_action_role
+from services.auth_service import (
+    AuthContext,
+    RequestMeta,
+    get_auth_context,
+    get_request_meta,
+    require_read_operation_role,
+    require_review_action_role,
+)
 from services.audit_service import record_audit_log
 
 router = APIRouter()
@@ -17,11 +24,11 @@ router = APIRouter()
 @router.post("/prompt", response_model=ChatResponse)
 async def generate_answer(
     request: ChatRequest,
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
 ):
     from services.chat_service import get_answer_from_rag
 
-    require_read_operation_role("chat_generate", operator_context)
+    require_read_operation_role("chat_generate", auth)
     response = get_answer_from_rag(request)
     if not response:
         raise HTTPException(status_code=500, detail="Error while generating response.")
@@ -34,11 +41,11 @@ async def get_chat_history(
     order_id: str | None = None,
     session_id: str | None = None,
     limit: int = 50,
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
 ):
     from services import conversation_store
 
-    require_read_operation_role("chat_history", operator_context)
+    require_read_operation_role("chat_history", auth)
     conversation = conversation_store.find_conversation(
         user_id=user_id,
         order_id=order_id,
@@ -66,14 +73,15 @@ async def get_chat_history(
 @router.post("/review-action", response_model=ChatReviewActionResponse)
 async def review_chat_action(
     request: ChatReviewActionRequest,
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
+    meta: RequestMeta = Depends(get_request_meta),
 ):
     from services import conversation_store
 
     payload = request.model_dump() if hasattr(request, "model_dump") else request.dict()
-    require_review_action_role(payload["action"], operator_context)
-    payload["operator_id"] = operator_context["operator_id"]
-    payload["operator_role"] = operator_context["role"]
+    require_review_action_role(payload["action"], auth)
+    payload["operator_id"] = auth.user_id
+    payload["operator_role"] = auth.primary_role
     try:
         result = conversation_store.save_review_action(payload)
     except KeyError as error:
@@ -81,15 +89,17 @@ async def review_chat_action(
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     result["audit_id"] = record_audit_log(
-        operator_id=operator_context["operator_id"],
-        operator_role=operator_context["role"],
+        operator_id=auth.user_id,
+        operator_role=auth.primary_role,
         action_type=f"chat_review_{payload['action']}",
         object_type="conversation_turn",
+        # object_id 是被复核的那一轮会话（业务对象），request_id 是本次 HTTP 请求的追踪号，
+        # 两者分开记录，既保留与会话记录的可关联性，又能按请求链路检索审计。
         object_id=payload["request_id"],
-        request_id=payload["request_id"],
+        request_id=auth.request_id,
         before_summary="pending_agent_review",
         after_summary=result["status"],
-        ip=operator_context.get("ip", ""),
-        device_info=operator_context.get("user_agent", ""),
+        ip=meta.ip,
+        device_info=meta.user_agent,
     )
     return result

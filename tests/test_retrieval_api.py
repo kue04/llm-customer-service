@@ -8,9 +8,11 @@ from routers import retrieval
 from routers.retrieval import preview_prompt, search_retrieval
 from schemas.retrieval_schema import RetrievalSearchRequest
 
+from auth_helpers import auth_headers, make_auth_context
 
-AUTH_HEADERS = {"X-User-Role": "agent", "X-Operator-Id": "agent_1"}
-OPERATOR_CONTEXT = {"role": "agent", "operator_id": "agent_1"}
+
+AUTH_HEADERS = auth_headers(roles=["agent"], user_id="agent_1")
+AGENT_CONTEXT = make_auth_context(roles=["agent"], user_id="agent_1")
 
 
 class RetrievalSearchApiTest(unittest.TestCase):
@@ -55,7 +57,7 @@ class RetrievalSearchApiTest(unittest.TestCase):
         )
 
         with patch("routers.retrieval.retrieve_by_real_vector", return_value=[candidate]):
-            response = search_retrieval(request, operator_context=OPERATOR_CONTEXT)
+            response = search_retrieval(request, auth=AGENT_CONTEXT)
 
         result = response.results[0]
         self.assertEqual(result.score, 0.78)
@@ -102,7 +104,7 @@ class RetrievalSearchApiTest(unittest.TestCase):
         )
 
         with patch("routers.retrieval.retrieve_by_real_vector", return_value=candidates) as mocked_retrieve:
-            response = preview_prompt(request, operator_context=OPERATOR_CONTEXT)
+            response = preview_prompt(request, auth=AGENT_CONTEXT)
 
         mocked_retrieve.assert_called_once_with(
             "refund arrival time",
@@ -204,7 +206,7 @@ class RetrievalSearchApiTest(unittest.TestCase):
         )
 
         with patch("routers.retrieval.retrieve_by_real_vector", return_value=candidates):
-            response = preview_prompt(request, operator_context=OPERATOR_CONTEXT)
+            response = preview_prompt(request, auth=AGENT_CONTEXT)
 
         self.assertEqual(response.prompt_context_items[0].role, "primary")
         self.assertEqual(response.prompt_context_items[0].evidence_strength, "close_match")

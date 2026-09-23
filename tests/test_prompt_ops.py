@@ -6,6 +6,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth_helpers import auth_headers
+
 
 class PromptOpsTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -24,7 +26,7 @@ class PromptOpsTest(unittest.TestCase):
         app.include_router(prompt_router.router, prefix="/prompt")
         self.app = app
         self.client = TestClient(app)
-        self.client.headers.update({"X-User-Role": "admin", "X-Operator-Id": "admin_1"})
+        self.client.headers.update(auth_headers(roles=["admin"], user_id="admin_1"))
 
     def restore_paths(self) -> None:
         self.prompt_service.DB_PATH = self.previous_prompt_db_path
@@ -72,7 +74,7 @@ class PromptOpsTest(unittest.TestCase):
 
         qa_response = self.client.post(
             "/prompt/versions",
-            headers={"X-User-Role": "qa", "X-Operator-Id": "qa_1"},
+            headers=auth_headers(roles=["qa"], user_id="qa_1"),
             json={"system_prompt": "qa cannot write"},
         )
         self.assertEqual(qa_response.status_code, 403)

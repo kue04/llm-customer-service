@@ -10,3 +10,11 @@ accelerate==1.13.0
 sentence-transformers==5.4.1
 faiss-cpu==1.13.2
 pytest==9.1.1
+# 数据接入 / 鉴权改造（RAG_EXECUTION_PLAN）新增：
+# 元数据与迁移、JWT 校验
+sqlalchemy==2.0.54
+alembic==1.20.0
+PyJWT==2.14.0
+# PostgreSQL 驱动：本机不装也能跑（默认 SQLite），
+# 部署到 PostgreSQL 时取消下面一行的注释并按需改版本
+# psycopg[binary]==3.2.3

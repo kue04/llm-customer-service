@@ -23,3 +23,10 @@ ignore = ["E501"]
 
 [lint.per-file-ignores]
 "scripts/*" = ["E402"]
+# alembic/env.py 需要先把项目根目录插进 sys.path 才能 import 项目内模块，
+# 与 scripts/ 同理，这是刻意写法而不是疏漏。
+# alembic/versions/*.py 的模块名以数字开头（0001_...），也无法用普通包导入。
+"alembic/*" = ["E402"]
+# tests/conftest.py 需要先把项目根与 tests 目录插进 sys.path，
+# 才能 import auth_helpers 并固定鉴权环境变量；同样是刻意写法。
+"tests/conftest.py" = ["E402"]

@@ -10,7 +10,14 @@ from schemas.knowledge_schema import (
     KnowledgeReviewRequest,
 )
 from services.audit_service import record_audit_log
-from services.auth_service import get_operator_context, require_read_operation_role, require_write_operation_role
+from services.auth_service import (
+    AuthContext,
+    RequestMeta,
+    get_auth_context,
+    get_request_meta,
+    require_read_operation_role,
+    require_write_operation_role,
+)
 from services.knowledge_service import (
     archive_knowledge_item,
     create_knowledge_item,
@@ -27,22 +34,24 @@ router = APIRouter()
 
 
 def _audit_knowledge_action(
-    operator_context: dict,
+    auth: AuthContext,
+    meta: RequestMeta,
     action_type: str,
     object_id: str,
     before_summary: str = "",
     after_summary: str = "",
 ) -> None:
     record_audit_log(
-        operator_id=operator_context["operator_id"],
-        operator_role=operator_context["role"],
+        operator_id=auth.user_id,
+        operator_role=auth.primary_role,
         action_type=action_type,
         object_type="knowledge",
         object_id=object_id,
+        request_id=auth.request_id,
         before_summary=before_summary,
         after_summary=after_summary,
-        ip=operator_context.get("ip", ""),
-        device_info=operator_context.get("user_agent", ""),
+        ip=meta.ip,
+        device_info=meta.user_agent,
     )
 
 
@@ -54,9 +63,9 @@ def knowledge_items(
     intent: str = "",
     status: str = "",
     keyword: str = "",
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
 ):
-    require_read_operation_role("knowledge_read", operator_context)
+    require_read_operation_role("knowledge_read", auth)
     return list_knowledge_items(
         limit=limit,
         offset=offset,
@@ -70,13 +79,15 @@ def knowledge_items(
 @router.post("/items", response_model=KnowledgeItem)
 def create_item(
     request: KnowledgeItemPayload,
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
+    meta: RequestMeta = Depends(get_request_meta),
 ):
-    require_write_operation_role("knowledge_create", operator_context)
+    require_write_operation_role("knowledge_create", auth)
     payload = request.model_dump() if hasattr(request, "model_dump") else request.dict()
     item = create_knowledge_item(payload)
     _audit_knowledge_action(
-        operator_context,
+        auth,
+        meta,
         "knowledge_create",
         str(item["id"]),
         after_summary=f"{item['status']}:{item['question']}",
@@ -88,16 +99,18 @@ def create_item(
 def update_item(
     item_id: int,
     request: KnowledgeItemPayload,
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
+    meta: RequestMeta = Depends(get_request_meta),
 ):
-    require_write_operation_role("knowledge_update", operator_context)
+    require_write_operation_role("knowledge_update", auth)
     payload = request.model_dump() if hasattr(request, "model_dump") else request.dict()
     try:
         item = update_knowledge_item(item_id, payload)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     _audit_knowledge_action(
-        operator_context,
+        auth,
+        meta,
         "knowledge_update",
         str(item["id"]),
         before_summary=f"source_item={item_id}",
@@ -109,15 +122,17 @@ def update_item(
 @router.post("/items/{item_id}/archive", response_model=KnowledgeItem)
 def archive_item(
     item_id: int,
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
+    meta: RequestMeta = Depends(get_request_meta),
 ):
-    require_write_operation_role("knowledge_archive", operator_context)
+    require_write_operation_role("knowledge_archive", auth)
     try:
         item = archive_knowledge_item(item_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     _audit_knowledge_action(
-        operator_context,
+        auth,
+        meta,
         "knowledge_archive",
         str(item["id"]),
         after_summary=f"{item['status']}:{item['question']}",
@@ -129,9 +144,10 @@ def archive_item(
 def review_item(
     item_id: int,
     request: KnowledgeReviewRequest,
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
+    meta: RequestMeta = Depends(get_request_meta),
 ):
-    require_write_operation_role("knowledge_review", operator_context)
+    require_write_operation_role("knowledge_review", auth)
     try:
         item = review_knowledge_item(item_id, request.status, request.review_note)
     except KeyError as error:
@@ -139,7 +155,8 @@ def review_item(
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     _audit_knowledge_action(
-        operator_context,
+        auth,
+        meta,
         "knowledge_review",
         str(item["id"]),
         after_summary=f"{item['status']}:{item['review_note']}",
@@ -148,17 +165,21 @@ def review_item(
 
 
 @router.get("/export-approved", response_model=KnowledgeExportResponse)
-def export_approved(operator_context: dict = Depends(get_operator_context)):
-    require_read_operation_role("knowledge_read", operator_context)
+def export_approved(auth: AuthContext = Depends(get_auth_context)):
+    require_read_operation_role("knowledge_read", auth)
     return export_approved_jsonl()
 
 
 @router.post("/publish-approved", response_model=KnowledgePublishResponse)
-def publish_approved(operator_context: dict = Depends(get_operator_context)):
-    require_write_operation_role("knowledge_publish", operator_context)
+def publish_approved(
+    auth: AuthContext = Depends(get_auth_context),
+    meta: RequestMeta = Depends(get_request_meta),
+):
+    require_write_operation_role("knowledge_publish", auth)
     result = publish_approved_knowledge()
     _audit_knowledge_action(
-        operator_context,
+        auth,
+        meta,
         "knowledge_publish",
         result["publish_id"],
         after_summary=f"{result['status']}:merged={result['merged_count']}",
@@ -169,15 +190,18 @@ def publish_approved(operator_context: dict = Depends(get_operator_context)):
 @router.get("/publish-history", response_model=KnowledgePublishHistoryResponse)
 def publish_history(
     limit: int = Query(default=20, ge=1, le=100),
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
 ):
-    require_read_operation_role("knowledge_read", operator_context)
+    require_read_operation_role("knowledge_read", auth)
     return list_publish_history(limit=limit)
 
 
 @router.post("/rollback-latest", response_model=KnowledgePublishResponse)
-def rollback_latest(operator_context: dict = Depends(get_operator_context)):
-    require_write_operation_role("knowledge_rollback", operator_context)
+def rollback_latest(
+    auth: AuthContext = Depends(get_auth_context),
+    meta: RequestMeta = Depends(get_request_meta),
+):
+    require_write_operation_role("knowledge_rollback", auth)
     try:
         result = rollback_latest_publish()
     except ValueError as error:
@@ -185,7 +209,8 @@ def rollback_latest(operator_context: dict = Depends(get_operator_context)):
     except FileNotFoundError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
     _audit_knowledge_action(
-        operator_context,
+        auth,
+        meta,
         "knowledge_rollback",
         result["publish_id"],
         after_summary=f"{result['status']}:merged={result['merged_count']}",

@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml/badge.svg)](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-252%20passed-brightgreen.svg)](#测试与质量门禁)
+[![Tests](https://img.shields.io/badge/tests-332%20passed-brightgreen.svg)](#测试与质量门禁)
 [![Last updated](https://img.shields.io/badge/updated-2026--09--14-lightgrey.svg)](#实测数据)
 
 **建议仓库 topics**：`rag`、`retrieval-augmented-generation`、`reranker`、`hybrid-search`、`fastapi`、`llm`、`customer-service`、`evaluation`
@@ -27,7 +27,7 @@ cd llm-customer-service
 python -m venv .venv
 .venv/Scripts/pip install -r requirements-dev.txt   # 约 9 个包，无 torch
 
-.venv/Scripts/python.exe -m pytest -q              # 实测：252 passed，4.5s
+.venv/Scripts/python.exe -m pytest -q              # 实测：332 passed，~10s
 .venv/Scripts/python.exe -m ruff check .           # 实测：All checks passed!
 .venv/Scripts/python.exe scripts/check_repo_data_size.py   # 实测：通过，没有超标文件
 ```
@@ -42,20 +42,39 @@ python -m venv .venv
 #   Qwen/Qwen2.5-1.5B-Instruct  -> local_models/qwen2.5-1.5b-instruct/
 #   BAAI/bge-small-zh-v1.5、BAAI/bge-reranker-base -> 走 sentence-transformers 自动缓存
 
+# 身份认证需要一个签名密钥，否则受保护接口会返回 500（fail closed）
+export RAG_JWT_SECRET="dev-only-secret-change-me-please-32-bytes"
+
 .venv/Scripts/python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-**除了 `/health`，所有接口都需要两个身份 header**，否则返回 401：
+**除了 `/health`，所有接口都需要 `Authorization: Bearer <JWT>`**，否则返回 401。
+
+> 身份来源只有 JWT 一个。`X-User-Role` / `X-Operator-Id` 请求头**已失效**：
+> 只发这两个头不带令牌一律 401，带了令牌再发它们也不会提权。
+> 请求体里自报的 `operator_id` / `tenant_id` 同样会被忽略并覆盖。
 
 ```bash
+# 用同一个密钥签一个开发用令牌（PyJWT 已是项目依赖）
+TOKEN=$(.venv/Scripts/python.exe -c "
+import jwt, os, time
+print(jwt.encode({'sub': 'demo', 'tenant_id': 'demo-tenant', 'roles': ['admin'],
+                  'iss': 'llm-customer-service', 'aud': 'customer-service-api',
+                  'exp': int(time.time()) + 3600},
+                 os.environ['RAG_JWT_SECRET'], algorithm='HS256'))")
+
 curl http://127.0.0.1:8000/health
 # {"status":"ok"}
 
 curl -X POST http://127.0.0.1:8000/chat/prompt \
   -H "Content-Type: application/json" \
-  -H "X-User-Role: agent" -H "X-Operator-Id: demo" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"message":"我的外卖超时了还没送到怎么办","user_id":"demo","session_id":"s1","order_id":"DEMO-1001"}'
 ```
+
+令牌里的 `roles`（`agent` / `supervisor` / `knowledge_ops` / `qa` / `admin`）决定权限，
+**权限（scope）由服务端按角色推导，token 里自报的 `scopes` / `permissions` 一律忽略** ——
+否则任何持有合法令牌的人都能自报权限提权。也可以直接在 `/docs` 的 Authorize 按钮里贴令牌联调。
 
 实测返回（节选）：
 
@@ -248,8 +267,8 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 
 | 指标 | 数值 | 说明 |
 | --- | --- | --- |
-| pytest 用例总数 / 通过率 | **252 / 100%** | 精简依赖 4.5s，完整依赖 23.5s |
-| 测试文件数 | 25 | `tests/` |
+| pytest 用例总数 / 通过率 | **332 / 100%** | 精简依赖热缓存 ~10s，完整依赖冷启动 ~22s |
+| 测试文件数 | 30 | `tests/` |
 | 端到端 P50 | **4220 ms** | 90 条固定集 `trace.latency_ms`，CPU 推理 |
 | 端到端 P90 / P95 / P99 | 5553 / **6147** / 7409 ms | 同上 |
 | 端到端 min / max | 1430 / 10611 ms | max 是冷启动首条；去掉后 P50 4207、P95 6121 |
@@ -360,11 +379,15 @@ Top1 错了，回答整个跑偏到「退款到账时间」。根因是 cross-en
 
 ```text
 llm-customer-service/
-├── main.py                      # FastAPI 入口，路由注册，CORS
+├── main.py                      # FastAPI 入口，路由注册，CORS，启动鉴权自检 + OpenAPI bearerAuth
 ├── config/rag_config.py         # RAG 运行时配置单一来源（环境变量覆盖）
+├── alembic/                     # 数据库迁移：0001 建 13 张表（租户/文档/版本/ACL/任务/索引/审计）
 ├── routers/                     # chat / retrieval / knowledge / feedback / ops / order / prompt / audit / release
 ├── schemas/                     # 请求响应模型
 ├── services/
+│   ├── auth_context.py          # 身份上下文与 JWT 校验（角色→scope 策略表，本期新增）
+│   ├── auth_service.py          # FastAPI 鉴权依赖：Bearer → AuthContext（本期重写）
+│   ├── ingestion/               # 数据接入：db / models / repository（本期新增）
 │   ├── chat_service.py          # 编排：意图→工具→检索→证据→prompt→生成→规则→诊断→trace
 │   ├── answer_composer.py       # 结论/动作/限制三段式渲染
 │   ├── reply_rules.py           # 高风险规则兜底
@@ -386,8 +409,8 @@ llm-customer-service/
 │   ├── build_release_evaluation_report.py
 │   └── check_repo_data_size.py          # 仓库单文件体积守护（本次新增）
 ├── data/                        # 知识库、评测集、SFT 数据（见下）
-├── tests/                       # 25 个测试文件 / 252 用例
-├── docs/                        # 评测报告、bad case 复盘、阶段经验
+├── tests/                       # 30 个测试文件 / 332 用例
+├── docs/                        # 评测报告、bad case 复盘、阶段经验、RAG 改造进度台账
 ├── requirements.txt             # 完整依赖（含 torch，约 3GB）
 ├── requirements-dev.txt         # 轻量依赖（CI / 不跑模型时用）
 ├── ruff.toml
@@ -416,8 +439,19 @@ llm-customer-service/
 
 复制 `.env.example` 为 `.env` 后按需配置。默认 `RAG_GENERATION_PROVIDER=local` 走本地 Qwen，**不需要任何 API Key**；切 `online` 才需要 `OPENAI_API_KEY`。
 
+数据接入与鉴权相关的变量（阶段 1 引入，详见 `.env.example` 注释）：
+
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `RAG_JWT_SECRET` | ✅ | JWT 签名密钥。**缺失时受保护接口返回 500**（fail closed）。生产环境由密钥管理服务注入，不写入仓库 |
+| `RAG_JWT_ISSUER` / `RAG_JWT_AUDIENCE` / `RAG_JWT_ALGORITHM` / `RAG_JWT_LEEWAY_SECONDS` | — | 令牌校验参数，默认 `llm-customer-service` / `customer-service-api` / `HS256` / `30` |
+| `RAG_DATABASE_URL` | — | 元数据连接串。留空用本机 SQLite `data/rag_metadata.db`；有 PostgreSQL 时填 `postgresql+psycopg://...`，`docker-compose.yml` 已备好服务定义 |
+| `RAG_ALLOW_TEST_JWT_SECRET` | — | 只有显式设为 `1` 才允许在缺密钥时回退到内置测试密钥。**生产环境不要设置** |
+
 ## 10. 相关文档
 
+- RAG 改造执行计划（数据接入/解析/切分/权限）：[docs/RAG_EXECUTION_PLAN_DATA_INGESTION_CHUNKING_AUTH.md](docs/RAG_EXECUTION_PLAN_DATA_INGESTION_CHUNKING_AUTH.md)
+- RAG 改造进度台账（分批划分、每批结果、决策记录、下次入口）：[docs/RAG_EXECUTION_PROGRESS.md](docs/RAG_EXECUTION_PROGRESS.md)
 - 评测方法与历史数字：[docs/EVALUATION.md](docs/EVALUATION.md)
 - Bad case 复盘：[docs/BAD_CASES.md](docs/BAD_CASES.md)
 - 交接记录与阶段决策：[HANDOFF.md](HANDOFF.md)

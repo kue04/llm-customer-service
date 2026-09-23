@@ -23,7 +23,12 @@ models/takeout-qwen-lora-*/
 .codebase-memory/
 
 # ---- 运行时产物 ----
-reports/
+# reports/ 整体是运行产物；但执行计划（docs/RAG_EXECUTION_PLAN_*.md）明确要求
+# 阶段评审材料落盘到 reports/execution_baseline 与 reports/rag_ingestion_auth_review，
+# 属于交付证据，因此这两个目录例外入库（内容均为小体积文本）。
+reports/*
+!reports/execution_baseline/
+!reports/rag_ingestion_auth_review/
 eval_outputs/
 tmp/
 output/pdf/

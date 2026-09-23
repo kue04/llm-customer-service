@@ -18,3 +18,8 @@ faiss-cpu==1.13.2
 httpx==0.28.1
 pytest==9.1.1
 ruff==0.14.5
+# 阶段 1 起需要：元数据模型、迁移、JWT。
+# 这三者都是纯 Python 包，CI 不需要 torch 即可跑通模型/鉴权测试。
+sqlalchemy==2.0.54
+alembic==1.20.0
+PyJWT==2.14.0

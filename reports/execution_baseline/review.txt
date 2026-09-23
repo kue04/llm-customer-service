@@ -1,0 +1,44 @@
+PASS
+
+阶段 0：保存当前进度 —— 审查结论
+
+审查时间：2026-09-23
+审查对象：reports/execution_baseline/ 下六项基线产物
+
+一、基线产物清单（四项验收项）
+1. reports/execution_baseline/backend-status.txt  —— 存在，93 字节
+   内容：仅 `?? docs/RAG_EXECUTION_PLAN_DATA_INGESTION_CHUNKING_AUTH.md`
+   说明：执行前 git 工作区干净，无用户未提交的代码修改，故 patch 为空是预期结果。
+2. reports/execution_baseline/backend.patch —— 存在，0 字节
+   原因同上：无 tracked 文件的未提交改动，`git diff --binary` 输出为空。
+3. reports/execution_baseline/backend-head.txt —— 存在
+   内容：e5d5bc327510812dc0f3317decb3cb9fb94cc3ef
+   （对应提交 "fix: 爬取产物改 gzip 存储，修复仓库体积门槛测试"）
+4. reports/execution_baseline/test-output.txt —— 存在
+5. reports/execution_baseline/ruff-output.txt —— 存在
+6. reports/execution_baseline/data-size-output.txt —— 存在
+
+二、基线实测结果（用作后续失败归因的对照基准）
+- pytest：`252 passed, 3 warnings, 4 subtests passed in 21.79s`，退出码 0
+  3 条 warning 均为 faiss SWIG 绑定的 DeprecationWarning（builtin type ... has no
+  __module__ attribute），属第三方库噪声，与业务代码无关。
+  → **基线无失败用例。后续任何失败都是新引入的，不得归因于历史遗留。**
+- ruff：`All checks passed!`，退出码 0 → 基线 lint 零告警
+- check_repo_data_size：`结果：通过，没有超标文件。`（上限 1.0 MB），退出码 0
+
+三、验收逐条核对
+[x] 基线提交号、status、patch 三项产物已落盘
+[x] 原有测试结果已原样保存（252 passed）
+[x] 原有 lint 结果已原样保存（All checks passed）
+[x] 原有仓库体积检查结果已保存（通过）
+[x] 原有失败被原样记录 —— 本基线无失败，故无需记录；已显式声明基线为零失败
+[x] 用户未提交修改未被覆盖 —— 执行前工作区无 tracked 修改，仅新增本次计划文档
+[ ] 不符合项：无
+
+补充说明（环境偏差，不构成验收失败）：
+本机无 Docker、无 PostgreSQL/psql，无法启动计划第 1 节所述的 docker-compose
+PostgreSQL 服务。已按等价方案落地（SQLAlchemy + Alembic + 环境变量连接串，
+默认 SQLite，docker-compose 中补 postgres/redis 服务定义），详见
+docs/RAG_EXECUTION_PROGRESS.md 第 0 节「环境偏差与落地调整」。
+
+结论：PASS —— 允许进入阶段 1。
