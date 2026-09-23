@@ -1826,7 +1826,7 @@ warning 5 条未新增，ruff / compileall / 体积检查全通过。
 | 「做到什么算合格」 | `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md`（v2.1；§1.0 现状总览 / §17 作业规程） |
 | 「现在还差多远」 | `docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md` |
 | 「做过什么、踩过什么」 | 本文件 §3 + `docs/RAG_DEV_PITFALLS.md`（47 条） |
-| 提交 / 推送的环境坑 | 本文件 §5（坑 1~4，**每次 commit 必踩坑 1**） |
+| 提交 / 推送的环境坑 | 本文件 §5（坑 1~4；**commit 后必须核对指针**，不一致才修 —— 见坑 1 的 2026-09-23 修正） |
 
 ### 执行纪律（跨批次适用，继续沿用）
 
@@ -1967,6 +1967,32 @@ git rev-parse HEAD                # 必须输出上面那个完整 SHA
 > `fatal: ambiguous argument 'HEAD'`，把仓库搞得读不出 HEAD。
 > 注意 2：`mkdir` 与写入务必放在**同一条命令**里执行，因为 `optimize/` 目录
 > 随时可能被 git 的 ref 更新动作清掉。
+
+**坑 1 的修正（2026-09-23，B8 推送批次末次 commit `1c47394` 后复核）**
+
+上面「只要分支名含 `/` 就必然发生」这个结论**下得太满**，实测有反例：
+
+- 该次 commit 后，loose ref（`.git/refs/heads/optimize/interview-ready`）与 `HEAD` **一致**；
+- 分支 reflog（`.git/logs/refs/heads/optimize/interview-ready`）里有 git 自己写的
+  两条 `commit:` 记录（`ed06dbb→f188aa6`、`f188aa6→1c47394`）—— 这两次 git 正常更新了指针。
+
+现有证据只支持：**该现象与 loose ref 路径是否可用有关**（`optimize/` 目录被 git 清掉时复现）。
+把它当"必然"会引出两个坏后果：① 每次做一遍无谓的修 ref；
+② **更危险** —— 既然"反正都要修"，就**跳过检查**，而指针不一致恰恰是**静默**的。
+
+**因此规程修正为：硬动作是「核对」，不是「修」。**
+
+| 时机 | 核对什么 |
+| --- | --- |
+| commit 后 | `git rev-parse HEAD` == `git rev-parse refs/heads/optimize/interview-ready` |
+| push 后 | 远端 `git ls-remote origin refs/heads/optimize/interview-ready` == 本地 `HEAD` |
+| 不一致时 | 才执行上面的 `mkdir` + 写 40 位 SHA |
+
+**另有一处残留隐患（客观事实，需知道）**：`.git/packed-refs` 里
+`refs/heads/optimize/interview-ready` 仍是旧值 `e5d5bc32`，只是被 loose ref 覆盖着。
+git 读 ref 时 loose 优先，所以现在无影响；但**一旦 loose ref 文件被清掉
+（gc / 误删 / 路径不可写），就会静默退回 `e5d5bc3`** —— 这正是"指针看起来没动"的直接来源。
+清理（可选，git 写操作）：`git pack-refs --all`。
 
 **坑 2：代理与直连**都会间歇性抽风**，唯一可靠的做法是「探测 + 交替重试」。（2026-09-23 B3 期间实测修订）**
 

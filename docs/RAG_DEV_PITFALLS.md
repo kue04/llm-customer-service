@@ -61,6 +61,30 @@
 > **不能信 `status` 的 ahead / behind 数字**，它们在这台机器上会骗人。
 > 这与 A5 / A6 同源：**任何"汇总性指标"都要能追到它的取数方式**。
 
+> **2026-09-23 补记三（第 8 次观察：现象未复现 + 一个残留隐患）**：
+> B8 推送批次最后一次 commit（`1c47394`）后复核，**loose ref 与 HEAD 一致**，
+> 且分支 reflog（`.git/logs/refs/heads/optimize/interview-ready`）里有 git 自己写的
+> 两条 `commit:` 记录（`ed06dbb→f188aa6`、`f188aa6→1c47394`）——
+> 这两次 git 都正常更新了分支指针。
+>
+> **所以上文「只要分支名含 `/` 就必然发生」这个结论要收窄。**
+> 现有证据只支持：该现象与 **loose ref 路径是否可用**有关
+> （`optimize/` 目录会被 git 的 ref 更新动作清掉，见上文实测结论）。
+> 「必然」这个说法会引出两个坏后果：① 每次做一遍无谓的修 ref；
+> ② **更危险** —— 既然「反正都要修」，就**跳过检查**，
+> 而指针不一致恰恰是**静默**的（退出码 0、输出正常）。
+>
+> **硬动作是「检查」，不是「修」**：commit 后核对
+> `git rev-parse HEAD` == `git rev-parse refs/heads/<branch>`；
+> 推送后核对远端 `git ls-remote`；**三者不一致才修**。
+>
+> **残留隐患（客观事实）**：`.git/packed-refs` 里
+> `refs/heads/optimize/interview-ready` 仍是旧值 `e5d5bc32`，
+> 只是被 loose ref 覆盖。git 读 ref 时 loose 优先，所以现在无影响；
+> 但**一旦 loose ref 文件被清掉（gc / 误删 / 路径不可写），就会静默退回 `e5d5bc3`**
+> —— 这正是「指针看起来没动」现象的直接来源。
+> 清理方式：`git pack-refs --all`（把 loose ref 合并进 packed-refs，旧值随之消失）。
+
 ### A2. 代理与直连都会间歇性抽风，`git push` 只能"探测 + 交替重试"
 
 - **现象**：push 被拒。实测**重试 5 次才成功**（前 4 次直连与代理通道都被拒）。
