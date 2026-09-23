@@ -30,6 +30,7 @@ from services.auth_context import (
     DEFAULT_AUDIENCE,
     DEFAULT_ISSUER,
     READ_OPERATION_ROLES,
+    RESOURCE_SCOPE_ROLES,
     REVIEW_ACTION_ROLES,
     ROLE_SCOPES,
     TEST_JWT_SECRET,
@@ -44,6 +45,7 @@ from services.auth_context import (
     load_auth_config,
     read_scope,
     resolve_scopes,
+    resource_scope,
     review_scope,
     write_scope,
 )
@@ -266,13 +268,18 @@ def test_unknown_role_contributes_no_scope() -> None:
 
 
 def test_role_scopes_is_exact_inversion_of_policy_tables() -> None:
-    """ROLE_SCOPES 必须恰好是授权表的 inversion，防止推导逻辑与表脱节。"""
+    """ROLE_SCOPES 必须恰好是授权表的 inversion，防止推导逻辑与表脱节。
+
+    阶段 4.1 起有四张表：三张操作维度 + 一张资源维度（``document:read`` 这类
+    自带完整命名空间的 scope，因此前缀函数是恒等映射 ``resource_scope``）。
+    """
 
     expected: dict[str, set[str]] = {role: set() for role in VALID_ROLES}
     for prefix, table in (
         (read_scope, READ_OPERATION_ROLES),
         (write_scope, WRITE_OPERATION_ROLES),
         (review_scope, REVIEW_ACTION_ROLES),
+        (resource_scope, RESOURCE_SCOPE_ROLES),
     ):
         for name, roles in table.items():
             for role in roles:
@@ -281,12 +288,49 @@ def test_role_scopes_is_exact_inversion_of_policy_tables() -> None:
     assert {role: set(scopes) for role, scopes in ROLE_SCOPES.items()} == expected
 
 
+def test_resource_scopes_follow_the_plan_enumeration() -> None:
+    """计划 4.1 点名的九个资源级权限必须**逐个**存在，且键名即完整 scope。"""
+
+    plan_permissions = {
+        "knowledge_base:read",
+        "knowledge_base:write",
+        "document:upload",
+        "document:read",
+        "document:review",
+        "document:publish",
+        "document:delete",
+        "index:rebuild",
+        "audit:read",
+    }
+    assert set(RESOURCE_SCOPE_ROLES) == plan_permissions
+    for permission in plan_permissions:
+        assert resource_scope(permission) == permission
+
+
+def test_publish_and_index_rebuild_are_granted_separately() -> None:
+    """计划 4.2：发布与索引重建必须分开授权（两者是独立的两道门）。"""
+
+    knowledge_ops = make_auth_context(roles=["knowledge_ops"])
+    assert knowledge_ops.has_scope(resource_scope("document:publish"))
+    assert not knowledge_ops.has_scope(resource_scope("index:rebuild"))
+    assert not knowledge_ops.has_scope(resource_scope("document:delete"))
+
+    supervisor = make_auth_context(roles=["supervisor"])
+    assert supervisor.has_scope(resource_scope("index:rebuild"))
+    assert supervisor.has_scope(resource_scope("document:publish"))
+
+    agent = make_auth_context(roles=["agent"])
+    assert not agent.has_scope(resource_scope("document:publish"))
+    assert not agent.has_scope(resource_scope("index:rebuild"))
+
+
 def test_admin_holds_every_scope_and_agent_does_not() -> None:
     admin = make_auth_context(roles=["admin"])
     for table, prefix in (
         (READ_OPERATION_ROLES, read_scope),
         (WRITE_OPERATION_ROLES, write_scope),
         (REVIEW_ACTION_ROLES, review_scope),
+        (RESOURCE_SCOPE_ROLES, resource_scope),
     ):
         for name in table:
             assert admin.has_scope(prefix(name))
@@ -294,6 +338,9 @@ def test_admin_holds_every_scope_and_agent_does_not() -> None:
     agent = make_auth_context(roles=["agent"])
     assert not agent.has_scope(write_scope("knowledge_publish"))
     assert not agent.has_scope(read_scope("audit_read"))
+    assert not agent.has_scope(resource_scope("document:publish"))
+    assert not agent.has_scope(resource_scope("index:rebuild"))
+    assert not agent.has_scope(resource_scope("audit:read"))
 
 
 # ---------------------------------------------------------------- 5. HTTP 层

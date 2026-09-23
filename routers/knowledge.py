@@ -16,6 +16,7 @@ from services.auth_service import (
     get_auth_context,
     get_request_meta,
     require_read_operation_role,
+    require_resource_scope,
     require_write_operation_role,
 )
 from services.knowledge_service import (
@@ -175,7 +176,12 @@ def publish_approved(
     auth: AuthContext = Depends(get_auth_context),
     meta: RequestMeta = Depends(get_request_meta),
 ):
+    # 两层判定：操作维度（既有 ``knowledge_publish``，保证既有调用方行为不变）+
+    # 资源维度（阶段 4.1 的 ``document:publish``）。
+    # 与 ``POST /ingestion/indexes/rebuild`` 的 ``index:rebuild`` **分开授权**（计划 4.2）：
+    # 发布一条审核过的知识 ≠ 允许重建全量索引，后者影响所有租户的检索结果。
     require_write_operation_role("knowledge_publish", auth)
+    require_resource_scope("document:publish", auth)
     result = publish_approved_knowledge()
     _audit_knowledge_action(
         auth,

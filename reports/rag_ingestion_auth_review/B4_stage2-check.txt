@@ -1,0 +1,31 @@
+=== 计划 7.1 阶段检查（阶段 2 收尾，B4；回头审查补测后重跑）===
+
+--- 1) python -m pytest -q ---
+555 passed, 5 warnings, 4 subtests passed in 15.76s
+
+--- 2) python -m ruff check . ---
+All checks passed!
+
+--- 3) python -m compileall services routers schemas models alembic main.py scripts ---
+退出码 0
+
+--- 4) python scripts/check_repo_data_size.py ---
+检查目录：D:\llm\llm-customer-service
+单文件上限：1.0 MB
+结果：通过，没有超标文件。
+
+--- 5) python scripts/export_openapi.py ---
+已导出：reports/rag_ingestion_auth_review/openapi.json
+路径总数：37
+
+--- 6) python -m pytest tests/test_document_upload_api.py -q ---
+107 passed, 5 warnings in 8.67s
+
+--- 7) python scripts/make_parser_fixtures.py --check ---
+  sample.md           767 字节  OK
+  sample.html       1,357 字节  OK
+  sample.docx      37,210 字节  OK
+  sample.pdf        4,472 字节  OK
+
+样本目录：D:\llm\llm-customer-service\tests\fixtures
+结果：通过，全部样本均小于 1 MB。

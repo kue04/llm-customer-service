@@ -24,6 +24,15 @@ pymupdf==1.28.2
 python-docx==1.2.0
 beautifulsoup4==4.15.0
 trafilatura==2.2.0
+# 文档上传与异步任务 API（阶段 2.3）：
+# python-multipart 是 FastAPI 解析 multipart/form-data（UploadFile）的硬依赖，
+# 缺失时路由定义阶段就会报错，因此 requirements-dev.txt 也必须有。
+python-multipart==0.0.32
+# redis 是任务队列（Redis Stream）的客户端。刻意**只放在这一侧**：
+# 队列模块在「未配置 RAG_REDIS_STREAM_URL」时走内存降级，
+# 而测试用注入的假客户端覆盖 Redis 分支，不 import redis，
+# 因此 CI 不需要它。配置了 URL 却没装客户端时队列会明确报不可用（503），不会静默降级。
+redis==6.4.0
 # 扫描件 OCR：默认不装（会拖进 onnxruntime 与模型权重）。
 # 需要时执行 pip install rapidocr-onnxruntime 即可生效，代码无需改动（见 parsers/ocr.py）。
 # PostgreSQL 驱动：本机不装也能跑（默认 SQLite），

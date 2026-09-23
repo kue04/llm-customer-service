@@ -21,6 +21,7 @@ from fastapi import Header, HTTPException, Request
 
 from services.auth_context import (
     READ_OPERATION_ROLES,
+    RESOURCE_SCOPE_ROLES,
     REVIEW_ACTION_ROLES,
     VALID_ROLES,
     WRITE_OPERATION_ROLES,
@@ -33,12 +34,14 @@ from services.auth_context import (
     load_auth_config,
     read_scope,
     resolve_scopes,
+    resource_scope,
     review_scope,
     write_scope,
 )
 
 __all__ = [
     "READ_OPERATION_ROLES",
+    "RESOURCE_SCOPE_ROLES",
     "REVIEW_ACTION_ROLES",
     "VALID_ROLES",
     "WRITE_OPERATION_ROLES",
@@ -47,6 +50,7 @@ __all__ = [
     "get_auth_context",
     "get_request_meta",
     "require_read_operation_role",
+    "require_resource_scope",
     "require_review_action_role",
     "require_write_operation_role",
     "resolve_scopes",
@@ -175,3 +179,14 @@ def require_review_action_role(action: str, context: AuthContext) -> None:
     """会话复核动作鉴权。未登记的动作不授予任何人（fail closed）。"""
 
     _require_scope(review_scope(action), context)
+
+
+def require_resource_scope(permission: str, context: AuthContext) -> None:
+    """资源级权限鉴权（阶段 4.1 的枚举，如 ``document:read`` / ``index:rebuild``）。
+
+    与 ``require_*_operation_role`` 的区别只在命名空间：那三个是操作维度
+    （``read:`` / ``write:`` / ``review:`` 前缀 + 既有 operation 名），
+    本函数是资源维度（键名即完整 scope）。未登记的权限同样不授予任何人。
+    """
+
+    _require_scope(resource_scope(permission), context)

@@ -183,8 +183,18 @@ def test_source_uri_unique_per_tenant_across_knowledge_bases(db_url):
 def test_reupload_same_source_uri_appends_version_not_new_document(db_url):
     """契约测试：同一 URI 重传新内容 → 同一份文档追加版本，而不是新建文档。
 
-    阶段 2.3 的上传接口要按这个契约实现（先查 get_document_by_source_uri，
-    命中就加版本，未命中才建文档），阶段 3.3 的流水线在此基础上做幂等。
+    责任划分（阶段 2.3 落地，见台账 [D-6]）：
+
+    * **上传接口只负责「复用文档」**：先查 ``get_document_by_source_uri``，
+      命中就用同一份文档、未命中才建文档，并新建 ``ingestion_jobs`` 排队；
+    * **建版本不在上传期发生**，由流水线在 ``parsed`` 阶段创建（阶段 3.3）。
+      上传期建版本会撞 ``uq_document_versions(tenant_id, content_hash)``：
+      「内容相同、文件名不同」的两次上传会各自新建文档，第二个版本必然冲突
+      （IntegrityError，或者一个永远没有内容的僵尸文档）。
+
+    因此本测试用仓储层直接建版本，锁定的契约是「同一 URI 只对应一份文档、
+    版本号在文档内连续递增」——这条契约对上传接口与流水线同时成立，
+    与「由谁执行建版本这一步」无关。
     """
 
     with db.session_scope(db_url) as session:

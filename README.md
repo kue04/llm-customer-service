@@ -14,6 +14,21 @@
 
 ---
 
+## 0. 两条检索路径：哪条是真的（2026-09-23 起）
+
+仓库里存在**两条都叫"检索"的路径**，这不是笔误，而是迁移期的状态。**正式路径是第一条**：
+
+| 路径 | 接口 | 数据来源 | 权限过滤 | 定位 |
+| --- | --- | --- | --- | --- |
+| **chunk 级（正式）** | `POST /retrieval/search` | `document_chunks` → FAISS chunk 索引（manifest 管理） | ✅ 强制 tenant + `document_acl` + 发布状态（FAISS 前置过滤） | 功能上线路径 |
+| 种子 FAQ（演示） | `POST /retrieval/search-demo`、`POST /retrieval/prompt-preview` | `data/takeout_customer_service_seed.jsonl`（781 条手工 FAQ） | ❌ 无（语料本身是单租户的） | 演示 / 兼容旧调试台 |
+
+响应体里的 `retrieval_path` 字段（`chunk-index` / `seed-faq-demo`）会明确告诉你命中哪一条。
+换句话说：**下面章节里基于 781 条种子 FAQ 的评测数字，描述的是演示路径的检索质量**，
+不能直接当成 chunk 级检索线上能力（口径问题另见 `docs/RAG_DEV_PITFALLS.md` 的 F2）。
+
+---
+
 ## 1. 60 秒快速验证
 
 两条路径。**路径 A 不需要下载任何模型**，验证工程可用性；路径 B 跑完整 RAG 链路。以下命令均在本机（Windows / Python 3.12 venv）实际跑通。

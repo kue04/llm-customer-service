@@ -1,0 +1,80 @@
+........................................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 25%]
+........................................................................ [ 34%]
+........................................................................ [ 42%]
+........................................................................ [ 51%]
+........................................................................ [ 60%]
+........................................................................ [ 68%]
+.................................................................... [ 76%]
+........................................................................ [ 85%]
+................FF...................................................... [ 93%]
+...................................................                      [100%]
+================================== FAILURES ===================================
+______ TestIdempotency.test_redelivering_a_finished_job_changes_nothing _______
+
+self = <test_ingestion_pipeline.TestIdempotency object at 0x0000019AFF4E5EE0>
+harness = <test_ingestion_pipeline.Harness object at 0x0000019ABF4E6210>
+
+    def test_redelivering_a_finished_job_changes_nothing(self, harness):
+        job, document, _outcome = harness.run_to_success()
+        version = harness.versions(document)[0]
+        before = sorted(row.chunk_id for row in harness.chunks_of(version))
+    
+        again = harness.run(job)
+    
+>       assert again.succeeded
+E       assert False
+E        +  where False = PipelineOutcome(job_id='87126b84ec7c4da1b4333ed67da2de11', tenant_id='tenant-pipeline', document_id='a455905a80fa43578...49de26b7eee',), ('f9b282a3220c4dd8b614a2337f148d17',)]]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)").succeeded
+
+tests\test_ingestion_pipeline.py:608: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_ingestion_auth, 建立数据接入、文档版本、ACL、处理任务、索引与审计相关的 13 张表
+___________ TestIdempotency.test_chunk_ids_are_stable_across_reruns ___________
+
+self = <test_ingestion_pipeline.TestIdempotency object at 0x0000019AFF4E65A0>
+harness = <test_ingestion_pipeline.Harness object at 0x0000019ABF56F560>
+
+    def test_chunk_ids_are_stable_across_reruns(self, harness):
+        job, document = harness.upload()
+        assert harness.run(job).succeeded
+        version = harness.versions(document)[0]
+        first = sorted(row.chunk_id for row in harness.chunks_of(version))
+    
+        for _ in range(2):
+>           assert harness.run(job).succeeded
+E           assert False
+E            +  where False = PipelineOutcome(job_id='95d27cdcf54f471296aa3d5a3a01c235', tenant_id='tenant-pipeline', document_id='ca11fabd48374207b...d88b9f4024e',), ('f1e780b013c642e6a789515d91abc15e',)]]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)").succeeded
+E            +    where PipelineOutcome(job_id='95d27cdcf54f471296aa3d5a3a01c235', tenant_id='tenant-pipeline', document_id='ca11fabd48374207b...d88b9f4024e',), ('f1e780b013c642e6a789515d91abc15e',)]]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)") = run(<services.ingestion.models.IngestionJob object at 0x0000019ABF451AC0>)
+E            +      where run = <test_ingestion_pipeline.Harness object at 0x0000019ABF56F560>.run
+
+tests\test_ingestion_pipeline.py:620: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_ingestion_auth, 建立数据接入、文档版本、ACL、处理任务、索引与审计相关的 13 张表
+============================== warnings summary ===============================
+venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\llm\llm-customer-service\venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+venv\Lib\site-packages\starlette\testclient.py:53
+  D:\llm\llm-customer-service\venv\Lib\site-packages\starlette\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_ingestion_pipeline.py::TestIdempotency::test_redelivering_a_finished_job_changes_nothing
+FAILED tests/test_ingestion_pipeline.py::TestIdempotency::test_chunk_ids_are_stable_across_reruns
+2 failed, 837 passed, 5 warnings, 4 subtests passed in 26.49s

@@ -13,10 +13,18 @@
 
 scope 词汇表
 ------------
-第一期的 scope 直接沿用既有的 operation 授权表（``read:`` / ``write:`` / ``review:`` 前缀），
-这样既有接口的授权行为**逐条保持不变**，只是身份来源从 header 换成了 JWT。
-阶段 4.1 会引入 ``knowledge_base:read`` / ``document:upload`` / ``index:rebuild`` 等
-资源级权限枚举，届时在本文件扩展，不需要改动调用方。
+两个维度并存：
+
+* **操作维度**（第一期沿用，保持既有接口的授权行为逐条不变）：
+  ``read:`` / ``write:`` / ``review:`` 前缀 + 既有 operation 名，
+  身份来源已从 header 换成 JWT。
+* **资源维度**（阶段 4.1 落地，B7）：``knowledge_base:read``、``document:upload``、
+  ``document:publish``、``index:rebuild``、``audit:read`` 等九个权限，
+  见 :data:`RESOURCE_SCOPE_ROLES`。
+
+两者都倒排进 :data:`ROLE_SCOPES`，调用方统一用 ``AuthContext.require_scope(...)``
+或 ``services.auth_service`` 里的 ``require_*`` 辅助函数判定，
+**不要在路由里写死角色名**。
 """
 
 from __future__ import annotations
@@ -100,10 +108,37 @@ REVIEW_ACTION_ROLES: dict[str, frozenset[str]] = {
     "marked_bad_case": frozenset({"agent", "supervisor", "qa", "knowledge_ops", "admin"}),
 }
 
+#: 资源级权限 -> 允许的角色（阶段 4.1 的计划枚举，B7 落地）。
+#:
+#: 与上面三张表的区别：上面三张是**操作**维度（`read:chat_generate` 这类，
+#: 沿用既有接口的授权表），这张是**资源**维度（计划原文点名的九个权限）。
+#: 键名就是完整的 scope 字符串（自带冒号），因此倒排时前缀为空。
+#:
+#: 两个刻意的授权划分：
+#: * ``document:publish`` 与 ``index:rebuild`` **分开授权**（计划 4.2 明文要求）——
+#:   发布一条审核过的知识 ≠ 允许重建全量索引；后者影响所有租户的检索结果。
+#: * ``audit:read`` 只给安全/质量角色，``document:delete`` 不给 knowledge_ops。
+RESOURCE_SCOPE_ROLES: dict[str, frozenset[str]] = {
+    "knowledge_base:read": frozenset({"agent", "supervisor", "knowledge_ops", "qa", "admin"}),
+    "knowledge_base:write": frozenset({"supervisor", "knowledge_ops", "admin"}),
+    "document:upload": frozenset({"supervisor", "knowledge_ops", "admin"}),
+    "document:read": frozenset({"agent", "supervisor", "knowledge_ops", "qa", "admin"}),
+    "document:review": frozenset({"supervisor", "knowledge_ops", "admin"}),
+    "document:publish": frozenset({"supervisor", "knowledge_ops", "admin"}),
+    "document:delete": frozenset({"supervisor", "admin"}),
+    "index:rebuild": frozenset({"supervisor", "admin"}),
+    "audit:read": frozenset({"supervisor", "qa", "admin"}),
+}
+
 #: 全部已知角色（供校验与日志使用）
 VALID_ROLES: frozenset[str] = frozenset(
     role
-    for table in (READ_OPERATION_ROLES, WRITE_OPERATION_ROLES, REVIEW_ACTION_ROLES)
+    for table in (
+        READ_OPERATION_ROLES,
+        WRITE_OPERATION_ROLES,
+        REVIEW_ACTION_ROLES,
+        RESOURCE_SCOPE_ROLES,
+    )
     for roles in table.values()
     for role in roles
 )
@@ -111,6 +146,8 @@ VALID_ROLES: frozenset[str] = frozenset(
 READ_SCOPE_PREFIX = "read:"
 WRITE_SCOPE_PREFIX = "write:"
 REVIEW_SCOPE_PREFIX = "review:"
+#: 资源级 scope 自带完整命名空间（``document:read``），倒排时不需要再加前缀
+RESOURCE_SCOPE_PREFIX = ""
 
 
 def read_scope(operation: str) -> str:
@@ -125,6 +162,12 @@ def review_scope(action: str) -> str:
     return f"{REVIEW_SCOPE_PREFIX}{action}"
 
 
+def resource_scope(permission: str) -> str:
+    """资源级权限的规范名（``document:read`` 这类，本身即完整 scope）。"""
+
+    return f"{RESOURCE_SCOPE_PREFIX}{permission}"
+
+
 def _invert_grants() -> dict[str, frozenset[str]]:
     """把「scope -> 允许的角色」倒成「角色 -> 拥有的 scope」。"""
 
@@ -133,6 +176,7 @@ def _invert_grants() -> dict[str, frozenset[str]]:
         (READ_SCOPE_PREFIX, READ_OPERATION_ROLES),
         (WRITE_SCOPE_PREFIX, WRITE_OPERATION_ROLES),
         (REVIEW_SCOPE_PREFIX, REVIEW_ACTION_ROLES),
+        (RESOURCE_SCOPE_PREFIX, RESOURCE_SCOPE_ROLES),
     )
     for prefix, table in tables:
         for name, roles in table.items():

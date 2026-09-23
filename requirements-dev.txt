@@ -31,5 +31,11 @@ pymupdf==1.28.2
 python-docx==1.2.0
 beautifulsoup4==4.15.0
 trafilatura==2.2.0
+# 阶段 2.3 起需要：FastAPI 的 UploadFile（multipart/form-data）依赖它，
+# tests/test_document_upload_api.py 直接构造上传请求，缺包会让 CI 直接报错。
+python-multipart==0.0.32
+# redis 刻意**不进 dev**：队列在未配置 RAG_REDIS_STREAM_URL 时走内存降级，
+# 而 Redis Stream 分支用注入的假客户端测试（见 tests/test_document_upload_api.py），
+# 既不连真实 Redis 也不 import redis，因此 CI 无需安装。
 # OCR 的 rapidocr-onnxruntime 刻意不进 dev：它会拖进 onnxruntime 与模型权重，
 # 而全部解析器测试都用注入的假引擎覆盖 OCR 触发逻辑，不需要真实引擎。

@@ -8,7 +8,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from routers import audit, chat, example, feedback, info, knowledge, ops, order, prompt, release, retrieval
+from routers import audit, chat, documents, example, feedback, info, knowledge, ops, order, prompt, release, retrieval
 
 from services.auth_context import AuthConfigError, load_auth_config
 
@@ -60,6 +60,9 @@ app.include_router(example.router, prefix="/examples", tags=["examples"])
 app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 app.include_router(info.router, prefix="/model", tags=["info"])
 app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
+# 文档上传与任务查询的路径天然带两个前缀（/knowledge-bases/... 与 /documents/...），
+# 因此在 router 内部写全路径，这里不再加 prefix。
+app.include_router(documents.router, tags=["documents"])
 app.include_router(ops.router, prefix="/ops", tags=["ops"])
 app.include_router(order.router, prefix="/orders", tags=["orders"])
 app.include_router(prompt.router, prefix="/prompt", tags=["prompt"])

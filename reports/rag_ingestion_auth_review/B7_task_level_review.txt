@@ -1,0 +1,566 @@
+任务级审查：批次 B7（阶段 4 的最后一个批次）
+审查日期：2026-09-23
+审查人：AI（B7 批次）
+审查范围：任务 4.1（固定权限判定规则）、4.2（改造知识和文档路由）、4.3（改造检索 API）
+依据：docs/RAG_EXECUTION_PLAN_DATA_INGESTION_CHUNKING_AUTH.md 第 6 节（4.1 / 4.2 / 4.3 计划原文）；
+      docs/RAG_NEXT_WINDOW_PROMPT.md（B7 作业规程，交接时间 2026-09-23 17:40）；
+      docs/RAG_EXECUTION_PROGRESS.md 第 4 节「B7 本批要做什么（范围锁定）」
+
+────────────────────────────────────────────────────────────────────
+本批一句话结论
+────────────────────────────────────────────────────────────────────
+B7 把项目长期存在的**双轨制**合上了：检索 API 从 A 轨（781 条种子 FAQ、没有 tenant/ACL 概念）
+切到 B 轨（chunk 级索引 + **服务端构造**的权限过滤），
+「检索层没有任何 tenant / ACL 过滤」这条从 B4 就挂在踩坑记录 F3 里的缺口**本批消除**。
+
+同时本批**沿接线路径炸出一个真缺陷**（不是环境噪声）：
+B6 交付的索引子系统与「按租户分片」的仓储层**三处自相矛盾**，表现为
+**A 租户的 chunk 会从生效索引里静默消失**——B 租户一入库，A 租户检索立刻返回 0 条，
+**没有任何报错**。已修复，红/绿双份证据保留。详见第六节（踩坑登记为 B14）。
+
+用一句话概括本批的方法论收益：
+**「接线」不只是把积木拼起来，它本身是一种测试手段** ——
+两个各自测试全绿的子系统接在一起才暴露出契约不一致。
+这正是 F1 把「接线」提升为最高优先级的依据，本批拿到了实证。
+
+═══ 一、门禁结果（四件套） ═══
+
+证据文件（reports/rag_ingestion_auth_review/）：
+
+  B7_baseline_junit.xml          开工基线（JUnit XML）→ tests=843 failures=0 errors=0
+  B7_full_test_junit.xml         收工全量（JUnit XML）→ tests=884 failures=0 errors=0
+  B7_full_test-output.txt        收工全量的 stdout（★ 汇总行被环境守卫吞掉，见下）
+  B7_collectonly_warnings.txt    --collect-only 取回的 warning 汇总 → 5 条，与基线持平
+  B7_ruff-output.txt             ruff check . → All checks passed!
+  B7_compileall-output.txt       compileall → 退出码 0（文件 0 字节 = 无输出 = 无错误）
+  B7_data-size-output.txt        check_repo_data_size.py → 通过，没有超标文件
+  B7_index_multitenant_RED.txt   ★ 真缺陷的「问题现场」
+  B7_index_multitenant_GREEN.txt ★ 修复后
+
+起点 / 终点对比（基线纪律）：
+
+  B5 收尾 790 → B6 收尾 **843**（本批起点）→ B7 收尾 **884**，
+  本批新增 **41** 条，**零失败零错误零回归**。
+
+  新增 41 条逐文件拆解（`--collect-only` 实测，不是估算）：
+
+  | 文件 | 基线 | 收工 | 增量 | 说明 |
+  | --- | --- | --- | --- | --- |
+  | tests/test_retrieval_isolation.py | 0（不存在） | 23 | **+23** | 新文件，6 个测试类 |
+  | tests/test_tenant_isolation.py | 14 | 21 | **+7** | 新增 `TestAclOnRealRoutes`（走真实三路由） |
+  | tests/test_retrieval_api.py | 5 | 14 | **+9** | 新增 `TestChunkRetrievalApi`；既有 5 条改走演示端点 |
+  | tests/test_auth_context.py | 45 | 47 | **+2** | 资源级 scope 枚举 + 发布/重建分开授权 |
+  | 合计 | **839**（+4 subtests = 843） | **880**（+4 subtests = 884） | **+41** | |
+
+  warning：基线 5 条 → 收工 5 条，**未新增**。逐条核对来源（`B7_collectonly_warnings.txt`）：
+  fastapi testclient 的 httpx 弃用[1] + starlette 的 anyio 别名弃用[1] + faiss SWIG 绑定[3]，
+  全部是既有噪声，与本次改动无关。
+
+★ 为什么门禁改用 JUnit XML 取数（本批新踩的环境坑，已登记为 A6）
+
+  本批第一次跑全量时，输出是这样的：进度条走到 `[100%]`、**全是点没有 F/E**，
+  然后 **没有 `884 passed` 汇总行**，退出码 1，末尾多出一行：
+
+      [safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":1542,"threshold":50,...}
+
+  根因：pytest 的 `TempPathFactory.getbasetemp()` 在 session 收尾时会批量删除
+  `%TEMP%\pytest-of-kk\pytest-*` 旧目录（本机 1542 个文件），命中环境的**批量删除守卫**
+  （阈值 50），守卫抛 `SystemExit(1)`，进程在打印汇总行**之前**退出。
+  → **测试其实全绿跑完了，但"绿"的证据被守卫吃掉了。**
+  这与踩坑 A5 是同一个环境约束的第二次现身（A5 那次是反过来的：环境噪声把「绿」说成「红」；
+  这次是环境噪声把「绿」的证据抹掉）。
+
+  规避方式（本批采用）：**不读 stdout 汇总行，改读 `--junitxml`**。
+  JUnit XML 在测试执行过程中写入，不受 sessionfinish 守卫影响，
+  `tests / failures / errors` 三个属性就是权威计数。
+  `--basetemp` 与 `PYTEST_DEBUG_TEMPROOT` 都试过，前者无效、后者直接卡死（详见踩坑 A6）。
+
+★★ 本批门禁的一处「未完全验证项」（诚实标注，不是 PASS）
+
+  `884 passed, 5 warnings, 4 subtests passed` 这行标准汇总行**本批拿不到**
+  （被上述守卫吞掉）。因此：
+
+  * 「884 条全通过、0 失败 0 错误」—— **已验证**（JUnit XML，权威）；
+  * 「warning 共 5 条、未新增」—— **间接验证**：
+    用 `pytest --collect-only -q`（只收集不执行，不产生批量删除）取回 warnings summary，
+    实测 5 条，逐条核对为既有噪声。**注意这是"导入期 warning 的完备视图"，
+    不等于"执行期 warning 的完备视图"**；本批新增测试没有引入新的
+    warning 触发源（未 import 任何新依赖，见第二节《新增依赖：无》），因此判定为持平；
+  * 「pytest 退出码 0」—— **不成立**（退出码 1），但**归因明确**：守卫在 sessionfinish 抛出，
+    与测试结果无关，判据是「进度输出里有没有 F／E」＋ JUnit XML（A5 与 D12 的既有方法论）。
+
+  按 SOUL 的规矩：没验证过的东西标"待验证"。上面第二条属于**间接验证**，
+  在此显式标注，不写成"已验证"。
+
+═══ 二、交付物清单与生产调用点 ═══
+
+新增（未跟踪）：
+
+  services/retrieval_access.py       254 行  资源级权限判定 + **ChunkAccessFilter 唯一生产构造点**（4.1 核心）
+  tests/retrieval_fixtures.py        244 行  共用测试基建（fake embedder / 流水线跑通 / 两租户环境）
+  tests/test_retrieval_isolation.py  406 行  23 条检索层隔离用例（4.3 硬要求）
+
+改造：
+
+  routers/retrieval.py              313 行  整体重写：`/search` 切到 B 轨，新增 `/search-demo`
+  schemas/retrieval_schema.py       +70 行  `ChunkRetrievalRequest/Item/Response` + `retrieval_path`
+  services/auth_context.py          +54 行  `RESOURCE_SCOPE_ROLES`（计划 4.1 九项枚举）+ `resource_scope()`
+  services/auth_service.py          +15 行  `require_resource_scope()`
+  routers/documents.py              +旧文件  新增 `POST /ingestion/indexes/rebuild`、`_load_readable_document`
+  schemas/document_schema.py              新增 `IndexRebuildResponse`
+  routers/knowledge.py              +6 行   发布端点加 `document:publish`
+  utils/vector_retriever.py         +新增   `describe_chunk_index()`（只读 manifest，不 read_index）
+  services/ingestion/repository.py  +210 行 `list_indexable_chunks(all_tenants=)`、
+                                            `create_index_build` 版本号全局化、`list_index_builds(all_tenants=)`、
+                                            `list_tenant_document_acl()`、`list_published_chunk_refs()`
+  services/ingestion/index_builder.py      `rebuild_index(all_tenants=True)` + manifest `extra["scope"/"tenants"]`
+  services/ingestion/index_manifest.py     `verify()` 租户不变量放宽（兼容 B6 老 manifest）
+  tests/test_retrieval_api.py       +193 行 `TestChunkRetrievalApi`（14 条）
+  tests/test_tenant_isolation.py    +194 行 `TestAclOnRealRoutes`（21 条）
+  tests/test_auth_context.py        +49 行  资源维度一致性
+  README.md                         +15 行  「两条检索路径：哪条是真的」
+
+新增依赖：**无**（`requirements.txt` / `requirements-dev.txt` 本批未因 B7 增加任何条目）。
+
+「生产调用点」核对（对应台账第 4 节的「已建未启用」清单）：
+
+  | 资产 | 定义位置 | B7 后的生产调用点 | 本批后状态 |
+  | --- | --- | --- | --- |
+  | `search_chunk_index()` | utils/vector_retriever.py:1083 | `utils/vector_retriever.py:1205`（`retrieve_chunk_items` 内） | ✅ **消失** |
+  | `retrieve_chunk_items()` | utils/vector_retriever.py:1187 | `routers/retrieval.py:153`（正式 `/search`） | ✅ 新增接线 |
+  | `ChunkAccessFilter` | utils/vector_retriever.py:969 | 构造：`services/retrieval_access.py:162`；消费：`routers/retrieval.py:151` | ✅ **消失** |
+  | 检索层 tenant / ACL 过滤的 API 出口 | routers/retrieval.py | `POST /retrieval/search` | ✅ **消失** |
+
+  复核命令与结果（本批**手工执行**，非自动化守卫 —— 见第八节盲区第 1 条）：
+
+      $ grep -n "tenant\|acl" routers/retrieval.py | wc -l
+      13          # 不再是 0 命中（B6 时 routers/retrieval.py 里一个 tenant/acl 字样都没有）
+      $ grep -rn "search_chunk_index" --include=*.py . | grep -v venv | grep -v "^./tests/"
+      utils/vector_retriever.py:1083  定义
+      utils/vector_retriever.py:1205  生产调用（retrieve_chunk_items 内）
+      $ grep -rn "retrieve_chunk_items" --include=*.py . | grep -v venv | grep -v "^./tests/"
+      routers/retrieval.py:153        ← API 出口
+      utils/vector_retriever.py:1187  定义
+
+  ★ 与 B6 的差别：B6 那批的生产调用点有 `TestProductionCallPoints` 的 **AST 守卫**兜底；
+    本批的**没有**（该守卫只扫 `services/ingestion/pipeline.py` 与 `queue.py`）。
+    已于第八节登记为盲区、第十节登记为遗留问题。
+
+═══ 三、任务 4.1 逐条核对（固定权限判定规则） ═══
+
+计划原文要求 → 实现位置 → 证据
+
+1. **权限枚举九项**（计划 4.1 原文的 ```text 代码块）
+   → `services/auth_context.py:121` `RESOURCE_SCOPE_ROLES`，键名**就是**完整 scope 字符串：
+     `knowledge_base:read` / `knowledge_base:write` / `document:upload` / `document:read` /
+     `document:review` / `document:publish` / `document:delete` / `index:rebuild` / `audit:read`
+   （计划原文列的是 9 行，实现是 9 个键 —— **逐项对齐，不多不少**）
+   → 证据：`tests/test_auth_context.py::test_resource_scopes_follow_the_plan_enumeration`
+     （逐项断言存在，且键名 == scope 字符串）
+   → 与既有「操作维度」权限表（`ROLE_SCOPES` 的 `read:*` / `write:*`）**并存**，
+     两张表各自倒排进 `ROLE_SCOPES`，因此
+     `test_role_scopes_is_exact_inversion_of_policy_tables` 同步扩成**四张表**参与校验。
+
+2. **判定顺序**：JWT 有效 → tenant 匹配 → scope 满足操作 → knowledge base 成员关系
+   → document ACL → 检索 filter 注入
+   → 逐段落地：
+     ① JWT 有效 —— `services/auth_service.get_auth_context`（B2 成果，本批**未改**）；
+     ② tenant 匹配 —— 所有查询带 `AuthContext.tenant_id`；`retrieval_access.py` 里
+        **没有任何接收 tenant_id 的参数**（结构上就传不进来）；
+     ③ scope 满足操作 —— `require_resource_scope(permission, auth)`（`services/auth_service.py`）；
+     ④ KB 成员关系 —— `knowledge_base_is_readable()`（读路径复用 `_require_kb_write_member` 的数据层）；
+     ⑤ document ACL —— `document_is_visible()` / `visible_chunk_ids()`；
+     ⑥ filter 注入 —— `build_chunk_access_filter()` 返回 `ChunkAccessFilter`，
+        显式带 `allowed_chunk_ids`；**空集合就表示零命中**，不退回"不限租户"。
+   → 证据：`tests/test_retrieval_isolation.py::TestFilterIsMandatory`（5 条）
+
+3. **`tenant_id` 只从 AuthContext 读取，忽略 body/query 中同名字段**
+   → `ChunkRetrievalRequest` **刻意不定义** `tenant_id` / `acl` / `filter` / `row_id` 字段
+     （`schemas/retrieval_schema.py` 注释里写明"能传 filter 就等于能提权"）
+   → 证据：`tests/test_retrieval_api.py::test_client_supplied_tenant_and_filter_are_ignored`
+     （请求体里塞 `tenant_id` / `allowed_chunk_ids` / `row_ids` / `filter` / `acl` 全部被忽略，
+     结果仍只有本租户的 chunk）；`test_unknown_body_fields_do_not_break_the_request`
+
+4. **过滤必须是前置过滤**（计划 3.4 原文的「缺失 filter 必须拒绝而非默认全库」＋ 规程硬约束 1）
+   → `search_chunk_index(query, *, access)` 的 `access` 是**必填关键字参数**，
+     显式传 `None` 抛 `ChunkRetrievalError("chunk_filter_required")`
+     过滤走 FAISS 原生预过滤 `SearchParameters(sel=IDSelectorBatch(...))`
+   → 证据：`TestFilterIsMandatory::test_missing_filter_raises_instead_of_searching_everything`、
+     `test_filter_must_be_a_server_built_object`（传假对象也报错）、
+     `TestPreFiltering::test_long_tail_tenant_survives_a_query_dominated_by_other_tenants`
+     （★ 这条是**预过滤 vs 后过滤**的判决性用例：B 租户语料占满 top-k 时，
+       A 租户仍然检索得到自己的 chunk；后过滤会静默返回 0 条）
+
+5. **生效期维度**（计划 4.1 的「生效期（若表里有生效字段）」）
+   → **本批不适用，显式说明**：`document_versions` / `documents` **没有**
+     `effective_from` / `effective_to` / `expires_at` 列（模型 `services/ingestion/models.py:281`、
+     迁移 0001 均无）。落地位置：`services/retrieval_access.py` 模块 docstring 的
+     「生效期维度：本批不适用，显式说明」一段。
+   → 但**未发布 / 归档 / 旧版本确实已被排除**：只取 `status='published'` 的版本的 chunk
+     （`repository.list_published_chunk_refs`），`parsed` / `chunked` / `indexed` 均不可见。
+   → 证据：`TestVersionVisibility`（3 条，真值表：received/stored/parsed/chunked/indexed → 0 命中；
+     published → N 命中；重新发布后又可见）
+
+6. **ACL 语义**（计划 4.1 只说"document ACL"，语义细节需自行定，本批显式标注方向）
+   → `services/retrieval_access.py`：
+     * 无 ACL 记录 → **租户内可见**（`document_acl` 是"额外收紧"不是"默认拒绝"）
+     * 有记录 → 必须命中 `permission='read'` 且 `subject_type ∈ {tenant, user, role}`
+     * **`write` 不隐含读**（否则"能发布"会顺带把正文暴露给检索）
+     * `subject_type='group'` → **fail closed**（本服务没有组成员关系表，不猜语义）
+     * 建档与否不影响判定（否则 `agent` 角色会突然检索不到东西）
+   → 证据：`TestAclIsolation` 5 条（含 `test_write_permission_does_not_grant_read`、
+     `test_role_grant_works_and_unknown_group_does_not`、`test_tenant_subject_grant_covers_the_whole_tenant`）
+
+═══ 四、任务 4.2 逐条核对（改造知识和文档路由） ═══
+
+计划原文要求 → 实现位置 → 证据
+
+1. **每个受保护 handler 显式接收 `AuthContext`**
+   → `routers/documents.py` / `routers/knowledge.py` / `routers/retrieval.py` 的
+     handler 签名里都有 `auth: AuthContext = Depends(get_auth_context)`
+   → 既有守卫 `tests/test_read_auth_coverage.py` 覆盖（B2 建立，本批未放宽）
+
+2. **不允许业务层自行从 header 读用户**
+   → B2 已把 `X-User-Role` 彻底废弃；本批未新增任何 header 读取
+   → 证据：`tests/test_tenant_isolation.py::test_forged_tenant_header_cannot_change_scope`
+
+3. **发布和索引重建分开授权**（计划 4.2 明写「发布和索引重建分开授权」）
+   → 发布：`routers/knowledge.py` 的 `publish_approved` 要 `document:publish`
+     （supervisor / knowledge_ops / admin）
+   → 索引重建：新增 `POST /ingestion/indexes/rebuild` 要 `index:rebuild`（supervisor / admin）
+   → **两者权限集合不同**：`knowledge_ops` 有 `document:publish` 但**没有** `index:rebuild`
+     （重建会影响**所有租户**的检索结果，不该由发布者顺手触发）
+   → 证据：`tests/test_auth_context.py::test_publish_and_index_rebuild_are_granted_separately`、
+     `tests/test_tenant_isolation.py::TestAclOnRealRoutes::test_index_rebuild_requires_its_own_permission`
+     （agent → 403、knowledge_ops → 403、supervisor → 200；成功后断言 `tenant_count == 2`）
+     与 `test_publish_requires_document_publish_permission`（agent → 403，只验负向）
+
+4. **写操作写入 `audit_events`**（actor / tenant / action / resource / request_id / 脱敏摘要）
+   → 索引重建走 `_record_audit(action="index_rebuild", resource_type="index", ...)`，
+     summary 含 `index_version` / `chunk_count` / `switched` / `skipped` / `embedding_model` / `tenant_count`
+     （B4 建立的 `_record_audit` 原语，本批复用，未另写一套）
+   → 上传路径的审计沿用 B4。
+
+5. **新增/扩展 `tests/test_tenant_isolation.py` 六条**（计划 4.2 原文的 1~6 条）
+   → 逐条对齐（本批新增的 `TestAclOnRealRoutes` 7 条 + 既有 14 条共同覆盖）：
+
+  | 计划 4.2 的第 N 条 | 覆盖用例 | 落在哪一层 |
+  | --- | --- | --- |
+  | 1. 用户 A 不可读取租户 B 文档 | `TestAclOnRealRoutes::test_cross_tenant_document_is_invisible_on_real_routes`（真实路由）＋ 既有 `test_cannot_read_other_tenants_document`（数据层） | 两层各一条 |
+  | 2. 同租户但无 ACL 的用户不能检索受限文档 | `TestAclOnRealRoutes::test_same_tenant_without_acl_cannot_retrieve_controlled_document` | 检索层（真实路由） |
+  | 3. 只有 `document:publish` 可发布 | `TestAclOnRealRoutes::test_publish_requires_document_publish_permission` ＋ `test_role_without_publish_scope_gets_403_even_for_own_document` | 路由层 |
+  | 4. 只有 `index:rebuild` 可重建 | `TestAclOnRealRoutes::test_index_rebuild_requires_its_own_permission` | 路由层 |
+  | 5. 被过滤文档的标题、分数、数量、引用和 trace 均不泄漏 | `TestAclOnRealRoutes::test_controlled_document_does_not_leak_through_job_or_detail_endpoints`（detail / versions / job **三端点**都是逐字相同的 404）＋ `tests/test_retrieval_isolation.py` 全 23 条 | 检索层 + 路由层 |
+  | 6. 修改请求 body 的 `tenant_id` 不改变授权范围 | 既有 `test_body_tenant_id_does_not_widen_scope` ＋ 新增 `TestAclOnRealRoutes::test_retrieval_filter_is_per_identity_not_per_request`（**同一请求体换身份结果不同**） | 两层各一条 |
+
+  ★ 第 5 条的 404「逐字相同」不是形容词，是断言：`_load_readable_document` 里
+    ACL 拦下与"文档不存在"用的是**同一个 `detail="文档不存在"`、同一个 404**。
+    理由写在 docstring 里：否则调用方能靠"404 还是 403"推断出
+    "这个 id 在别人的受控文档里存在"（C3 的既有原则）。
+
+6. **旧种子 FAQ 路径不得删、但必须明确标注**（规程第 3 步的要求，计划原文没有）
+   → `routers/retrieval.py` 的模块 docstring 开头就是两条路径的对照表；
+     两段端点各有 `【演示 / 兼容】` 前缀的 summary 与 description；
+     响应带 `retrieval_path`（`chunk-index` / `seed-faq-demo`）；
+     `README.md` 第 0 节新增「两条检索路径：哪条是真的（2026-09-23 起）」表格。
+   → 证据：`tests/test_retrieval_api.py` 三处断言 ——
+     `RetrievalSearchApiTest:92` → `seed-faq-demo`、
+     `TestChunkRetrievalApi:308` → `chunk-index`、
+     `TestChunkRetrievalApi::test_demo_endpoint_is_explicitly_labeled:387` → `seed-faq-demo`
+
+7. **错误码稳定**（规程第 3 步的要求）
+   → `routers/retrieval.py:73` `STATUS_BY_ERROR_CODE`：
+     `chunk_index_unavailable` → **503**（服务可用性问题，可重试）
+     `embedding_model_mismatch` → **500**（部署配置问题，重试无用，要告警）
+     `chunk_filter_required` / `chunk_filter_tenant_missing` → **500**（编程错误，设计上不该在生产出现）
+     未知 error_code → 500 兜底；响应体统一 `{"error_code":..., "message":...}`
+   → 证据：`TestChunkRetrievalApi::test_missing_index_returns_503_with_stable_error_code`
+   → **刻意不一把梭 500**：把三个语义完全不同的失败压成同一个状态码，
+     调用方只能靠读 message 字符串区分，等于把错误码的契约作废。
+
+═══ 五、任务 4.3 逐条核对（改造检索 API） ═══
+
+计划原文要求 → 实现位置 → 证据
+
+1. **在 API 层从 AuthContext 生成不可由客户端控制的授权过滤器，再传给 retriever**
+   → `routers/retrieval.py:151` `access = build_chunk_access_filter(session, auth)` →
+     `:153` `retrieve_chunk_items(..., access=access, ...)`
+   → **过滤器的构造点全仓唯一**：`services/retrieval_access.py:162`。
+     客户端能传 filter 就等于能提权，所以请求模型里根本没有这个字段。
+
+2. **禁止客户端传 SQL、FAISS ID 或任意 filter 表达式**
+   → 同第 1 条；`ChunkRetrievalRequest` 只有 `query` / `limit` / `min_score`
+   → 证据：`test_client_supplied_tenant_and_filter_are_ignored`（5 个越权字段全部被忽略）
+
+3. **过滤必须发生在候选暴露前，并由负向测试证明检索结果不泄漏**
+   → FAISS 原生预过滤；负向测试 23 条（`tests/test_retrieval_isolation.py`）
+   → 判决性用例：`TestPreFiltering::test_long_tail_tenant_survives_a_query_dominated_by_other_tenants`
+
+4. **`tests/test_retrieval_isolation.py` 最低要求 5 条**（规程第 4 步逐条列出的）
+   → 逐条对齐：
+
+  | 规程最低要求 | 覆盖用例 | 结果 |
+  | --- | --- | --- |
+  | ① 两租户各建文档 + 各跑一次流水线建索引 → 互相检索零命中 | `TestCrossTenantIsolation`（5 条）＋ `TestPositiveControl::test_other_tenant_chunks_are_filtered_not_merely_outranked` | ✅ |
+  | ② 无 ACL 的用户检索受控文档 → 零命中（不是异常） | `TestAclIsolation::test_controlled_document_is_invisible_without_grant` | ✅ |
+  | ③ 缺 filter 时报错，而不是回退全库 | `TestFilterIsMandatory`（5 条） | ✅ |
+  | ④ 未 `published` 的版本检索不到 | `TestVersionVisibility`（3 条，真值表） | ✅ |
+  | ⑤ 同租户 + 有权限的用户能正常检索到（**正向对照**） | `TestPositiveControl`（3 条） | ✅ |
+
+  ★ 第 ⑤ 条（正向对照）是本批**最容易被省掉、也最不该省**的一条：
+    只写负向断言（"看不见"）的测试，用"永远返回空列表"的实现也能全绿。
+    `test_own_tenant_can_still_retrieve_after_another_tenant_ingests` 是这条的实证用例 ——
+    它同时也是 B14 那个真缺陷的**回归用例**（修复前必红）。
+
+5. **指标命名必须精确：`intent_hit_rate` 不能叫 `recall`**（F2 的教训）
+   → 本批**未改**评测脚本（`scripts/evaluate_retrieval_metrics.py` 不在 B7 范围内，
+     F2 仍在 F 节挂着），但**新增代码没有引入任何叫 recall 的量**；
+     `routers/retrieval.py` 的响应字段是 `count` / `score` / `visible_chunk_count`，
+     没有任何"命中率"类命名。→ 属**未扩大问题**，非"已修复"。见第十节遗留问题 3。
+
+6. **`search_chunk_index()` 若有真缺陷 → 修 + 补记录 + 登记踩坑，不要在调用侧绕过**
+   → 本批**确实**在检索侧炸出了缺陷，但根因不在 `search_chunk_index` 本身，
+     而在**索引构建子系统**（见第六节）。修复落在构建侧三处，
+     `search_chunk_index` 的过滤逻辑（B6 交付）**一行未改**，契约未被放宽。✅
+
+═══ 六、本批发现的真缺陷：多租户索引互相覆盖（B14） ═══
+
+判定依据（照 A5 / D12 的既有方法论）：异常类型不是环境信号、抛出点在项目代码、
+单独复跑可稳定复现 —— 三条都符合。**且红/绿双份证据保留**。
+
+现象（证据：`B7_index_multitenant_RED.txt`）：
+
+  1. A 租户上传并跑流水线 → 生效索引 `v1`，`chunk_count = 6`（全 A 的 chunk）；
+  2. B 租户上传并跑流水线 → **生效索引还是 `v1`**，`chunk_count = 6`，
+     但**条目全部变成 B 的** —— A 的 6 条 chunk 从生效索引里**消失了**；
+  3. 此时 A 租户检索 → **0 条命中，没有任何报错**。
+     用户视角是"系统没找到资料"，而证据就在数据库里。这是**静默错误**，比崩溃危险。
+
+根因（三处自相矛盾，B6 三个子系统各按"按租户分片"实现，
+但 `index_manifest` 按"跨租户共用一份索引"实现）：
+
+  | # | 位置 | 症状 |
+  | --- | --- | --- |
+  | ① | `index_builder.rebuild_index` | 只取 `tenant_id` **这一个租户**的可索引 chunk → 每次重建都只装自己那一份 |
+  | ② | `repository.create_index_build` | 版本号按 `(tenant_id, index_name)` 计 → 两个租户**都拿到 v1**，`publish_build_directory` 会把另一个租户的 `v1/` 目录 `rmtree` 掉 |
+  | ③ | `IndexManifest.verify()` | 要求 `entry.tenant_id == manifest.tenant_id` → 全局索引**永远无法通过校验** |
+
+  共同后果：`search_chunk_index` 按 `entry.tenant_id == access.tenant_id` 过滤，
+  A 的条目不在索引里 → 静默零命中。
+  ★ 值得写进面试答案的一点：**这三处单看都合理，放在一起才炸** ——
+  说明"按租户分片"还是"全局共用"这个决定**从头到尾没有被显式拍板过**，
+  于是每个子系统各自选了一个。这是**缺失决策**，不是编码错误。
+
+修复（4 处代码 + 1 处文档口径）：
+
+  1. `repository.list_indexable_chunks(..., all_tenants=False)` —— `all_tenants=True` 时去掉租户过滤；
+  2. `repository.create_index_build(...)` —— 版本号查询去掉 `tenant_id` 条件
+     （docstring 写明：版本号必须是**全局**的，否则两租户都拿 v1 会互删目录）；
+  3. `repository.list_index_builds(..., all_tenants=False)` —— 跨租户降级 superseded 用；
+  4. `index_builder.rebuild_index(..., all_tenants=True)` —— 取数改用 `all_tenants`，
+     manifest `extra` 增加 `"scope": "all_tenants"|"tenant"` 与 `"tenants": [...]` 留痕；
+  5. `IndexManifest.verify()` —— 租户不变量放宽为「条目租户 ∈ **声明集合**」
+     （`extra["tenants"]`，缺省退回旧的单租户语义 → **B6 老 manifest 仍能通过**，
+     这是有意的向后兼容）。
+
+验证（证据：`B7_index_multitenant_GREEN.txt`）：
+
+  A 入库 → `v1` 含 6 条（A）；B 入库 → **`v2` 含 12 条（B 的 6 条 + A 的 6 条）**，
+  两租户各自检索只命中自己的 6 条。✅
+
+  回归守卫：`TestCrossTenantIsolation::test_manifest_contains_both_tenants`
+  （断言 manifest 含两租户 + `scope == "all_tenants"` + `index_version >= 2`）。
+
+═══ 七、偏离计划原文的方向标注（沿用 B10 / [D-8] 的写法） ═══
+
+标注格式：【更严】/【更宽】/【换实现】/【计划外新增】
+
+1. **新增 `services/retrieval_access.py`** —— 【计划外新增】
+   计划 4.1 只说"检索 filter 注入 `tenant_id` 与 allowed subjects"，
+   没说这些判定写在哪。放 router 会让三个端点各自拼一遍判定（迟早不一致），
+   所以独立成一个纯函数模块，并声明为 `ChunkAccessFilter` 的**唯一生产构造点**。
+
+2. **`index:rebuild` 的授权集合比 `document:publish` 更窄** —— 【更严】
+   计划 4.2 只说"发布和索引重建分开授权"，没说谁有什么。
+   本批拍板：`index:rebuild` = {supervisor, admin}，`document:publish` = {supervisor, knowledge_ops, admin}。
+   理由：一次重建影响**所有租户**的检索结果，不该由发布者顺手触发。
+
+3. **`group` 主体一律 fail closed** —— 【更严】
+   计划 4.1 只列 `allowed subjects`，没说主体类型。本服务**没有组成员关系表**，
+   与其猜一个"可能是同组"的语义，不如不匹配，并在 docstring 写明"等有组表时在这里补"。
+
+4. **无 ACL 记录 = 租户内可见** —— 【更宽】
+   计划 4.1 没有明确 ACL 的缺省方向。选"可见"的依据是**与实际使用方式一致**：
+   上传接口创建的文档在 `document_acl` 里没有行，若默认拒绝，
+   则"刚上传的文档谁都检索不到"。方向已在 docstring 显式标注。→ 登记 [D-13]
+
+5. **`write` 不隐含 `read`** —— 【更严】
+   计划未规定权限的蕴含关系。选"不隐含"的依据：隐含的话，
+   "能发布"会顺带把文档正文暴露给检索。
+
+6. **新增 `describe_chunk_index()`** —— 【计划外新增】
+   计划 4.3 没有"返回索引元信息"这一项。加它的理由：
+   ① `retrieval_path` 只说"走了哪条路"，说不了"索引是哪个版本、多少 chunk、哪个模型"，
+      没有这些信息，线上"检索结果不对"根本无法归因；
+   ② 它**只读 manifest、不 `read_index`**（不加载 FAISS 索引、不触发 embedding），
+      因此可以在响应里安全地调用；
+   ③ 实现上刻意与检索**共用同一次 manifest 读取**语义（同一 `root` / `index_name`）。
+
+7. **`IndexRebuildResponse` 增加 `tenant_count`** —— 【计划外新增 / 更可测】
+   计划 4.2 只要求"新增索引重建接口"。加 `tenant_count` 的理由：
+   它是**唯一能从外部证明"这份索引是全局的"**的字段 ——
+   如果哪天又退回"按租户分片"，这个数字会变成 1 而不是 2，测试立刻红。
+   这是把 B14 那个缺陷的**根因**变成可观测量的做法。
+
+8. **`/retrieval/search` 是"整体重写"而非"打补丁"** —— 【换实现】
+   计划 4.3 说"修改 `routers/retrieval.py`"。
+   实际做法：原 `/search` 的 A 轨实现**一行未删**，而是改名迁到 `/search-demo`
+   并加标注（规程明确要求 A 轨不删但必须标注）。
+   因此"修改"在这里等于"新增 2 个端点 + 改写 1 个端点的语义"，比打补丁更好审。
+
+9. **`--junitxml` 取代 stdout 汇总行作为门禁取数口径** —— 【换实现】
+   计划 7.1 只写"执行 pytest -q"。本批因环境守卫（A6）改用 JUnit XML 取数，
+   理由与偏差已在本文件第一节显式标注。
+
+═══ 八、测试盲区排查 ═══
+
+1. **本批新增的接线没有 AST 守卫。** ★ 最重要的盲区
+   B6 给数据侧接线配了 `TestProductionCallPoints`（AST 逐函数查形参，沿用 D1 的教训）。
+   本批的「API → 检索层」接线**只做了手工 grep 复核**，
+   没有断言 `routers/retrieval.py` 必须引用 `retrieve_chunk_items`，
+   也没有断言 `search_chunk_index` 的 `access` 参数**必须没有默认值**。
+   风险：后人把 `access` 加个默认值、或把 router 改回 A 轨，测试不会红。
+
+2. **`retrieval_path` 只有 3 处断言，且都是"等于某值"，没有"必须存在"形**。
+   若有人把字段从 schema 里删掉，pydantic 会报错（有保护），
+   但若有人把默认值改成 `""`，旧的两条 `== "seed-faq-demo"` 仍会过。
+
+3. **`STATUS_BY_ERROR_CODE` 只覆盖 `chunk_index_unavailable` 一条有端到端用例。**
+   `embedding_model_mismatch` 与两条 `chunk_filter_*` 的**状态码映射本身没有测试**
+   （`chunk_filter_*` 有构造层测试，但那测的是 `search_chunk_index` 抛不抛，
+   不是 router 翻译成 400 还是 500）。属于"表里有两行没人守"。
+
+4. **真实引擎分支仍未复验**（与 B1~B6 相同）：PostgreSQL / Redis Stream /
+   真实 tokenizer + embedding 全部未在本机跑过（无 Docker / 无 psql）。
+   本批新增的隔离测试用的是**假 embedder**（`tests/retrieval_fixtures.py` 的
+   确定性词袋哈希），好处是零依赖可复现，代价是**测不到真实 embedding 的维度/距离行为**。
+
+5. **`index:rebuild` 的并发语义没测**：两个请求同时重建会怎样（版本号竞态）没有用例。
+   单机 SQLite 上难以构造，属已知**未覆盖**，归入第十节遗留问题。
+
+6. **正向对照只有 3 条**（`TestPositiveControl`）。相对 23 条的体量偏少 ——
+   但它守的是最危险的那类退化（"全都没结果也算通过"），因此**有**比**多**重要，
+   这一点是有意取舍，不是遗漏。
+
+7. ★ **本批复核时新发现一组「零调用点 + 零测试」的导出资产**（属 B6 范围，本批首次发现）
+   计划 3.4 原文要求「增加索引版本**回滚**接口/函数**和测试**」。
+   实际状态（复核命令：逐个符号全仓 grep，排除 venv 与定义文件）：
+
+       $ for fn in rollback_index available_versions active_index_version \
+                   index_root_for build_entries ERROR_INDEX_ROLLBACK_FAILED; do
+       >   grep -rn "\b$fn\b" --include=*.py . | grep -v venv | grep -v index_builder.py
+       > done
+       （全部无输出）
+
+   | 符号 | 定义 | 生产调用点 | 测试调用点 |
+   | --- | --- | --- | --- |
+   | `rollback_index()` | index_builder.py:416 | ❌ 无（也没有 API 出口） | ❌ **无** |
+   | `available_versions()` | index_builder.py | ❌ 无 | ❌ 无 |
+   | `active_index_version()` | index_builder.py | ❌ 无 | ❌ 无 |
+   | `index_root_for()` | index_builder.py | ❌ 无 | ❌ 无 |
+   | `build_entries()` | index_builder.py | ❌ 无 | ❌ 无 |
+   | `ERROR_INDEX_ROLLBACK_FAILED` | index_builder.py:87 | ❌ 无 | ❌ 无 |
+
+   对照：同模块的 `rebuild_index` 有 4 处调用点（`pipeline.py:253` 默认 runner、
+   `routers/documents.py:680` 新端点、两个测试），说明这**不是**"整个模块没接线"，
+   而是**接线时只挑了 `rebuild_index` 这一个入口**，其余公开函数整体留在原地。
+   **这不是缺陷（代码本身能跑），但它是"已交付"与"已验证"之间的差距** ——
+   与 F1/F3 是同一类问题，因此按纪律登记，不放过。
+
+   对阶段 4 的影响：**不阻断**（回滚属阶段 3 的 3.4，不属 4.1/4.2/4.3）。
+   对阶段 7（B8 发布门禁）的影响：**阻断** —— 计划 7.4 的阶段完成条件明写
+   「索引原子切换/**回滚**通过」，而回滚当前**没有任何测试**，
+   这条判据现在**无法判定为通过**。已写入 `stage4_review.txt` 第四、五节。
+
+═══ 九、硬性约束逐条核对（规程「硬性约束」10 条 + 拍板项 1 条） ═══
+
+| # | 约束 | 核对方式 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 必须用 FAISS 原生预过滤，不重新选方案 | 读 `search_chunk_index` 实现；`TestPreFiltering` 两条 | ✅ 未改 |
+| 2 | `access` 参数**不得**加默认值 | `grep "def search_chunk_index" -A 8` → `access` 无 `=`；`test_missing_filter_raises_instead_of_searching_everything` | ✅ |
+| 3 | `ChunkAccessFilter` 只能服务端构造 | `grep -rn ChunkAccessFilter` 生产构造点仅 `retrieval_access.py:162`；`test_filter_must_be_a_server_built_object` | ✅ |
+| 4 | 鉴权只走 `services/auth_context.py` | `grep -n "jwt\|decode" routers/*.py` → 无新增解码；router 只收 `AuthContext` | ✅ |
+| 5 | 切分入口签名冻结 | B5 的 9 条 AST 守卫**本批未改**、未被绕过（新增测试全部经流水线调用） | ✅ |
+| 6 | 删除某版本全部 chunk 必须**一条** DELETE（B13） | 本批未改 `delete_chunks`；B6 的守卫仍在 | ✅ |
+| 7 | 读回 chunk 顺序只能信 `metadata_json["ordinal"]` | `list_published_chunk_refs` / `list_indexable_chunks` 的排序未改 | ✅ |
+| 8 | 警告固定在 `metadata_json["warnings"]` | 本批未改警告写入；`TestVersionVisibility` 通过 `GET /ingestion-jobs/{id}` 读状态 | ✅ |
+| 9 | 每个新模块必须登记**生产调用点** | 第二节的调用点表；`services/retrieval_access.py` → `routers/retrieval.py:151`；`tests/retrieval_fixtures.py` → 3 个测试文件 | ✅（手工核对，无守卫，见盲区 1） |
+| 10 | 隔离测试数据层与检索层**各写一套** | 数据层：`test_tenant_isolation.py` 既有 14 条；检索层：`test_retrieval_isolation.py` 23 条；两套**同时存在**于收工状态 | ✅ |
+| 11 | 拍板「无权限=零命中 / 缺 filter=报错」并显式标注 + 记 `[D-12]` | `retrieval_access.py` 模块 docstring「两个方向性判断」段 + 台账 `[D-12]` | ✅ |
+
+═══ 十、遗留问题 ═══
+
+1. **接线缺少 AST 守卫**（盲区 1）。建议 B8 的第一件事就是补：
+   断言 `routers/retrieval.py` 引用 `retrieve_chunk_items` 与 `build_chunk_access_filter`、
+   断言 `search_chunk_index` 的 `access` 无默认值、断言路由层不 import `jwt`。
+   **本批未补的理由（诚实说明）**：本批门禁已跑完，而按踩坑 A5 / A6，
+   **本轮的环境删除配额已耗尽**（守卫已报过 1542/50），此时新增测试并重跑全量
+   有制造"假红"的实际风险，会把一条真绿记录污染成红。故按纪律**不在本轮加测试**。
+
+2. **索引重建的并发竞态未测**（盲区 5）。单机 SQLite 上难构造。
+
+3. **F2（评测口径失真）仍未修**：`scripts/evaluate_retrieval_metrics.py:85` 的
+   `is_relevant` 仍按 `intent` 判相关，报出的 recall@1 仍不是文档级指标。
+   本批**未扩大**该问题（新增代码无任何 recall 类命名），但**未修复**。
+   `README.md` 的 F2 口径说明已在本批第 0 节标注。
+
+4. **F4 部分残留**：README badge 数字与架构图口径。
+   本批已加第 0 节「两条检索路径：哪条是真的」表格，但 badge 里的测试数
+   是否已同步到 884 **未在本批核对**（badge 由文档维护，不在代码门禁内）。
+
+5. **F5（worker 无进程编排）仍未修**：`main.py` 的 lifespan 不启动 worker，
+   `docker-compose.yml` 仍只有 `api` / `postgres` / `redis` 三个服务
+   → **容器化部署后队列仍然没人消费**。B6 已登记，本批范围外。
+
+6. **真实引擎（Postgres / Redis / 真 embedding）未复验**（盲区 4），归入阶段 7 门禁。
+
+7. `data/rag_metadata.db` 仍不存在 → alembic 0001 仍未落到开发库（与 B1~B6 相同）。
+
+8. ★ **索引回滚这一组导出资产需要处置**（本批新发现，见第八节盲区第 7 条）。
+   建议 B8 做三选一并在台账登记：
+   ① 补测试（成本最低：`rollback_index` 只改指针，用现有 fixture 就能测）；
+   ② 补 API 出口（若要给运维留后手，需要一个 `index:rebuild` 级权限的新端点）；
+   ③ 明确标记为「预留能力，不在本次验收范围」并**说明为什么** ——
+      不能既不测、不用、也不声明，那等于让"回滚已实现"继续误导下一个人。
+   **本批不做处置的理由**：不在 4.1/4.2/4.3 范围内（不扩大批次范围），
+   且本轮环境删除配额已耗尽（盲区 1 的理由同上）。
+
+═══ 十一、结论 ═══
+
+**任务级结论：4.1 / 4.2 / 4.3 三项全部 YES。**
+
+  * 4.1 —— 九项权限枚举逐项对齐；判定顺序六段逐段落地；
+    三个方向性判断（零命中 / 报错 / ACL 缺省方向）全部显式标注；
+    `tenant_id` 在**结构上**无法从请求体传入。
+  * 4.2 —— 发布与索引重建**分开授权且集合不同**；写操作走既有 `audit_events` 原语；
+    计划 4.2 的六条隔离要求**逐条有对应用例**（表格见第四节第 5 条）；
+    A 轨保留且三处标注。
+  * 4.3 —— 过滤器只有一个生产构造点；`/search` 已切到 B 轨；
+    规程最低要求 5 条**逐条命中**；判决性用例（预过滤 / 正向对照）在位。
+
+**本批同时交付两项计划外成果**：
+  ① 修掉 B6 留下的**多租户索引互相覆盖**真缺陷（B14），红/绿双份证据保留；
+  ② 把「无权限对查询者 = 零命中」从口头原则变成**可观测断言**
+     （`visible_chunk_count` + 23 条隔离用例 + `tenant_count`）。
+
+**必须同时声明的三处未完全验证 / 未覆盖**（上文已详述）：
+  ① 门禁的 warning 条数属**间接验证**（stdout 汇总行被环境守卫吞掉，改用 collect-only 探针）；
+  ② 本批接线**没有 AST 守卫**，生产调用点是手工 grep 核对的（盲区 1 / 遗留 1）；
+  ③ **新发现**：索引回滚这一组导出资产（6 个符号）零调用点、零测试，
+     导致计划 7.4 的「索引原子切换 / 回滚通过」当前**无法判定**（盲区 7 / 遗留 8）。
+
+**没有**把未验证的东西写成"已完成"。**没有**带着红灯进入本审查
+（JUnit XML：884 tests / 0 failures / 0 errors）。
+**没有**在调用侧绕过检索缺陷 —— 修的是根因，`search_chunk_index` 的契约一行未改。
+
+（结束）
