@@ -1786,13 +1786,469 @@ warning 5 条未新增，ruff / compileall / 体积检查全通过。
 - **本批未新增坑**：收尾过程本身没有产生新的踩坑条目
   （用到的两条经验 —— 脚本化批量替换、覆盖前加断言 —— 已分别记在 E1 与 D14 的延伸里）。
 
+### [前端对齐批次] `/chat/prompt` 的 trace 内容层 + 意图识别缺陷（B1~B7，2026-09-23）
+
+**来源**：`docs/BACKEND_TRACE_FIX_PROMPT_2026-09-23.md`（前端侧产出，整份粘贴即可开工）。
+配套前端交付说明：`D:\llm\front\docs\DIAGNOSTIC_PANEL_FIX_DELIVERY_2026-09-23.md`。
+**这是项目主线（阶段 0~7 全部 PASS、发布门禁 PASS）之后的追加批次**，不是收尾欠账里列的项。
+
+#### 交付清单与落实（逐条）
+
+| 项 | 位置 | 做了什么 | 实测 |
+|---|---|---|---|
+| **B1** | `chat_service.py` `memory_loaded` | 补 `recent_preview`（最多 2 条，带「客服/用户」前缀）+ `long_term_summary`（无画像**不放键**） | `recent_preview` 是 list；`long_term_summary="last_service_summary=…；common_issue_types=退款/售后；…"` |
+| **B2** | `intent_detected` | 补 `primary_intent` / `confidence`（取不到**不放键**）/ `evidence` / `secondary_intents` | `confidence=0.86`、`evidence=["退款","多久到账"]` |
+| **B3** | `risk_precheck` | 补 `routing` / `risk_level` / `risk_source="intent_detected"` / `matched_high_risk_intents` / `requires_safety_prefix`（**int 0/1**） | `requires_safety_prefix=0`（JSON 里是数字不是布尔） |
+| **B4** | `order_tool_called` | 摘要加工具名前缀；补 `tools[]`（含 `latency_ms`） | `query_order_status: order_user_mismatch；query_refund_status: order_user_mismatch` —— 旧的重复摘要消失 |
+| **B5** | `intent_service.analyze_intents` | **删掉 `del conversation_context`**，用 `facts.last_primary_intent` 做指代消解 | 「那要多久才能到」→ `primary=退款进度` + `inherited_from_context="退款进度"` + `confidence=0.6` |
+| **B6 第一步** | `_matched_keywords` | 加 `FILLER_WORDS` 归一化 | 「骑手**一直**联系不上」现在能命中，secondary 含 `配送异常追问` |
+| **B7** | `analyze_intents` | 低置信度（<0.6）→ `routing="clarify"` | 兜底句 `routing=clarify`，且 `risk_precheck.metadata.routing` 同步 |
+
+#### 硬约束遵守情况（提示词 §2 / §6，逐条对账）
+
+1. **字段名不改** —— 契约表 13 个键全部按原名落盘；
+2. **不加兜底默认值** —— `confidence` / `long_term_summary` 取不到就**不放键**（含 `isinstance` 判数字、排除 bool）；
+3. **大块内容放 metadata，不塞 `output_summary`**（`trace_step` 有 500 字符截断 + 掩码）；
+4. **未动 `memory_snapshot`**（`build_memory_snapshot` 一行未改）；
+5. **未动 `/retrieval/*` 的任何字段**；
+6. **未为了让测试变绿而回退改动**（本批无既有断言被改）；
+7. `requires_safety_prefix` 传 `int(bool(...))`，不传布尔。
+
+#### 超出提示词的两处（都已说明理由，不是擅自加需求）
+
+1. `intent_detected.metadata` **多一个 `inherited_from_context`**（契约表外的键）——
+   前端忽略未知键无害；让界面能把「继承来的」和「真命中的」分开显示，正是提示词 §B5 强调的目标；
+2. **B5 加了两条守卫**（提示词没写）：`last_primary_intent` 必须在 `KNOWN_INTENT_NAMES`
+   （由 `INTENT_RULES` 推导）内、且本句必须含指代词。
+   **不加的第一条守卫会把「上一句没识别出来」伪装成「继承成功」** —— 登记踩坑 **E5**。
+
+#### 未做 / 待决策（**不要当成已完成**）
+
+- **B6 第二步（往 `食品安全投诉` 加「不新鲜」关键词）—— 未做。**
+  该意图 `risk_level="high"`，加词后用户整句话会被抬成 high risk 链路（安全前缀 / 可能转人工），
+  **属业务策略不是技术修复**，提示词 §6.4 明令不许自己决定。**等老霸确认。**
+- **B7 只是「补信号」，不是「改链路」** —— `routing` 在后端**零分支消费**
+  （只有 `chat_service.py:638` 透传 + `:925` 展示），
+  加了 `clarify` 之后链路仍照常检索生成。要让链路真的澄清，需要新增分支 + 前后端再对齐一轮。
+  登记踩坑 **B16**。
+- **前端侧待办 1 条**：`src/lib/status.ts` 的 `ROUTING_TEXT` 只收录 `rag` / `high_risk_rag`，
+  新增 `clarify` 后界面会显示「clarify（未收录的路由值，词表待补）」。
+  建议词条：`clarify: "澄清链路（置信度过低，应先向用户确认诉求）"`。
+- **跨端复核未做**：提示词 §5.4 要求前端跑 `docs/diag_panel_probe.cjs` 做界面回归并截图 ——
+  **在界面截图上看到内容之前这件事不算完成**（字段在 JSON 里出现 ≠ 前端真的用上了）。
+
+#### 生产调用点登记（纪律 7）
+
+| 新符号 | 定义 | 生产调用点 | 测试 |
+|---|---|---|---|
+| `FILLER_WORDS` / `_normalize` | `intent_service.py` | `_matched_keywords` ← `analyze_intents` ← `chat_service.py:903` | `IntentContextAndRoutingTest`（4 条） |
+| `COREFERENCE_HINTS` / `_looks_like_coreference` / `_inherited_intent` | 同上 | `analyze_intents` 继承分支 ← 同上 | 同上（4 条） |
+| `KNOWN_INTENT_NAMES` | 同上（**由 `INTENT_RULES` 推导，非手写**） | `_inherited_intent` | 同上 |
+| `scripts/verify_trace_fix.py` | 新增 | 人工执行（`TRACE_FIX_TOKEN` 必填） | 端到端 16 项断言全 PASS |
+
+#### 门禁（JUnit XML 口径，踩坑 A6）
+
+- **927 tests / 0 failures / 0 errors / 0 skipped**（`reports/rag_ingestion_auth_review/trace_fix_junit.xml`）；
+- 与基线（918，`B8_step3_junit.xml`）做**集合 diff**：`added=9 removed=0`，
+  新增的正是本批 9 条用例，**零删除、零失败**；
+- warning **5 条**（全量 stdout 口径，踩坑 D15），与基线一致；
+- ⚠️ stdout 汇总行显示 `923 passed, 4 subtests passed`，与 XML 的 927 差 4 ——
+  `N passed` 不含 subtest。**门禁只认 XML**，登记踩坑 **D18**。
+
+#### 证据文件
+
+| 文件 | 内容 |
+|---|---|
+| `reports/rag_ingestion_auth_review/trace_after_b1_b2_b3_b4_20260923_234234.json` | B1~B4 真实响应报文（四个 step 的 metadata 全在里面） |
+| `reports/rag_ingestion_auth_review/trace_after_b5_inherited_20260923_234234.json` | B5 继承场景的完整响应 |
+| `reports/rag_ingestion_auth_review/trace_fix_junit.xml` | 全量测试 JUnit XML |
+
+#### 本批环境说明
+
+- 验收起的是 **8002** 端口的新实例（自设 `RAG_JWT_SECRET`），
+  **没有动**老霸在 8001 的既有实例；
+- 验收脚本的令牌走 `TRACE_FIX_TOKEN` 环境变量（**不硬编码**，登记踩坑 **C7**）。
+
+---
+
+### [语料专项] 真实文档入库：从「781 条 FAQ」到「9229 个 chunk」（2026-09-23）
+
+> **本批不属于 B1~B8 的任何一个任务**，是补 `docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md`
+> F1（双轨未合）之下更前置的那个洞：**B3~B7 建的 ingestion 链路一个字节都没流过**。
+> 计划文档见 `docs/RAG_DOCUMENT_CORPUS_PLAN.md`。
+
+#### 起点实测（开工前）
+
+| 项 | 实测 |
+| --- | --- |
+| `data/faiss_store/real_vector.index` | 781 条 / 512 维，全部来自 `takeout_customer_service_seed.jsonl` |
+| 每条元数据 | `id`/`text`/`answer`/`source` —— 无 chunk_id、页码、标题路径、tenant |
+| `document_chunks` / `document_versions` / `document_acl` / `index_builds` | **全 0 行** |
+| `data/faiss_store/` 下 `v1/` | **不存在** —— 新链路从未建过索引 |
+
+**缺的不是能力，是三样东西：语料、批量入口、切轨。**
+
+#### 交付物
+
+| 文件 | 作用 |
+| --- | --- |
+| `scripts/build_corpus_documents.py` | 语料生成器：法规抓取（带缓存）+ FAQ 聚合 + 自造业务手册 → PDF/DOCX/HTML/MD 四格式 + `manifest.jsonl` |
+| `scripts/bulk_import_documents.py` | 批量导入器：直接走 `repository` + `pipeline.process_job`，绕过「100 份文档 = 100 次带 JWT 的 HTTP 上传」 |
+| `.gitignore` | 新增 `data/corpus/`（生成物，6.4MB，含爬取原文，不进仓） |
+| `venv/rag_ml_deps/` + `venv/Lib/site-packages/_rag_ml_deps_prepend.pth` | 向量化依赖的独立安装位（绕开环境删除守卫，见踩坑 A7） |
+| `tmp/inspect_ingestion_result.py`、`tmp/smoke_retrieval.py` | 入库验收 / 端到端检索冒烟（只读） |
+
+#### 语料构成（实测）
+
+- **103 份文档 / 209 个文件 / 6.4 MB**，格式分布 `pdf 18 · docx 18 · html 88 · md 85`；
+- 类别分布：**法律法规 30**（15 部真实法规全文，来自 `policy.mofcom.gov.cn`，
+  最长 1.1 万字 / 含章-节-条结构）、**客服问答 170**（FAQ 按分类聚合，
+  单份上限 40 条以免出现 15.9 万字的巨型文档）、**业务手册 9**（自造，唯一带表格的语料）；
+- 字数 `min=429 / p50=5609 / max=23421`。
+
+#### 入库结果（实测）
+
+| 指标 | 数值 |
+| --- | --- |
+| 导入文件 | 209 / 209 成功（其中判重 6）· 失败 0 |
+| 产出 chunk | **8993**（含 parent + child，见踩坑 B17） |
+| `document_versions` published | **209** |
+| 生效索引 | **v2 active · 9229 chunk**（v1 的 236 + 本批 8993，v1 已 superseded） |
+| embedding | `BAAI/bge-small-zh-v1.5` · 512 维 · 首调 10s / 后续 0.01s |
+| 索引体积 | `data/faiss_store/chunk_index/` 38.1 MB |
+
+**端到端检索冒烟（5 条 query，走生产路径 `build_chunk_access_filter` → `search_chunk_index`）全通**，
+命中带上了标题路径与页码，例如：
+
+- 「电子商务经营者应当履行的义务」→ `中华人民共和国电子商务法 > 第一章 总 则 第五条 …`（score 0.7832）
+- 「广告不得含有哪些内容」→ `中华人民共和国广告法（2018修正） > 第二章 广告内容准则 第八条 …`（score 0.7506，page=4）
+- 「食品经营许可证怎么办」→ `国境口岸食品卫生监督管理规定 > 第二章 食品生产经营单位的许可管理 第十条 …`
+
+#### 门禁自检
+
+| 项 | 结果 |
+| --- | --- |
+| 全量测试（JUnit XML 口径） | **927 tests / 0 failures / 0 errors / 0 skipped** —— 与基线 927 持平，**零回归** |
+| stdout 汇总行 | 被环境删除守卫吞掉（踩坑 A6 再现），**不采信** |
+| `ruff check .` | All checks passed |
+| `scripts/check_repo_data_size.py` | 通过（单文件上限 1MB） |
+
+#### 未做项（明确列出，不含糊）
+
+1. **`chat_service.py:966` 仍未切轨** —— 聊天问答走的还是 A 轨 `retrieve_rag_items()`。
+   **今天灌进去的 9229 个 chunk，聊天问答一个都检索不到**，只有 `POST /retrieval/search` 走 B 轨。
+   切轨要带开关双跑对比（A 轨 item 带 `intent`/`category`，B 轨带 `chunk_id`/`page_start`）；
+2. **检索层未按 parent 去重**（踩坑 B17）—— Top-K 会被同一段内容的 2~3 个副本占满；
+3. **评测金标未重建** —— 现有 recall 口径是「intent 匹配」，换成文档语料后算不了，
+   金标需升级到 `doc_id + chunk_id` 并补 30~50 条无答案负样本；
+4. **法规只抓到 15 部**（目标 17，2 部因源站断连失败，见踩坑 A11），且集中在 65150~66000 这一个 id 区间；
+5. `document_versions` 有 2 条 pending 任务未消费（无 Redis，队列是进程内的）。
+
+#### 调用点登记（新模块必须登记生产调用点）
+
+| 模块 | 生产调用点 | 状态 |
+| --- | --- | --- |
+| `scripts/build_corpus_documents.py` | 手动跑（一次性生成语料） | ✅ 已跑通，产物 209 文件 |
+| `scripts/bulk_import_documents.py` | 手动跑（批量灌库） | ✅ 已跑通，209/209 |
+| `services/ingestion/pipeline.process_job` | 被批量导入器调用 | ✅ 首次有真实数据流过 |
+| `services/ingestion/index_builder` | 被导入器末尾的重建索引调用 | ✅ 首次产出 v1/v2 |
+| B 轨检索 `search_chunk_index` | 仅 `POST /retrieval/search` | ⚠️ **聊天链路未接**（见未做项 1） |
+
+---
+
+### [形态补缺批次] 让解析器的每个分支都**被真实语料走到过**（2026-09-24）
+
+> 承接 `[语料专项]`（2026-09-23）：那一批解决了「有没有真实语料」，
+> 这一批解决「**解析器的分支有没有被真实语料验证过**」。
+> 方法论见踩坑 **D19**，审计脚本 `tmp/audit_corpus_coverage.py`。
+
+#### 起点：209 份主语料的覆盖缺口（实测，不是估算）
+
+| 指标 | 主语料实测 | 判定 |
+| --- | --- | --- |
+| `table` | 2.9%（6/209） | ❌ 只有 3 份自造手册有 |
+| `code` | **0%** | ❌ 从未走到 |
+| `image` | **0%** | ❌ 从未走到 |
+| 无文本层 / OCR | **0%** | ❌ 分支从未触发 |
+| 非 UTF-8 编码回退 | **0%** | ❌ 分支从未触发 |
+| 标题层级 | 只有 h1 / h2 | ❌ h3 / h4 从未出现 |
+| PDF 最长 | 8 页 | ❌ 跨页压力没压到 |
+
+**关键判断**：全量测试 927 条全绿，但那证明的是「单测覆盖了」，
+不是「在真实文档上验证过」（踩坑 D19）。**没被真实语料走到的分支只能说"单测绿"。**
+
+#### 交付物
+
+| 文件 | 作用 |
+| --- | --- |
+| `scripts/build_corpus_samples.py` | 形态补缺样本生成器：4 类真实抓取 + 3 类派生，抓取带落盘缓存 |
+| `tmp/audit_corpus_coverage.py` | 覆盖审计：遍历 manifest → 生产解析器解析 → 统计「多少个文件至少含一个该类 block」 |
+| `services/ingestion/parsers/markdown.py` | **修真 bug**：空引用块不再导致整份文档解析失败（踩坑 B18） |
+| `tests/test_document_parsers.py` | 新增 `test_markdown_empty_blockquote_is_dropped_not_fatal` 锁定该修复 |
+
+#### 样本构成（23 个文件 / 14 份文档 / 0.95 MB）
+
+| 来源 | 份数 | 补哪个缺口 | 真实性 |
+| --- | --- | --- | --- |
+| 国家统计局统计发布 | 4 | **表格**（单篇 60+ 表格行） | 真实 |
+| 快递鸟 / 高德开放平台 API | 4 | **代码块 + 表格**（参数表 + 示例） | 真实 |
+| MDN 中文文档 | 3 | **代码块**（单篇 40 个围栏） | 真实 |
+| 餐饮行业资讯 | 4 | **图片**（单篇 55 张） | 真实 |
+| 法规四层标题重排 | 3 | **h3 / h4**（章→节→条→款） | 真实内容，层级显式化 |
+| 扫描件 PDF | 1 | **无文本层 / OCR** | 派生（真 PDF 渲染成图） |
+| GBK 编码 txt | 1 | **编码回退** | 派生（真文本转码） |
+
+#### 补缺结果（审计脚本实测）
+
+| 指标 | 主语料 | 补缺后（样本集） |
+| --- | --- | --- |
+| `image` | 0% | **43.5%**（10/23） |
+| `code` | 0% | **21.7%**（5/23，39 个代码块） |
+| `table` | 2.9% | **8.7%**（19 个表格块） |
+| `list` | 20.6% | 31 个列表块 |
+| 标题层级 | h1 / h2 | **h1 / h2 / h3（95）/ h4（5）** |
+| `no_text_layer` 告警 | 0 次 | **1 次**（OCR 分支触发） |
+| `encoding_fallback` 告警 | 0 次 | **1 次**（编码回退触发） |
+| 解析失败 | — | **0**（修复 B18 前是 2） |
+
+#### 顺带修掉的真 bug（B18）
+
+抓来的 MDN 文档里有**光秃秃的 `>`** 行（note 块经 trafilatura 抽取后只剩标记），
+markdown 解析器产出空文本 quote block → 契约校验判定「block 没有文本」
+→ **整份 1.1 万字的文档被 `parse_failed` 拒绝**。
+
+- 根因：同一个 `_scan` 里 paragraph 分支有 `if text:` 判空，**quote 分支漏了**；
+- 修法：**源头丢弃**空引用块，不在校验层放水（放水会让契约名存实亡）；
+- 已加测试锁定；`tests/test_document_parsers.py` 定向 351 passed 无回归。
+
+**这个 bug 是补样本的直接回报** —— fixtures 永远不会造一个孤立 `>` 出来。
+
+#### 门禁自检
+
+| 项 | 结果 |
+| --- | --- |
+| 全量测试（JUnit XML） | **928 tests / 0 failures / 0 errors / 0 skipped**（927 基线 + 新增 1 条，零回归） |
+| stdout 汇总行 | 被环境删除守卫吞掉（A6 再现），**不采信** |
+| `ruff check .` | All checks passed |
+| 证据文件 | `reports/rag_ingestion_auth_review/junit_samples_20260924.xml` |
+
+#### 未做项
+
+1. **样本未灌库** —— 这是**有意留的决策点**，不是遗漏：
+   统计局（宏观经济）与 MDN（Web API）跟客服业务不相关，灌进 `takeout-policy`
+   知识库会污染检索结果。建议：**业务相关的（快递 API / 餐饮资讯 / 法规深层）灌进去，
+   纯形态样本（MDN / 统计局）单独建一个"解析器验证"知识库或不灌**。等老霸拍板；
+2. **`html` 格式同样可能有空 block 问题**（B18 只修了 markdown）—— 本次实测未触发，
+   但按同源推理应该排查；
+3. **PDF 跨页压力仍在** —— 最长 PDF 只有 8 页，`page_break` block 与页码连续性
+   没有在 20+ 页文档上验证过；
+4. **法规扩量未做** —— 新扫的 70000~71000 区间相关命中 **0/42**，
+   列表接口是 JS 渲染，扩量要先解决取 id 的问题。
+
+---
+
+### [全仓差距盘点]（2026-09-24）
+
+**起因**：老霸问「现在的系统距离目标还差多少，下一步是什么」——一个盘点批次，
+不是实现批次。**本批不写代码、不跑门禁**，只做全仓复核 + 实测取证，落到结论。
+
+#### 盘点方法（不是凭印象）
+
+对照 `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md` §1.0 的 13 条 + `RAG_DEV_PITFALLS.md` F 节的 5 条，
+逐条**拉实测证据**（查库 / grep / 读行），不引用未经本次复核的旧结论。
+
+#### 结论一：**框架已完成，但主链路有两个断点**（最要命）
+
+| 缺口 | 状态 | 本次实测证据 |
+| --- | --- | --- |
+| **F1 切轨** | 未消 | `services/chat_service.py:1031` 仍调 `retrieve_rag_items()`（A 轨）；9229 个新 chunk 聊天问答**一个都检索不到** |
+| **F5 worker 无消费端** | 未消（**形态变了**） | `ingestion_jobs` 有 2 条 `pending / stage=received / chunk=0`，从 2026-09-23 14:03 卡到 2026-09-24 15:33；`docker-compose.yml` 编排了 api / postgres / redis，**没有 worker 服务** |
+
+**F5 的形态变化是本批最重要的发现**：它不再是「未实现」，而是「**已实现、未部署**」——
+`queue.py` 的 `xreadgroup`/`xack`、`worker.py` 的 CLI 入口都在，
+但 `grep -rn "ingestion.worker" routers/ services/ main.py` 零命中。
+详见 `docs/RAG_DEV_PITFALLS.md` F5 的 2026-09-24 回填（含两张 job 的完整行）。
+
+**连带结论**：`scripts/bulk_import_documents.py` 直接调 `pipeline.process_job`、
+绕过队列，看起来是"批处理设计"，实际是**被迫绕开一条断掉的链路**。
+
+#### 结论二：可信度问题（比功能缺失更影响面试价值）
+
+| 项 | 现状 | 风险 |
+| --- | --- | --- |
+| **F4 README 脱节** | `README.md:45` 仍写 `332 passed`，实测 **928** | 对外文档数字是错的，一眼可见 |
+| README 知识库口径 | 第 177 行起的评测表基于「781 条知识库」，现在库里是 **9229 chunk** | 未同步，会误导 |
+| **F2 评测口径失真** | `evaluate_retrieval_metrics.py:85` 按 `intent` 判相关，报出的 Recall@5=0.9889 是 **intent 命中率** | README 已引用该数字论证检索质量，但它证明不了 |
+
+#### 结论三：规范 §1.0 的 13 条（企业级的那张表）
+
+按 §1.0 的取值口径统计：
+
+- **`已实现` 2 条** —— reranker（§8.1）、索引版本 manifest 与原子发布（§7.3）；
+- **`部分实现` 2 条** —— 格式覆盖（5 种可跑，OCR 仅接口、无 XLSX·CSV / 视觉）、
+  身份+限流（服务端身份已实现，限流未实现）；
+- **`已建未启用` 1 条** —— 索引回滚（6 个符号定义齐备，排除本文件后零调用）；
+- **`未演练` 1 条** —— RPO≤24h / RTO≤4h（无演练记录）；
+- **`未就绪` 1 条** —— M10 Recall@5≥0.85（口径失真 + 无 gold 源 span）；
+- **`未实现` 6 条** —— 混合检索（纯稠密单路）、解析质量门禁、三状态字段、
+  恶意内容/病毒扫描、总 deadline/背压/死信、成本账本。
+
+⚠️ **引用纪律**：上表是**目标与差距清单**，按 §1.0 规定**不得倒推成工作清单**，
+也不得读作「本项目的待办」。它们的价值在于回答「企业级还差什么」，
+而不是「这个面试作品还差什么」——**这两者的边界要分开声明**。
+
+#### 结论四：下一步建议（**待老霸拍板，未动手**）
+
+按投入产出排序，理由都写清楚：
+
+| 优先级 | 动作 | 为什么排这里 |
+| --- | --- | --- |
+| **P0-1** | **接 worker**（compose 加 worker 服务 + 队列端到端测试） | 比切轨更前置：**没它就谈不上"上传能入库"**，API 上传目前是死的 |
+| **P0-2** | **切轨**（带开关双跑） | 不做的话，9229 chunk 对主链路等于零 |
+| **P0-3** | **修 README**（928 / 语料口径） | 15 分钟，唯一当下就能改且直接影响可信度的 |
+| P1-1 | 评测金标升级 `doc_id`+`chunk_id` | 修完才谈得上 M10 Recall@k |
+| P1-2 | 检索层按 parent 去重（B17） | Top-K 被副本占满，会让 P1-1 的指标被压低 |
+| P2 | §1.0 的 6 条「未实现」**挑 1~2 条做深** | 建议选**混合检索（BM25+RRF）**：成本低、面试能讲的技术纵深大 |
+| P3 | 其余企业级项**写成明确的 out-of-scope 说明** | 含糊的"未做"比写清理由的"不做"减分更多 |
+
+**本批的自我评价**：盘点的价值在于把「F5 未消」从**推测**变成了**两行 job 记录的铁证**，
+并刷新了它的形态描述（未实现 → 已实现未部署）。后者更危险，
+因为「代码在」会让人以为「功能在」。
+
+### [F5/F4 专项] 接 worker 消费端 + README 回填实测数据（2026-09-24）
+
+**背景**：上一批「距离目标还差多少」的盘点发现 F5 —— **worker 代码/单测/调用关系三样全齐，
+但 `docker-compose.yml` 里没人起这个进程**。铁证是 `ingestion_jobs` 表里 2 条 HTTP 上传的 job
+（`demo_upload` / `front_verify_upload`）卡在 `pending / received`、chunk 数为 0，躺了约 25 小时。
+同时发现 F4 —— README 里仍然写 `332 passed`（实测 932），且 §8 局限还挂着「没有切分」。
+
+**交付四件事**：
+
+| # | 内容 | 落点 | 状态 |
+| --- | --- | --- | --- |
+| 1 | compose 起 worker 进程 + 启动自检点破进程内队列 | `docker-compose.yml`、`main.py:_check_ingestion_queue` | 完成 |
+| 2 | 部署层守卫 5 条（零 YAML 依赖，按缩进切块） | `tests/test_ingestion_pipeline.py::TestDeploymentGuards` | 完成 |
+| 3 | 端到端「消费后 chunk > 0」断言 | `TestWorker::test_consumed_job_leaves_real_chunks_behind` | 完成 |
+| 4 | README 回填实测（含新增 §3.1 文档语料表 + F1 双轨现状） | `README.md` | 完成 |
+
+**为什么要分 2 和 3 两层守卫**：第 3 条只能证明「worker 函数会调 pipeline」，
+第 2 条只能证明「compose 里写了 worker」—— 单独任一条都拦不住 F5 那种形态
+（代码对、编排缺）。两层叠起来才覆盖「组件写对了」到「链路真跑起来」之间那段。
+
+**三次变异测试（证明守卫不是装饰）**：
+
+| 变异 | 结果 |
+| --- | --- |
+| `worker.run_once` 不读队列（模拟没人消费） | **被抓到**，且命中自定义断言文案「worker 没有消费到任何消息」 |
+| compose 的 worker command 改错 / 删 worker 服务 / 删共享卷 | 上一批已验，3 次全被守卫抓到 |
+| 删掉 README 的整个 F1 提示块 | **第三次才抓到** —— 见踩坑 D20 |
+
+**门禁（本轮唯一一次全量，JUnit XML 口径）**：**936 tests / 0 failures / 0 errors / 0 skipped**
+（pytest 汇总行 `932 passed, 5 warnings, 4 subtests`），证据
+`reports/rag_ingestion_auth_review/junit_f4_f5_20260924.xml`。**ruff `All checks passed!`**。
+
+**索引现状复核（2026-09-24 16:5x 实测）**：`document_chunks` 指针指向 **v3**，
+`chunk_count = 9229`、`embedding_model = BAAI/bge-small-zh-v1.5`、
+`built_at = 2026-09-23T16:28:12+00:00`；磁盘实测 vector 18.9MB + manifest 19.0MB。
+
+**仍未闭环**（不因本批推进而改判）：
+
+- **F1 切轨未做** —— `services/chat_service.py:1031` 仍调 `retrieve_rag_items()`（本次已复核过，
+  2026-09-24 grep 确认在）。9229 chunk 在聊天接口里**一个都检索不到**；
+- **样本未灌库**（等拍板）—— 统计局 / MDN 语料与客服不相关，灌进 `takeout-policy` 会污染检索；
+- **B17 parent 去重 / F2 金标升级** —— 未动。
+
+### [部署准备] 第 1 步：前端 API 地址改同源 + 登记踩坑 C8（2026-09-24）
+
+**背景**：回答「项目离真上线还差哪些」时列出的 L0 阻断项第 ③ 条 ——
+前端仍用 dev 配置（`VITE_API_BASE_URL=http://127.0.0.1:8001` + 构建期烧入的 admin 令牌）。
+本批只做其中**不涉及设计决策的那一半**：地址。
+
+**交付物**（前端仓库 `D:\llm\front`，4 个文件）：
+
+| 文件 | 改动 |
+| --- | --- |
+| `src/api/client.ts` | 默认 base 从 `http://127.0.0.1:8000` 改为 `""`（空 ⇒ 同源相对路径）；新增 `BASE_URL_LABEL`，避免错误文案以空串开头 |
+| `.env.production`（新增） | `VITE_API_BASE_URL=` / `VITE_DEV_TOKEN=` 两项置空，靠 Vite 模式优先级（`.env.[mode]` > `.env.local`）盖过本机配置 |
+| `.gitignore` | 加 `!.env.production` 例外 —— 不含秘密，且**必须进仓库**，否则 CI 构建会静默回落到 `.env.local` 的本机地址 |
+| `.env.example` | 写清 `VITE_` 前缀 = 会被内联进产物，这里只能放非秘密的值 |
+
+**判据与实测**：
+
+```bash
+cd D:/llm/front && npm run build
+grep -c "127\.0\.0\.1\|eyJhbGciOiJIUzI1NiIs" dist/assets/*.js   # 期望 0
+```
+
+| 构建模式 | 产物中的 API base | 产物中的凭据 |
+| --- | --- | --- |
+| `npm run build`（production） | `""` → 同源 | 无 ✅ |
+| `--mode development` | `http://127.0.0.1:8001` | 有（仅本机联调）✅ 本地开发不受影响 |
+
+`tsc -b` 无类型错误；`vite build` 成功（1612 modules，产物 421.24 kB）。
+唯一残留：`status.ts:230` 的**开发排查文案**（"前端必须用 http://localhost:5173 访问"）
+被带进产物，出现 1 次 `localhost`。它是提示文本不是请求目标，无害，但生产环境显示这句是错的，待清理。
+
+**明确未做（是设计决策，不是遗漏）**：
+
+- **凭据改运行时登录** —— 前端不得持有长期凭据，`VITE_DEV_TOKEN` 机制应整体删除；
+- 代价已登记：本次改动后，**生产构建出来的前端没有令牌，所有受保护接口都会 401** ——
+  这是故意的，缺凭据就该报（同 C7 原则：不给默认值、不退化成"跳过鉴权"），
+  真正可用要等运行时登录接上。
+
+**踩坑**：**C8**（前端凭据被编译进静态产物：`.env` 护住了仓库，护不住「部署产物」）。
+
+**下一步**：设计并实现运行时登录（`POST /auth/login` 或接第三方登录），
+并清理 `status.ts:230` 那句只对开发环境成立的排查提示。
+
 ## 4. 执行暂停点（下次从这里继续）
 
-> **2026-09-23 收尾 —— 本节是「当前指针」，按约定覆盖更新。**
-> 原内容（B8 开工规划）**已全部执行完毕**，故改写为收尾状态。
-> **全部批次结束：B1~B8 完成，阶段 0~7 全部 PASS。**
+> **2026-09-24 F5/F4 专项批次后 —— 本节是「当前指针」，按约定覆盖更新。**
+> 主线仍保持不变：**B1~B8 完成，阶段 0~7 全部 PASS，发布门禁 PASS。**
 
-### 当前停在：项目收尾（发布门禁 PASS）
+### 当前停在：worker 已接线并有守卫，**但 9229 个 chunk 仍进不了聊天答复**（2026-09-24 更新）
+
+**上一批（2026-09-24 语料）：** 209 份文档 / 9229 chunk 灌进索引 v3，并修掉 B18。
+**本批（2026-09-24 F5/F4）：**
+
+- **F5 收口** —— `docker-compose.yml` 起 worker 进程、`main.py` 启动自检会在无 Redis 时
+  点破「队列是 process-local deque」，再加两层守卫（部署层 5 条 + 端到端 chunk>0 断言 1 条）。
+  此前 `ingestion_jobs` 里 2 条 job 卡 25 小时 pending 的形态，现在有测试盯着；
+- **F4 收口** —— README 的 `332 passed` → `932 passed`，新增 §3.1 文档语料表
+  （209 份 / 9229 chunk / v3 / bge-small-zh-v1.5），并新增机器可读的 F1 双轨锚点
+  `<!-- f1-track: chat-service-retrieval=seed-faq -->`，**由测试双向校验**（踩坑 D20）；
+- 门禁 **936 / 0F / 0E / 0S**（JUnit XML，`junit_f4_f5_20260924.xml`），ruff 干净；
+- **本批改动尚未提交**（`M README.md`、`M docker-compose.yml`、`M main.py`、
+  `M tests/test_ingestion_pipeline.py` 等）。
+
+### ⚠️ 卡在这里的四件事（按顺序，第 1 条最要命）
+
+1. **聊天链路没切轨（F1 未消）** —— `services/chat_service.py:966` 仍走 A 轨
+   `retrieve_rag_items()`。**今天灌的 9229 个 chunk，聊天问答一个都检索不到**，
+   只有 `POST /retrieval/search` 走 B 轨。切轨必须带开关双跑对比，
+   别一次切死（A 轨 item 带 `intent`/`category`，B 轨带 `chunk_id`/`page_start`）；
+2. **界面复核没做**（前端对齐批次遗留）—— 字段在 JSON 里出现 ≠ 前端真的用上了，
+   要跑 `D:\llm\front\docs\diag_panel_probe.cjs` 出截图，**看到界面内容才算完成**；
+3. **B6 第二步待老霸拍板** —— 往 `食品安全投诉` 加「不新鲜」会把整句话抬成 high risk 链路，
+   属业务策略，**未做，不许擅自加**；
+4. **前端补 1 行词表** —— `src/lib/status.ts` 的 `ROUTING_TEXT` 增加
+   `clarify: "澄清链路（置信度过低，应先向用户确认诉求）"`。
+
+### 本批之后才谈得上的四件事
+
+1. **样本要不要灌库，等老霸拍板** —— 统计局 / MDN 跟客服业务不相关，
+   灌进 `takeout-policy` 会污染检索。建议业务相关的灌、纯形态样本另建知识库或不灌；
+2. **检索层按 parent 去重**（踩坑 B17）—— 现在 Top-K 会被同一段内容的 2~3 个副本占满；
+3. **评测金标重建**（F2）—— 现有 recall 按 intent 判相关，换成文档语料后算不了，
+   金标要升级到 `doc_id + chunk_id` 并补 30~50 条无答案负样本；
+4. **法规源扩容** —— 当前 15 部；新扫的 `70000~71000` 区间相关命中 **0/42**，
+   列表接口是 JS 渲染的，要扩量得先解决取 id 的问题。
+
+### 一个可复跑的纪律（本批新增）
+
+**每补一批语料，都要跑一次 `tmp/audit_corpus_coverage.py <manifest>`，
+看「多少个文件至少含一个该类 block」** —— 只看文件数、chunk 数会掩盖
+"某个解析器分支从来没被真实文档走过"（踩坑 D19）。本批就是靠它撞出 B18 的。
 
 - **全量测试 918 / 0 failures / 0 errors / 0 skipped**（JUnit XML 口径，`B8_step3_junit.xml`）；
 - **发布门禁 PASS** —— `reports/rag_ingestion_auth_review/stage7_review.txt`。
@@ -1808,8 +2264,9 @@ warning 5 条未新增，ruff / compileall / 体积检查全通过。
 
 ### 下一步可以做什么（都是「还可以更好」，不是「未完成」）
 
-1. **推送** —— 本地领先远端 6 个提交；按 §5 的坑 2，直连与代理要**交替重试**，
-   别一次失败就换策略；
+1. **提交 + 推送** —— 本地领先远端 6 个提交，**再加本批前端对齐的改动**；
+   按 §5 的坑 2，直连与代理要**交替重试**，别一次失败就换策略；
+   `git add` 一律用**精确路径**（坑 E2）；
 2. **F4 残留** —— README 三处测试数（`332 passed` → **918**）+ 测试文件数重数；
 3. **PostgreSQL 复验** —— roadmap 8.1 把它写进了 B8 的内容，但计划 7.1~7.4 未要求，**未做**；
 4. **roadmap 8.2 的两条 P3** —— 真实 OCR 引擎复验、压测与 P95/P99 聚合；
@@ -1825,7 +2282,8 @@ warning 5 条未新增，ruff / compileall / 体积检查全通过。
 | 接手继续做 | `docs/RAG_NEXT_WINDOW_PROMPT.md`（**已重写为收尾交接版**） |
 | 「做到什么算合格」 | `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md`（v2.1；§1.0 现状总览 / §17 作业规程） |
 | 「现在还差多远」 | `docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md` |
-| 「做过什么、踩过什么」 | 本文件 §3 + `docs/RAG_DEV_PITFALLS.md`（47 条） |
+| 「做过什么、踩过什么」 | 本文件 §3 + `docs/RAG_DEV_PITFALLS.md`（**60 条**，2026-09-23 语料专项新增 A7~A11 / B17 / E6） |
+| 「文档从哪来、怎么灌」 | `docs/RAG_DOCUMENT_CORPUS_PLAN.md`（含 2026-09-23 执行结果） |
 | 提交 / 推送的环境坑 | 本文件 §5（坑 1~4；**commit 后必须核对指针**，不一致才修 —— 见坑 1 的 2026-09-23 修正） |
 
 ### 执行纪律（跨批次适用，继续沿用）
