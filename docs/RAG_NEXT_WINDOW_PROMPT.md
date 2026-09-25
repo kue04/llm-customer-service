@@ -1,645 +1,505 @@
 # RAG 改造：交接与作业规程（统一提示词）
 
-> **交接时间**：2026-09-25（星期五）13:08 ·
-> **交接时状态**：主线 **B1~B8 全部完成、阶段 0~7 全部 PASS、发布门禁 PASS**；
-> **B 轨真混合检索已建成并给出实测数字**（稠密 + 稀疏 FTS5 双路 + 加权 RRF，默认仍 `dense`）；
-> **F1 切轨已于 2026-09-25 完成** —— 聊天问答走 chunk 索引（9229 个 chunk 可检索）；
-> **⚠️ 工作区里叠着两批未提交改动（F1 + B8-混合检索）**，清单见台账 §4 暂停点。
+> **交接时间**：2026-09-25（星期五）15:35
+> **交接时状态**：主线 **B1~B8 全部完成**｜阶段 0~7 全 **PASS**｜发布门禁 **PASS**（带三条限制，见 §1.4）
+> ｜**B17 检索层内容级去重已完成**（聊天链路有效证据 **2.14/3 → 3.00/3**）
+> **工作区**：**不干净** —— 叠着**三批**未提交产出（F1 / B8 / B17），HEAD 仍是 `7d4a34b`（提交归老霸）
+> **门禁**：**1030 / 0F / 0E / 0S**（`reports/rag_ingestion_auth_review/B17_full_test_junit.xml`）
+> ｜**warning = 5（实测值）**
 >
-> **★ 最新状态一律以「第五部分」为准**（2026-09-25 B8-混合检索交接）——
-> 前四部分是历史分层，其中标注的测试数 / 待办顺序 / 「检索质量无结论」等描述**已被第五部分覆盖**。
+> ### ★ 下一步（唯一定向，别自己另挑）
 >
-> **两种用法（推荐①）**：① 在新窗口说一句「读 `docs/RAG_NEXT_WINDOW_PROMPT.md`，按里面的规程继续」——
-> 不会因复制截断而失真；② 把本文**整份**粘贴过去（适用于不能读本地文件的工具）——
-> **不要只贴「第 2 步」的工作项清单**，第 0.4 节的**引用纪律**才是最容易踩错的地方。
+> **`[F6]` `load_active_manifest` 无缓存** —— 每次检索重读 **19.0MB** manifest，
+> 使 hybrid 延迟 ≈ dense + sparse 之和。完整证据与修法见**第二部分**。
+> 这一批**只做这一件事**，不要顺手带别的。
 >
-> **⚠️ 先看日期再动手**：上面这个时间戳是判断本文是否过期的**唯一依据**。
-> 若实际仓库状态与本文不符（例如全量测试不再是 `1004 / 0 failures`，或工作区已干净且已推送），
-> 说明有人推进过了 —— **先按第 0 步核对，不要照着本文盲改。**
+> **用法**：① 在新窗口说「读 `docs/RAG_NEXT_WINDOW_PROMPT.md`，按里面的规程继续」（**推荐**，
+> 不会因复制截断失真）；② 整份粘贴（**别只贴第二部分**，第三部分的取数口径最容易踩错）。
 >
-> **本文已收录**：系统全景、进度快照、**发布门禁的三条限制**、**F1 切轨的进展与 B17 量化**、
-> **B8 混合检索的实测结论与它的反直觉之处**、**前端对齐批次的进展与待办**、
-> 候选工作项、五步作业规程、硬性约束、环境坑速查、自检清单。
-> 需要更深细节时按文中路径读原始文档（那是权威来源）。
+> **⚠️ 先核对再动手**：本文所有数字都带时间戳。若实测与本文不符
+> （例如全量不再是 `1030 / 0 failures`、或 HEAD 不再是 `7d4a34b`），
+> 说明**已经有人推进过** —— 先跑第三部分第 0 步核对，**不要照着本文盲改**。
 
 ---
 
-# 第一部分 · 开工前必读：先把系统搞清楚
+# 第一部分 · 现状快照（唯一口径）
 
-> **项目主线已经收尾**：按 `docs/RAG_EXECUTION_PLAN_DATA_INGESTION_CHUNKING_AUTH.md` 的
-> 阶段 0~7（B1~B8）**已全部走完**，发布门禁已出具 PASS。
-> 所以接下来的工作**不再是"按计划推进批次"**，而是从第 2 步的候选清单里挑事情做。
-> 最容易犯的错是：**把"还能更好"当成"还没完成"**，或者反过来 ——
-> **把 PASS 读成"什么都验收了"**（见 0.4 的三条限制）。
-
-## 0.1 这个项目是什么
+## 1.1 一句话
 
 外卖售后场景的**客服 RAG 后端**（FastAPI + SQLite/PostgreSQL + FAISS）。
+主链路「检索增强问答 + 客服工作流」：意图识别 → 检索 → 重排 → 证据分级 → 生成 →
+规则兜底 → 风险分级 → 转人工。**12 个 router、41 个测试文件、1030 条用例**。
 
-对外主链路是「检索增强问答 + 客服工作流」：意图识别 → 检索 → 重排 → 证据分级 →
-生成 → 规则兜底 → 风险分级 → 转人工。已经有 **12 个 router、949 条测试**（39 个测试文件）。
+理想目标在 `docs/goal.md`（方向，不是任务清单）；差距分析在 `docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md`。
 
-**理想目标**写在 `docs/goal.md`（企业级 RAG：数据治理 / 权限控制 / 检索 / 生成 /
-验证 / 追踪 / 反馈闭环）。它是**方向**，不是任务清单；
-目标与现状的差距分析见 `docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md`。
-
-## 0.2 ★ 双轨制已经合流（B7 + F1）—— 两条链路现在都是真的
+## 1.2 双轨制已合流 —— 两条链路现在都是真的
 
 「两条链路都叫检索，没人知道哪条是真的」（F1）分两步合上：
 **B7（2026-09-23）合上检索 API 侧**，**F1 切轨（2026-09-25）合上聊天侧**。
-现在只有「演示 / 兼容接口」还是种子 FAQ，主链路（聊天 + 检索 API）都走 chunk 索引。
 
 ```
-【B 轨 · 正式检索路径】✅ B7 已接线
-  POST /retrieval/search
-    → require_read_operation_role（retrieval_read）
-    → build_chunk_access_filter(session, auth)        ← services/retrieval_access.py（唯一生产构造点）
-    → retrieve_chunk_items(query, access=access, ...) ← FAISS 原生预过滤
-    → 响应带 retrieval_path="chunk-index" + index.visible_chunk_count
+【B 轨 · 正式路径】
+  POST /retrieval/search      retrieval_mode = dense | sparse | hybrid（默认 dense）
+    → require_read_operation_role
+    → build_chunk_access_filter(session, auth)         ← services/retrieval_access.py（唯一构造点）
+    → search_hybrid_chunks(...)                        ← utils/hybrid_retriever.py（底层召回）
+        ├─ 稠密：search_chunk_index（FAISS 原生预过滤）
+        └─ 稀疏：search_sparse_index（FTS5 bm25，临时表 JOIN 预过滤）
+        再按 1/(k+rank) 加权 RRF 融合（w_dense=10 / w_sparse=1 / k=60）
+    → retrieve_hybrid_items / retrieve_chunk_items     ← ★ 条目层：这里截断到 limit
+         └─ select_diverse_evidence(...)               ← ★ B17 新增：截断前先去重
+    → 响应带 retrieval_path="chunk-index" + index.sparse_available
 
-【聊天链路】✅ F1 切轨（2026-09-25）
+【聊天链路】默认走 B 轨（F1 切轨 2026-09-25）
   POST /chat/prompt
     → require_read_operation_role（chat_generate）
-    → get_answer_from_rag(request, auth)              ← 2026-09-25 起新增 auth 入参
-    → resolve_chat_retrieval_path()                   ← 默认 "chunk"；RAG_CHAT_RETRIEVAL_PATH=seed 可回退
-    → retrieve_chunk_items_for_chat() → build_chunk_access_filter（fail closed，无身份即零命中）
-    → adapt_chunk_items_for_prompt()                  ← 把 chunk 的 text 映射成下游认得的 answer
+    → get_answer_from_rag(request, auth)
+    → resolve_chat_retrieval_path()                    ← 默认 "chunk"；RAG_CHAT_RETRIEVAL_PATH=seed 回退
+    → retrieve_chunk_items_for_chat()                  ← ★ B17 已在这一层去重（上面的两条入口之一）
+    → adapt_chunk_items_for_prompt()                   ← chunk 的 text 映射成下游认的 answer
+    → build_prompt_context_items()                     ← 下游还会按文本去重（口径见下）
 
 【A 轨 · 演示 / 兼容路径】
-  POST /retrieval/search-demo、POST /retrieval/prompt-preview
+  POST /retrieval/search-demo、/retrieval/prompt-preview
     → retrieve_by_real_vector（781 条种子 FAQ，数据源本身没有 tenant/ACL 两维）
     → 响应带 retrieval_path="seed-faq-demo"
 ```
 
-**F1 切轨的三条硬约束（动手前先读，别推翻）**：
+**索引**：全局一份（B14 教训，B7 修掉）。`rebuild_index` 默认 `all_tenants=True`，
+版本号**全局**递增。**不要退回「按租户分片」** —— 会让先入库的租户**静默消失**。
 
-1. **默认轨道由 `services/chat_service.py` 的 `DEFAULT_CHAT_RETRIEVAL_PATH` 决定**。
-   改它就是里程碑事件：README 的 `f1-track` 锚点必须同步改，两边由
-   `tests/test_ingestion_pipeline.py::TestReadmeTrackConsistency` **双向校验**
-   （判据已换过一次，为什么换见踩坑 **D21**）；
-2. **零命中不回退 A 轨**（fail closed）。「拿不到身份」与「没有权限」都必须是零命中 ——
-   为了让用户别看到空回答而加回退，等于绕过 ACL（承 D-12 / D-13）；
-3. **`build_prompt_context_items` 的判空守卫不许改松**。B 轨的正文在 `text`，
-   适配层负责映射成 `answer`；让下游去兼容两套字段 = 用降低契约强度换兼容。
+**当前生效索引**：`v4` —— 稠密 18.9 MB + manifest 19.0 MB + 稀疏 32.4 MB，**9229 chunk**。
 
-**这条接线现在有测试锁着**（B8-2 新增 `tests/test_wiring_guards.py`，18 条）：
-`routers/retrieval.py` 必须**引用并调用**那两个函数、`search_chunk_index` 的 `access`
-**无默认值且注解非 Optional**、`routers/*.py` **不得 import jwt**。
-**别改这些约束** —— 改了守卫会红，而它红得对。
+## 1.3 必须遵守的既有守卫（改了会红，而且红得对）
 
-**索引是全局一份**（B14 的教训，B7 修掉）：`rebuild_index` 默认 `all_tenants=True`，
-版本号**全局**递增，manifest `extra["scope"] / extra["tenants"]` 留痕。
-**不要退回「按租户分片」** —— 那会让先入库的租户**静默消失**（B7 之前的状态）。
+| 守卫 | 位置 | 盯什么 |
+| --- | --- | --- |
+| `test_wiring_guards.py`（18 条） | tests/ | `routers/retrieval.py` 必须**引用并调用**检索与鉴权函数；`search_chunk_index` 的 `access` **无默认值且注解非 Optional**；`routers/*.py` **不得 import jwt** |
+| `TestReadmeTrackConsistency` | `tests/test_ingestion_pipeline.py` | README 锚点 `<!-- f1-track: chat-service-retrieval=... -->` 与 `DEFAULT_CHAT_RETRIEVAL_PATH` **双向一致**；`<!-- b8-hybrid: default-retrieval-mode=... -->` 与 `DEFAULT_RETRIEVAL_MODE` **双向一致**；另有守卫自测（读不到 → 空串 → 判失败） |
+| `TestHybridDecisionTrace` | `tests/test_hybrid_retrieval.py` | 把关键取舍做成可断言事实：`w_dense=10/w_sparse=1/k=60`、`DEFAULT_RETRIEVAL_MODE == "dense"`。**改权重必须重跑评测** |
+| `TestDeploymentGuards` | `tests/test_ingestion_pipeline.py` | compose 真的起了 worker、共享卷、同元数据库与队列地址 |
+| **`tests/test_retrieval_dedup.py`（26 条，B17 新增）** | tests/ | 截断前先去重；`top_k == 20`（召回量不许偷偷变大）；`access` 对象原样透传（去重层不得自造过滤器）；真实索引上收窄白名单后不越界且非空；混合路用 `fused_score`；判据与下游口径一致（拿同一批字符串喂两边比对） |
 
-**索引回滚已经接线**（B8-1 新增）：`POST /ingestion/indexes/rollback`（权限
-`index:rollback`，与 `index:rebuild` **分开成键**，虽然当前角色集合相同）。
-它只改指针、不重建不删文件；**目标版本不可达时指针保持不动**（有 8 条测试锁着）。
+**判据换过一次，别换回旧写法**（踩坑 **D21**）：轨道守卫原来盯「AST 里有没有调
+`retrieve_rag_items`」，改成开关制后**两条轨道同时调它**，那条判据会永远返回 `seed-faq`。
+现在盯的是**默认值本身**。
 
-## 0.3 目录地图（哪条是主链路）
+## 1.4 ★ 发布门禁 PASS，以及它的**三条限制**（引用时必须一起带上）
 
-```
-routers/
-  retrieval.py      ★ B7 重写：/search（B 轨）+ /search-demo、/prompt-preview（A 轨）
-  documents.py      上传 / 详情 / 版本 / 任务查询
-                    + POST /ingestion/indexes/rebuild（B7 新增）
-                    + POST /ingestion/indexes/rollback（★ B8 新增，需 index:rollback）
-services/
-  auth_context.py   JWT 身份上下文 + 三张授权表（含资源维度 RESOURCE_SCOPE_ROLES，**10 个权限**）
-  auth_service.py   FastAPI 依赖层 + require_resource_scope
-  retrieval_access.py ChunkAccessFilter 的**唯一**生产构造点
-  intent_service.py ★ 前端对齐批次改写：修饰词归一化 + 上下文继承 + clarify 路由
-  chat_service.py   ★ 前端对齐批次改写：full_trace 四个 step 的 metadata 补实
-  ingestion/        models / repository / pipeline / worker / queue / index_builder / index_manifest
-utils/
-  vector_retriever.py  A 轨 retrieve_by_real_vector + B 轨 search_chunk_index / retrieve_chunk_items
-scripts/
-  verify_trace_fix.py  ★ 前端对齐批次新增：/chat/prompt trace 端到端验收（令牌走环境变量）
-tests/
-  retrieval_fixtures.py       ★ B7：确定性假 embedder + RetrievalEnv（两租户入库/重建/授权一条龙）
-  test_retrieval_isolation.py ★ B7：检索层隔离
-  test_tenant_isolation.py    数据层 + 真实路由层
-  test_retrieval_api.py       API 出口层
-  test_index_rollback.py      ★ B8-1：回滚 8 条
-  test_wiring_guards.py       ★ B8-2：接线 AST 守卫 18 条
-  test_release_gate.py        ★ B8-3：四格式端到端 7 条（**项目首条从 HTTP 到检索结果的测试**）
-  test_chat_retrieval_track.py ★ F1 切轨：轨道解析 4 + 形状适配 5 + 分发 3 + 端到端 3 = 12 条
-  test_intent_and_safety.py   ★ 前端对齐批次：新增 `IntentContextAndRoutingTest` 9 条
-```
+阶段 7 结论：**PASS**（`reports/rag_ingestion_auth_review/stage7_review.txt`）。
 
-## 0.4 ★★ 发布门禁 PASS，以及它的**三条限制**（引用时必须一起带上）
+1. **判据范围只到计划第 7 节的四条**。**不覆盖**：检索质量指标（M10 Recall@k 等）、
+   真实 OCR 引擎、病毒扫描与限流、压测与 P95/P99、成本账本。这些在
+   `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md` §1.0 / §10.5 里标为 `未实现` / `未就绪`，
+   是**差距清单，不是成绩单**；
+2. **roadmap 建议归入 B8 的两条 P3 未做**：真实 OCR 引擎复验、压测与 P95/P99 聚合；
+3. **检索质量无统一结论** —— 这条**部分更新**为：
+   > 「B 轨有**一套**带 span 金标的结论（title 81 / 口语化 30 / 负样本 40），
+   > 但 A 轨 intent 口径（F2）仍未统一，**两套数字不可互认**。」
+   `test_release_gate.py` 验证的是**链路连通性**不是检索质量。
+   **不得把 PASS 读作「检索效果已验收」**，也不得说「检索质量已全面评测」。
 
-阶段 7（发布门禁）结论：**PASS**（`stage7_review.txt`）。判据：
-7.1 四件套全绿 / 7.2 四格式端到端通过 / 7.3 六条逐项可指认 / 7.4 六条成立；
-当时的全量 **918 / 0 failures / 0 errors / 0 skipped**，warning 5 条未新增。
-
-**三条限制（漏掉任何一条都是过度声明）**：
-
-1. **判据范围只到计划第 7 节的四条**。它**不覆盖**：检索质量指标（M10 Recall@k 等，
-   口径未就绪）、真实 OCR 引擎（当前只有接口 + 阈值判定）、病毒扫描与限流（未实现）、
-   压测与 P95/P99（未做）、成本账本（未实现）。这些在
-   `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md` §1.0 / §10.5 里分别标为
-   `未实现` / `未就绪`，是**已知差距清单**。
-2. **roadmap 建议归入 B8 的两条 P3 未做**：真实 OCR 引擎复验、压测与 P95/P99 聚合。
-   它们是 roadmap 8.2 的**建议**，不在计划 7.4 判据里，故不阻断 PASS，但如实标注。
-3. **检索质量无结论**。`test_release_gate.py` 验证的是**链路连通性**不是检索质量
-   （它的 query 取自待检索文档自己的 chunk）。**不得把 PASS 读作「检索效果已验收」。**
+> **B17 之后追加一条口径提醒**：去重改的是**证据条数**（聊天 3 个名额装几条不同内容），
+> **不是**召回质量。对外说法是「聊天有效证据 2.14/3 → 3.00/3」，
+> **不能**说成「检索质量提升」。
 
 > **规范引用纪律**（验收规范 §17.5）：规范编号（`I01~O01`、`§N`）与本项目编号
-> （`B1~B8`、`阶段 N`）是**两套**，引用必须带前缀；
-> 且规范 §7.x 与执行计划「阶段 7.x」**编号撞车但内容不同**。
-> 规范里标 `未实现 / 未就绪 / 已建未启用 / 未演练` 的 13 项是**差距清单**，不是成绩单。
+> （`B1~B8`、`阶段 N`）是**两套**，引用必须带前缀；且规范 §7.x 与执行计划「阶段 7.x」
+> **编号撞车但内容不同**。
 
-## 0.5 ★ F1 切轨（2026-09-25）—— 本次最新进展
+## 1.5 混合检索的三条硬结论（对外口径必须按这个讲）
 
-**台账**：`docs/RAG_EXECUTION_PROGRESS.md` §3 的 `[F1 切轨]` 条目（§4 暂停点已覆盖更新）。
+实测（2026-09-25，走生产代码 `search_hybrid_chunks`；**B17 已重跑复验：六行数字逐位不变**）：
 
-做了什么：聊天问答从 A 轨（781 条种子 FAQ）切到 **B 轨（chunk 索引）** ——
-**9229 个 chunk 终于进得了聊天**。带 `RAG_CHAT_RETRIEVAL_PATH=seed` 回退开关。
-交付物清单与设计取舍见台账条目，这里只留**新窗口必须知道的四件**：
+| 数据集 | mode | R@1 | R@5 | R@10 | MRR | NDCG@10 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| title（81） | dense | 0.7160 | 0.9630 | 0.9877 | 0.7698 | 0.8204 |
+| title（81） | sparse | **0.7901** | 0.9012 | 0.9877 | **0.8257** | **0.8621** |
+| title（81） | **hybrid** | 0.7407 | 0.9630 | **1.0000** | 0.7922 | 0.8404 |
+| 口语化（30） | dense | **0.4000** | **0.5000** | **0.5667** | **0.4274** | **0.4588** |
+| 口语化（30） | sparse | 0.1000 | 0.1000 | 0.1333 | 0.1037 | 0.1100 |
+| 口语化（30） | **hybrid** | **0.4000** | **0.5000** | **0.5667** | **0.4274** | **0.4588** |
 
-1. **默认轨道 = chunk**，由 `DEFAULT_CHAT_RETRIEVAL_PATH` 决定，README 锚点与它双向校验（见 §0.2）；
-2. **零命中不回退 A 轨**（fail closed）—— 别为了「别让用户看到空回答」而加回退；
-3. **`scripts/evaluate_chat_grounding.py` 已显式锚定 seed** ——
-   它的用例是 A 轨 `expected_intent` 口径，不锚定就会以「无身份 + B 轨」静默跑成**整片空**，
-   而空结果看起来像「模型答不出来」，不像配置问题；
-4. **切轨把 B17 的代价暴露出来了**：约 **29%** 的 Top-K 名额被父子块重叠占掉
-   （证据 `reports/rag_ingestion_auth_review/b17_topk_diversity_20260925.json`）。
-   **这是下一步最该做的事**，见本文件 B 部分。
+1. **增益上限本来就很小**：两路 top-10 **并集召回** = title 81/81、口语化 18/30 ——
+   这是**任何融合策略的天花板**；dense-only 已达 80/81；
+2. **等权融合有害**：口语化集等权 RRF 把 R@1 从 0.4000 拉到 **0.2667**；
+   `w_dense=10` 是扫完权重后**唯一在两套集上都不掉点**的配置；
+3. **不是「指标全面上涨」**：收益 = title 集 R@1 **+2 条** + R@10 打满；口语化集**零退化**。
+   所以 **聊天链路不建议切 hybrid**（输入正是口语提问 → 零收益、双倍延迟）；
+   只有"短查询为主"的接口值得切（切之前见 §2.4 第 6 条）。
 
-**除此之外，前端对齐批次（2026-09-23）的三件事仍然卡着**：
+> **★ 口语化 R@1 0.4000 的归因已经查清（B17，2026-09-25）**：
+> 它**不是**金标质量造成的 —— 30 条里两路 top-50 都捞不到的 7 条，
+> 经复核**全部是真·检索失败**（金标 span / 文档 / 章节三样都在库里），**假阴性 0 条**。
+> 真问题是**口语化改写与库内表述的词面距离过大**。
+> 所以：**不能**说"金标有问题"来搪塞，也**不能**把它当干净结论引用（F2 口径未统一）。
+> 证据：`reports/rag_ingestion_auth_review/B17_colloquial_gold_recheck_20260925.txt`。
 
-1. **界面复核没做** —— 字段在 JSON 里出现 ≠ 前端真的用上了。
-   要前端跑 `D:\llm\front\docs\diag_panel_probe.cjs` **出截图，看到界面内容才算完成**；
-2. **B6 第二步等老霸拍板** —— 往 `食品安全投诉`（`risk_level="high"`）加「不新鲜」关键词，
-   会把用户整句话抬成 high risk 链路（安全前缀 / 可能转人工）。
-   **属业务策略不是技术修复，不许擅自加**；
-3. **前端补 1 行词表** —— `src/lib/status.ts` 的 `ROUTING_TEXT` 增加
-   `clarify: "澄清链路（置信度过低，应先向用户确认诉求）"`。
+数字与全部口径说明：README §3.6 + `reports/retrieval_hybrid/evaluation_20260925.txt`。
 
-**⚠️ 两条容易误读的事实**：
+## 1.6 已知但**范围外**的问题（登记在此，防止被遗忘）
 
-- **`routing` 不是链路开关**：它在后端**零分支消费**
-  （只有 `chat_service.py:638` 透传 + `:925` 展示）。加了 `clarify` 之后
-  **链路仍照常检索生成**，只是界面多一个可辨识的信号。要让链路真的澄清，
-  需要新增分支代码 + 前后端契约再对齐一轮（踩坑 **B16**）。
-- **继承来的意图置信度恒为 0.6**，且带 `inherited_from_context` 标记；
-  直接命中不受影响（最低一档 0.76）。这个「低于直接命中」的分层是刻意的，不要抹平。
-
-## 0.6 已知但**范围外**的问题（登记在此，防止被遗忘）
-
-| # | 问题 | 状态 | 归属 |
-| --- | --- | --- | --- |
-| 1 | **F2**：`scripts/evaluate_retrieval_metrics.py:85` 按 intent 判相关，不是文档级指标 | 未修 | 修完才谈得上 M10 Recall@k |
-| 2 | ~~**F4 残留**~~：README 测试数已统一改 JUnit 口径（**949**，2026-09-25）| **已消** | 复现：`scripts/update_readme_testcount.py` |
-| 3 | **F5**：worker 有 CLI 无进程编排，容器化后队列没人消费 | 未修 | 已在门禁结论里声明为已知限制 |
-| 4 | 真实引擎未复验（PostgreSQL / Redis / 真 tokenizer+embedding / OCR） | 未做 | **PostgreSQL 复验**已在门禁结论里如实标注未做 |
-| 5 | 索引重建的并发竞态未测 | 未测 | 单机 SQLite 难构造 |
-| 6 | 图片块不进 chunk / PDF 跨页重复表头 | 设计如此 | 后续版本 |
-| 7 | 7.3 第 4 条的 **trace / 错误信息**泄漏维度无专项用例 | 未覆盖 | 判为低风险，已记入 `stage7_review.txt` 第六节 |
-| 8 | **B6 第二步**（高风控关键词） | **待决策** | 业务策略，等老霸拍板，不许擅自加 |
-| 9 | **B7 只补信号不改链路** | 已知落差 | 要真改链路需新增分支 + 契约再对齐 |
+| # | 问题 | 状态 |
+| --- | --- | --- |
+| 1 | **F6**：`load_active_manifest` 无缓存，每次检索重读 19 MB manifest | **★ 下一批就做它** |
+| 2 | **入库侧多格式孪生**：同一份内容被 md/html/pdf/docx 各入库一次（**906 条冗余**） | B17 暴露的新欠账，需产品口径，**未修** |
+| 3 | **F2**：`scripts/evaluate_retrieval_metrics.py:85` 按 intent 判相关（A 轨口径）| 未修 |
+| 4 | **口语化查询改写**：7 条全库可达却进不了两路 top-50 | **未修**（B17 已定位方向） |
+| 5 | **F5**：worker 有 CLI 无进程编排 | 未修，已在门禁结论里声明 |
+| 6 | 真实引擎未复验（PostgreSQL / Redis / 真 OCR） | 未做 |
+| 7 | 索引重建并发竞态 | 未测（单机 SQLite 难构造）|
+| 8 | 图片块不进 chunk / PDF 跨页重复表头 | 设计如此 |
+| 9 | **B6 第二步**：往 `食品安全投诉` 加「不新鲜」关键词 | **待老霸拍板**，属业务策略，**不许擅自加** |
+| 10 | **前端**：界面复核（出截图）+ 补 `clarify` 词条 | 卡在前端 |
 
 ---
 
-# 第二部分 · 作业规程（五步闭环，缺一步都不算完成）
+# 第二部分 · ★ 下一步：`[F6]` `load_active_manifest` 无缓存
+
+> **本批的全名**：给「当前生效 manifest」加一层**带版本失效语义**的缓存，
+> 把每次检索都要重读的 19.0MB manifest 变成一次读、多次用。
+> **为什么是它**：B17（去重）已经做完，F6 是**剩下的唯一高优先级欠账**，
+> 而且它是**纯延迟问题**、改动面小、有明确判据（见 §2.2）。
+> **上一批刻意没顺手做它** —— 一个改召回内容、一个改缓存与失效，
+> 混在一起出问题分不清是谁造成的。
+
+## 2.0 上一批（B17）刚做完什么（**别重做**）
+
+一句话：**检索层加了 Top-K 内容级去重**，聊天链路的有效证据从 **2.14/3 升到 3.00/3**。
+
+- 新模块 `utils/retrieval_dedup.py`；接入 `retrieve_chunk_items` / `retrieve_hybrid_items`
+  （**截断点后移**，召回条数**一条没改**——这点有测试钉住）；
+- 判据用**归一化文本**（压平空白），**不是** `content_hash`
+  （原文 hash 与下游"压平空白"口径不一致 → 只到 19/21，达不到 3.00）；
+- 同分并列用确定性兜底键 `(-score, parent 优先, chunk_id)`（防 D24/D26）；
+- 门禁 1030（基线 1004，+26）；ruff / compileall / 体积门禁全过；warning = 5；
+- 交付证据与审查：`reports/rag_ingestion_auth_review/B17_*`、`B17_task_level_review.txt`。
+
+⚠️ **不要去重做它**，也**不要**回头改判据为 `content_hash`（已实测达不到目标）。
+若发现去重相关的问题，读 `B17_task_level_review.txt` 第四、五节再动手。
+
+## 2.1 前置取证（**已完成，直接接上**）
+
+**现象（待复现）**：评测报告里三模式的单条耗时是
+
+```
+dense      均值 172.7 ms
+sparse     均值 185.7 ms
+hybrid     均值 355.7 ms   ← ≈ dense + sparse 之和
+```
+
+hybrid 是**串行跑两路**，所以"和"本身正常；不正常的是**每一路都贵**：
+
+| 事实 | 数字 | 出处 |
+| --- | --- | --- |
+| manifest 体积 | **19.0 MB**（索引 v4） | `describe_chunk_index` |
+| hybrid 单条耗时 | 355.7 ms | `reports/retrieval_hybrid/evaluation_20260925.txt` |
+| 稠密路单条耗时 | 172.7 ms | 同上 |
+| 一次请求读取 manifest 次数 | dense 1 次 / sparse 1 次 / hybrid 2 次 | 调用点见下 |
+
+**根因**：`services/ingestion/index_manifest.py:621 load_active_manifest` **没有缓存** ——
+每次调用都把 19.0 MB 的 manifest 从磁盘读出来并反序列化。
+检索侧三个调用点，每次检索都要走：
+
+```
+utils/vector_retriever.py:1074   ← search_chunk_index 用
+utils/vector_retriever.py:1277   ← describe_chunk_index 用
+utils/sparse_retriever.py:106    ← search_sparse_index 用
+（另有 services/ingestion/index_builder.py:543，属写入侧，本批**不动**）
+```
+
+也就是说 **hybrid 一次请求 = 读两份 19MB manifest**（稠密一份、稀疏一份）——
+这解释了"hybrid ≈ dense + sparse"里**为什么两边都慢**。
+
+**修法方向（上一批已定，但动手前先自己验一遍 —— 见 §2.3 第 4 条）**：
+键取 `(root, index_name, index_version)` 的缓存 + **版本切换时显式失效**
++ 一条「切版本后第一次检索就读到新的」测试。
+
+## 2.2 交付清单（按顺序做，**第 1 步不许跳过**）
+
+| # | 交付物 | 验收判据 |
+| --- | --- | --- |
+| 1 | **先量基线**：同一环境、同一 query 集，记录打缓存**之前**的 dense / sparse / hybrid 单条耗时（均值 / 中位 / P95） | 数字落盘，且能解释"为什么 hybrid ≈ dense + sparse" |
+| 2 | **写决策记录**：缓存放哪一层、键怎么取、失效怎么触发、并发怎么处理 | 决策写进台账 §3，含**被否掉的备选**（如"进程级全局单例""按 mtime 判失效""干脆把 manifest 拆小"）|
+| 3 | **实现**缓存 + 显式失效 | 生产调用点明确（本项目纪律：**定义在、测试在、没人调用 = 未完成**）|
+| 4 | **测试**（≥8 条）：命中缓存 / 版本切换后失效 / 不同 `index_name` 不串味 / **切版本后第一次检索读到新索引** / 只读语义不变 | 新增用例；既有 **1030 条只增不减** |
+| 5 | **量化验证**：重跑同一 query 集 | hybrid 单条耗时应**显著下降**；**评测指标必须逐位不变**（缓存只该改速度，不该改结果） |
+| 6 | **并发安全说明**：写清"缓存被两个请求同时命中""重建索引与读缓存并发"时的行为 | 写得出来才叫想清楚；写不出来就显式记成**未验证** |
+| 7 | 门禁 + 任务级审查 + 四处记录 + 重写本文件 | 见第三部分第 3~5 步 |
+
+## 2.3 动手前**必须想清的 4 件事**（想不清就别写码）
+
+1. **失效必须显式，不能靠时间/mtime 猜**。
+   索引切换是**原子发布**（新版本目录 + 指针文件），所以正确的失效信号是
+   **指针/版本号变了**，而不是"manifest 文件 mtime 变了"。
+   靠 mtime 会有一个静默窗口：**版本已切、但缓存还认为自己是新的**，
+   表现是"发了新索引，检索还在用旧的" —— 不报错、只是答案不对。
+
+2. **缓存键必须含 `index_name`**。
+   本仓同时存在 chunk 索引与别的索引名（`CHUNK_INDEX_NAME` 是默认值不是唯一值），
+   键少一维就会**互相串味**：查 A 索引拿到 B 索引的 manifest，
+   后果是命中一堆不属于该索引的 chunk_id。
+
+3. **只读语义不能变**。
+   `load_active_manifest` 现在**不修改磁盘**，加缓存后也必须保持只读；
+   尤其**不要**为了"顺便预热"而在检索路径里触发写操作（`index_builder` 那条调用点属写入侧，
+   **本批不要碰**）。
+
+4. **登记里的"修法方向"也要先验**（B17 的教训，已登记为**D28**）。
+   B17 登记的修法（按 parent 去重）与实际正确的修法（按归一化文本去重）**不是一回事**，
+   是本批取证才发现的。所以：**先量到"读 manifest 到底占多少 ms"**，
+   再决定缓存是"必要"还是"只是看起来该做"。
+   如果量出来发现耗时主要在别的环节（比如模型加载 / FAISS 构建），
+   **如实报告并停下讨论**，不要为了完成清单而做无效优化。
+
+## 2.4 硬性约束（**不要改坏** —— 每条都有依据）
+
+1. **不退回「按租户分片」索引**（B14）；
+2. **`access` 参数不得加默认值**，注解不得含 `None` / `Optional`；
+   `ChunkAccessFilter` 只能服务端构造（唯一构造点 `services/retrieval_access.py`）——
+   现有 `tests/test_wiring_guards.py` 锁着；
+3. **过滤必须 FAISS 原生预过滤**，不改回「先全局 top-k 再后筛」；
+4. **无权限对查询者 = 零命中；缺 filter 对调用方 = 报错**（决策 [D-12]，不要重开）；
+5. **ACL 语义三条**（无记录 = 租户内可见 / `write` 不隐含 `read` / `group` fail closed，[D-13]）；
+6. **改默认检索模式要同步四件事**：改 `DEFAULT_RETRIEVAL_MODE` → 改 README 的
+   `b8-hybrid` 锚点 → 同步 README §0.1 上线顺序与 §3.6 现状表 → 跑全量。
+   前提：先 `rebuild_chunk_index.py` 并确认 `index.sparse_available=true`，否则**发版即 503**；
+7. **不许动 B17 的去重语义**：召回量仍是 `top_k = limit×5`（下限 20），
+   截断仍在去重之后（有测试锁）；本批只该让"读 manifest"变快；
+8. **本批不新增模型依赖、不动已冻结决策**（[D-6] [D-12] [D-13]）；
+9. **不许为了让数字好看而放宽门槛**；
+10. **`git add` 一律精确路径**（E2：工作区可能有并行会话产出）；
+11. **提交/推送由老霸自己执行**，AI 只给指令（见第三部分第 5 步）。
+
+## 2.5 明确**不做**的（防 scope creep）
+
+- **不改语料构造逻辑**（多格式入库是解析器覆盖测试的产物，清理是**独立决策**）；
+- **不做数据迁移 / 删库清理**；
+- **不切线上默认模式**；
+- **不顺手做口语化查询改写**（B17 已定位方向，但那是**另一个批次**的事）；
+- **不碰前端**。
+
+---
+
+# 第三部分 · 作业规程（五步闭环，缺一步都不算完成）
 
 > **核对基线 → 读进度与约束 → 干活 → 门禁自检 → 审查 → 记录。**
 > 只跑通测试**不算交付**。四处记录**全部必须带日期**（`YYYY-MM-DD`）。
 
-## 第 0 步：核对基线（**不要跳过**，防止在错误基线上工作）
+## 第 0 步：核对基线（**不要跳过**）
 
 ```bash
-git status -sb                 # 分支 optimize/interview-ready
-git rev-parse HEAD             # 2026-09-25 B8 交接时为 d2ee0d8（F1 + B8 两批改动都**尚未提交**）
+git status -sb                 # ⚠️ 期望：**不干净**（叠着 F1 / B8 / B17 三批未提交产出）
+git rev-parse HEAD             # 期望：7d4a34b（三批都没提交，所以 HEAD 仍不动）
+git log --oneline -3
 ./venv/Scripts/python.exe -m pytest -q --junitxml=tmp/baseline_junit.xml
 ./venv/Scripts/python.exe -c "import xml.etree.ElementTree as ET; \
   s=ET.parse('tmp/baseline_junit.xml').getroot().find('testsuite'); \
   print('tests=',s.get('tests'),'failures=',s.get('failures'),'errors=',s.get('errors'))"
-# 当前基线：以 reports/retrieval_hybrid/final_junit_20260925.xml 为准
-#   （2026-09-25 B8 交接时 tests=1004 / failures=0 / errors=0 / skipped=0）
-# 历史基线（判断"有没有人推进过"时有用）：F1 收尾 949 → B8 之前 936
+# 当前基线：1030 / 0 / 0 / 0 —— 以 reports/rag_ingestion_auth_review/B17_full_test_junit.xml 为准
+# 历史基线（判断"有没有人推进过"用）：F1 收尾 949 → B8 收尾 1004 → B17 收尾 1030
 ```
 
-- **⚠️ 取数口径（踩坑 A6）**：**不要**用退出码和 stdout 汇总行判断绿红 ——
-  环境删除守卫会在 sessionfinish 吃掉汇总行、把退出码变成 1，**测试其实全绿**。
-- **⚠️ warning 条数**取自**全量 stdout** 的 `N warnings`（踩坑 **D15**），
-  **不是** `--collect-only`（它不执行测试，输出里没有 warning 汇总）。
-  若汇总行被守卫吞掉 → 记 `N/A（汇总行被吞）`，**不许估算或沿用上次数字**。
-  历史预期是 **5 条**（fastapi/httpx ×1、starlette/anyio ×1、faiss SWIG ×3）——
-  但 **B8 批次全量跑的汇总行确实被吞掉了**（踩坑 A6 复现），所以那一批记的是 `N/A`，**不是 5**。
-- **⚠️ 测试数两个口径（踩坑 D18）**：stdout 的 `N passed` **不含 subtest**，
-  JUnit XML 的 `tests=` **含**（仓库里唯一一处 `subTest` 在
-  `tests/test_evaluate_chat_grounding.py`：5 个坏输入 → XML 比 stdout 多 4）。
-  **门禁只认 XML**；对不上账时把新旧 XML 的 testcase 名字做**集合 diff**，不要做减法。
-- **⚠️ B8 批次同样没有落 stdout 证据文件**（只落了 `final_junit_20260925.xml`）→
-  **不要用「1004 − 4」倒推 stdout 数字**；要报 stdout 就重跑一次，并按 D15 取 warning。
-- 若对不上：先查是不是有人推进过（`git log` / 台账 §4），**不要**照本文盲改。
+> ⚠️ **`git status` 不干净是交接时的真实状态，不是异常**：
+> F1 / B8 / B17 **三批改动都还没提交**（提交归老霸，见 §4.1 坑 1）。
+> 看到 `M` / `??` 一大堆时**不要 `git checkout .`**（那会把三批产出全毁）。
 
-## 第 1 步：读进度与约束（按顺序，不要跳）
+**⚠️ 取数口径（踩坑 A6/A5/D15/D18）—— 这几条最容易搞错，全在这一段：**
 
-1. 台账 `docs/RAG_EXECUTION_PROGRESS.md`：
-   §1 分批表（**B1~B8 全部 ✅**）→ §2 审查汇总（**阶段 0~7 全部 PASS**）→
-   §3 任务执行记录（**按时间追加，越靠后越新**；最新一条是 `[F1 切轨]`）→
-   **§4 执行暂停点（当前指针）** → §5 提交与仓库同步记录（**commit 前必读的环境坑**）；
-2. `reports/rag_ingestion_auth_review/stage7_review.txt` —— 发布门禁结论 + 三条限制 + 测试盲区；
-3. **前端对齐批次**：`docs/BACKEND_TRACE_FIX_PROMPT_2026-09-23.md`（需求）+ 
-   `docs/BACKEND_TRACE_FIX_DELIVERY_2026-09-23.md`（后端交付）+ 台账 §3 该条目；
-4. `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md`（v2.1）：**§1.0 现状总览**（13 项能力状态）
-   与 **§17 验收作业规程**（取数口径 / 结论状态机 / 「已建未启用」判据 / 编号映射表）；
-5. 踩坑 `docs/RAG_DEV_PITFALLS.md`（**73 条**）：**A5/A6**（门禁取数）、**D12**（红绿判据）、
-   **D15**（warning 口径）、**D16**（守卫会静默变空）、**D17**（坏输入要按层构造）、
-   **D18**（测试数两个口径）、**D21**（守卫判据会随架构失效）、**D22**（改默认配置静默打破 mock 型测试）、
-   **B16**（routing 不是链路开关）、**C7**（凭据不许硬编码进脚本）、
-   **E2**（并行会话下的提交纪律）、**E5**（外部方案要补隐含前提的守卫）、**E9**（半提交）。
+- **不要用退出码和 stdout 汇总行判绿红** —— 环境删除守卫会在 sessionfinish 吃掉汇总行、
+  把退出码变成 1，**测试其实全绿**；
+- **warning 条数**取自**全量 stdout** 的 `N warnings`（**不是** `--collect-only`，
+  它不执行测试、输出里没有 warning 汇总）。汇总行被吞 → 记 `N/A（汇总行被吞）`，
+  **不许估算或沿用上次数字**。**B17 批次实测到 5 条**（那一轮汇总行没被吞）；
+  B8 批次曾被吞、记的是 `N/A` —— 两种情况都发生过，别预设；
+- **测试数两个口径**：stdout 的 `N passed` **不含 subtest**，JUnit XML 的 `tests=` **含**
+  （唯一 `subTest` 在 `tests/test_evaluate_chat_grounding.py`）。
+  **B17 实测：JUnit 1030 / collect-only 1026，差 4**。
+  **门禁只认 XML**；对不上账时做 testcase 名字的**集合 diff**，不要做减法；
+- **一轮只跑一次全量**（守卫按轮计数，重跑会把绿跑成红）；
+  逐符号核实用 `--collect-only` 或定向跑单文件。
 
-## 第 2 步：干活 —— 候选工作项（**不是必须全做，按需挑选**）
+## 第 1 步：读进度与约束（按顺序）
 
-> 计划里的 B1~B8 已全部完成，前端对齐批次的后端部分也已改完。
-> 以下都是「还可以更好」或「卡在别人手上」，**按价值排序**，
-> 每做一项就走完第 3~5 步（门禁 → 审查 → 记录）。
+1. 台账 `docs/RAG_EXECUTION_PROGRESS.md`：§1 分批表 → §2 审查汇总 →
+   §3 任务执行记录（**按时间追加，越靠后越新**，最新是 `[B17-内容级去重]`）→
+   **§4 执行暂停点（当前指针）** → §5 提交与仓库同步记录（**commit 前必读**）；
+2. `reports/rag_ingestion_auth_review/stage7_review.txt`（发布门禁 + 三条限制 + 测试盲区）；
+   本批另读 `reports/rag_ingestion_auth_review/B17_task_level_review.txt`（上一批的取舍与盲区）；
+3. `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md`（v2.1）：**§1.0 现状总览** + **§17 作业规程**
+   （取数口径 / 结论状态机 / 「已建未启用」判据 / 编号映射表）；
+4. 踩坑 `docs/RAG_DEV_PITFALLS.md`（**86 条**，分类 A11 / B22 / C8 / D28 / E11 / F6）：
+   本批必读 **F6**（延迟根因，本批主线）、**D28**（登记里的猜测可能方向反了）、
+   **A6/A5**（门禁取数）、**E2**（并行会话下的提交纪律）、**E9**（半提交）、
+   **B22**（探针会覆盖自己的基线证据）。
 
-| 优先级 | 事项 | 为什么值得做 | 入口 |
-| --- | --- | --- | --- |
-| 1 | **前端跨端复核（出截图）** | 提示词 §5.4 明写：**看到界面内容才算完成** | `D:\llm\front\docs\diag_panel_probe.cjs` |
-| 2 | **B6 第二步拍板** | 加「不新鲜」会抬高整条链路风险等级，是业务策略 | 问老霸；不许擅自加 |
-| 3 | **前端补 `clarify` 词条** | 不补界面会显示「未收录的路由值，词表待补」 | `src/lib/status.ts` 的 `ROUTING_TEXT` |
-| 4 | **提交 + 推送** | 主线 6 个提交未推，本批改动也未提交 | 台账 §5（坑 1~4，PowerShell 方言） |
-| 5 | ~~**F4：README 测试数**~~ | **已消**（2026-09-25，统一 JUnit 口径 **949**）；**残留**：§3.5 表里「测试文件数 `30`」与实际 **39** 不一致 | `scripts/update_readme_testcount.py <junit.xml>`；README §3.5 |
-| 6 | **F2：检索评测口径** | 它是"所有优化决策的判据来源"；不修则 M10 永远给不出可信数字 | `scripts/evaluate_retrieval_metrics.py:85` |
-| 7 | **PostgreSQL 复验** | roadmap 8.1 写进了 B8 内容，但计划未要求 → 门禁结论里如实标注未做 | 需要 Docker/psql |
-| 8 | **roadmap 8.2 的两条 P3** | 真实 OCR 引擎复验、压测与 P95/P99 聚合 | `docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md` 8.2 |
-| 9 | **验收规范 §1.0 的其余未实现项** | 解析质量门禁、限流、病毒扫描、成本账本、总 deadline / 背压 / 死信 | 规范 §1.0 的「未实现」行 |
+## 第 2 步：干活
 
-### 硬性约束（每条都有依据，**不是可选建议**）
+见**第二部分**（本批唯一主线）。硬性约束见 §2.4。
 
-1. **不要退回「按租户分片」索引**（B14）：`all_tenants=True` 是有意的；
-2. **`access` 参数不得加默认值**，注解不得含 `None`/`Optional`；
-   `ChunkAccessFilter` 只能服务端构造（唯一构造点 `services/retrieval_access.py`）
-   —— 这三条现在有 `tests/test_wiring_guards.py` 锁着；
-3. **过滤必须 FAISS 原生预过滤**，不改回「先全局 top-k 再后筛」；
-4. **无权限对查询者 = 零命中，缺 filter 对调用方 = 报错**（决策 [D-12]，不要重开）；
-5. **ACL 语义三条**（无记录=租户内可见 / `write` 不隐含 `read` / `group` fail closed，
-   决策 [D-13]）；
-6. **发布、索引重建、索引回滚三者各自授权**（`document:publish` / `index:rebuild` /
-   `index:rollback`），角色集合的差异是有意的；
-7. **鉴权只走 `services/auth_context.py`**，router 不 import `jwt`；
-8. 切分入口签名冻结；删除 chunk 必须单条 DELETE（B13）；读回顺序只信 `metadata_json["ordinal"]`；
-9. **`git add` 一律用精确路径**（E2：工作区可能有并行会话的产出，
-   `git add docs/ scripts/` 会把它们一锅端）；
-10. **前端契约的 metadata 字段名不许改**（改名 = 前端静默回落到兜底值，不报错不告警，最难查）；
-11. **不许用默认值掩盖字段缺失**（`confidence` / `long_term_summary` 取不到就**不放键**）；
-    `requires_safety_prefix` 必须是 **int 0/1**，传 boolean 前端会静默忽略；
-12. **不许擅自往 `食品安全投诉` 加关键词**（会抬高整条链路风险等级，属业务策略）；
-13. **凭据不许硬编码进要提交的脚本**（C7）：走环境变量，缺失即报错，**不退化成跳过鉴权**。
-
-### 本批**不做**的事（防 scope creep）
-
-- 不引入新模型 / 新框架 / 新存储（要换必须单独评估并留决策记录）；
-- 不动已冻结的决策（[D-6] [D-12] [D-13] 等）：要改必须**补新的决策记录**；
-- 不为了让数字好看而放宽门槛（验收规范的判据不因"做不到"而改）；
-- **不擅自改业务策略**（关键词表、风险等级、是否需要转人工 —— 都要老霸拍板）。
-
-## 第 3 步：门禁自检（做完必须跑，全绿才能进第 4 步）
-
-四件套，证据落 `reports/rag_ingestion_auth_review/`（**前缀按批次命名**）：
+## 第 3 步：门禁自检（全绿才能进第 4 步）
 
 ```bash
 R=reports/rag_ingestion_auth_review
-./venv/Scripts/python.exe -m ruff check .                     > $R/<批>_ruff-output.txt 2>&1
+./venv/Scripts/python.exe -m ruff check .                             > $R/<批>_ruff-output.txt 2>&1
 ./venv/Scripts/python.exe -m compileall -q main.py routers services schemas utils config scripts tests \
-                                                              > $R/<批>_compileall-output.txt 2>&1
-./venv/Scripts/python.exe scripts/check_repo_data_size.py     > $R/<批>_data-size-output.txt 2>&1
+                                                                      > $R/<批>_compileall-output.txt 2>&1
+./venv/Scripts/python.exe scripts/check_repo_data_size.py             > $R/<批>_data-size-output.txt 2>&1
 ./venv/Scripts/python.exe -m pytest -q --junitxml=$R/<批>_junit.xml 2>&1 | tee $R/<批>_full_test-output.txt | tail -3
 ```
 
-**硬性**：四件套全绿；`pytest` 数 **≥ 949**（只增不减）；warning **≤ 5**（A6/D15 口径）；
-**一轮只跑一次全量**（A5：守卫按轮计数，重跑会把绿跑成红）。
+**硬性**：四件套全绿；`pytest` **≥ 1030**（只增不减）；**一轮只跑一次全量**。
+
+> ⚠️ **全仓 `ruff check .` 的状态在这个仓库是"活的"**（并行会话会动 `tests/`）。
+> 引用时**必须带时间戳**，且判据只锚本批改动的文件。
+> ⚠️ **别把 `.md` 喂给 `ruff check <file>`** —— 它会按 Python 解析，报上千条假错。
 
 ## 第 4 步：审查（两层，别混）
 
 - **任务级**（每次交付都写）：`reports/rag_ingestion_auth_review/<批>_<主题>_review.txt`。
-  至少含：门禁结果 / 逐条对照规格 / 超出规格处**标注方向**（更严 or 更宽，见 B10）/
-  中途发现问题与处置 / **结论 + 声明范围**（PASS 或 NEEDS_WORK）。
+  至少含六节：① 门禁结果 ② 逐条对照判据 ③ 超出规格处**标注方向**（更严 or 更宽，见 B10）
+  ④ 中途发现问题与处置 ⑤ **测试盲区**（显式写"哪些没测、为什么、风险多大"）
+  ⑥ **结论 + 声明范围**；
 - **阶段级**（阶段末才写）：**阶段未完成不得写 PASS**；
-  **阶段 PASS ≠ 发布门禁 PASS**，两者分别出具、分别声明范围。
+  **阶段 PASS ≠ 发布门禁 PASS**，两者分别出具、分别声明范围；
 - **结论纪律**（规范 §17.2）：只有 `PASS` / `NEEDS_WORK`；
   拿不到可信数字的判据写「**无法判定（缺 X）**」——
   **不许写 PASS，也不许写"未达标"**（拿不到数 ≠ 没达标）。
-- **别忘了测试盲区**：任务级审查里要显式写"哪些没测、为什么、风险多大"。
 
 ## 第 5 步：记录（四处都要写，**且全部必须带日期**）
 
-| 去处 | 写什么 | 格式要求 |
+| 去处 | 写什么 | 格式 |
 | --- | --- | --- |
-| `docs/RAG_EXECUTION_PROGRESS.md` §3 | 本次做了什么、门禁结果、决策、遗留 | **append-only**；条目名带 `[T-x.y]` / `[D-n]`，标题后括注日期 |
-| `docs/RAG_DEV_PITFALLS.md` | 新踩的坑 | **append-only**；四段式「现象 → 根因 → 解决 → 面试怎么讲」；分类 A~E（新类开 G）；**无新坑也要写「本批未新增坑」** |
+| `docs/RAG_EXECUTION_PROGRESS.md` §3 | 做了什么、门禁结果、决策、遗留 | **append-only**；条目名带 `[T-x.y]` / `[D-n]`，标题后括注日期 |
+| `docs/RAG_DEV_PITFALLS.md` | 新踩的坑 | **append-only**；四段式「现象 → 根因 → 解决 → 面试怎么讲」；分类 A~F（新类开 G）；**无新坑也要写「本批未新增坑」** |
 | `reports/rag_ingestion_auth_review/` | 审查文件 + 门禁证据 | 前缀按批次；**红/绿两份都要留**（"问题现场"不能只留修好的那份） |
 | `.workbuddy/memory/YYYY-MM-DD.md` | 当日工作日志 | **带时间戳小标题**；长期约定写进同目录 `MEMORY.md` |
 | `docs/RAG_NEXT_WINDOW_PROMPT.md` | 本文 | **每批结束必须重写**（五件事齐全） |
 
-> **唯一允许覆盖更新**的是台账 §4「执行暂停点」——**必须覆盖**，它是"当前指针"。
+> **唯一允许覆盖更新**的是台账 §4「执行暂停点」—— **必须覆盖**，它是"当前指针"。
 
-## 纪律要求（硬性，逐条都有依据）
+### 纪律要求（硬性）
 
 1. **带日期**：四处记录全部要 `YYYY-MM-DD`；没有日期的记录无法判断新鲜度；
 2. **append-only**：台账 §3 / 踩坑 / 阶段审查只追加，不覆盖、不删历史；
-3. **`git add` 用精确路径**（E2）；**提交后必须 `git rev-parse HEAD` 复核**（A1，坑 1）；
-4. **提交/推送归用户** —— 除非用户明确要求，不要动 git 历史；
+3. **提交后必须复核指针**（见 §4.1 坑 1）；
+4. **提交/推送归老霸** —— 除非他明确要求，不要动 git 历史；
 5. **不确定的事标"待验证"**，不许把没验证的说成已完成；
-6. **环境噪声与真缺陷要分开报**（D12 的三判据 + 单独复跑）；
-7. **接线守卫要防静默变空**（D16）；**构造坏输入先搞清它会被哪一层拦下**（D17）；
-8. **新模块必须登记生产调用点**：定义在、测试在、**没人调用 = 未完成**。
+6. **环境噪声与真缺陷要分开报**（D12 三判据 + 单独复跑）；
+7. **接线守卫要防静默变空**（D16）；**构造坏输入先搞清会被哪一层拦下**（D17）；
+8. **新模块必须登记生产调用点**：定义在、测试在、**没人调用 = 未完成**；
+9. **前后对比类探针必须把"状态"编进文件名**，且**默认拒绝覆盖**已存在的证据文件（B22）。
 
 ---
 
-# 附录 A · 环境坑速查（动手前必读）
+# 第四部分 · 环境坑与常用命令
+
+## 4.1 五个环境坑（动手前必读）
 
 | 坑 | 症状 | 处置 |
 | --- | --- | --- |
-| **1（每次 commit 必踩）** | `git commit` 成功，但 `git rev-parse HEAD` 不前进 | 先**核对**（`HEAD` vs `refs/heads/<branch>`），**不一致才修**：`mkdir -p .git/refs/heads/optimize` 后写 **40 位完整 SHA** |
-| **2** | `git push` 被拒 | 直连与代理**都**会间歇失效 → 探测 + **交替重试**（有过第 5 次才成功的记录）；**探测有效期很短，探测与执行尽量同批做** |
+| **1（每次 commit 必看）** | `git commit` 成功但 `git rev-parse HEAD` 不前进 | **先核对**（`HEAD` vs `refs/heads/<branch>`），**不一致才修**：`mkdir -p .git/refs/heads/optimize` 后写 **40 位完整 SHA** |
+| **2** | `git push` 被拒 | 直连与代理**都可能**间歇失效（连只读的 `ls-remote` 也会）→ **探测有效期很短，探测与执行同批做**，交替重试 |
 | **3** | 轻量 venv 缺源配置 | `pip install` 显式指定镜像 + trusted-host |
-| **4** | Bash 与 PowerShell 通道能力不互补 | 按需换通道；**给用户的命令按 PowerShell 写**（E4：`timeout` / `env -u` / `A \|\| B` 在 PS 里都不是那个意思） |
-| **5** | 全量测试 stdout 汇总行消失、退出码 1 | **环境删除守卫**（A6）；改用 JUnit XML 取数 |
+| **4** | Bash 与 PowerShell 通道能力不互补 | **给老霸的命令一律按 PowerShell 写**（E4：`timeout` / `env -u` / `A \|\| B` 在 PS 里**都不是那个意思**，会报语法错或行为诡异） |
+| **5** | 全量测试 stdout 汇总行消失、退出码 1 | **环境删除守卫**（A6）→ 改用 **JUnit XML** 取数 |
 
-**另三条"看起来像坑"的纪律**：warning 条数取全量 stdout（D15），取不到就记 `N/A`，不许估算；
-测试数认 JUnit XML 不认 `N passed`（D18）；**终端方言先确认**（E4）。
+## 4.2 跑 RAG 脚本的环境前置（**两个环境变量 + 一个装法**）
 
-# 附录 B · 常用命令
+```bash
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+RAG_JWT_SECRET=dev-secret-please-change-me-32bytes+ \
+./venv/Scripts/python.exe scripts/evaluate_hybrid_retrieval.py
+```
+
+- **不加 offline** → 会去连 HuggingFace Hub，本机代理返回 **502**（A10；模型其实已在本地 cache）；
+- **缺 `RAG_JWT_SECRET`** → 受保护接口与审计写入直接 **500**（C7，fail closed）；
+- `torch / transformers / sentence-transformers` 装在 **`venv/rag_ml_deps/`**，
+  靠 `venv/Lib/site-packages/_rag_ml_deps_prepend.pth` 插到 `sys.path[0]`。
+  **别再用常规 `pip install` 动这几个包**（A7：删除守卫会杀掉覆盖安装，会装成半残）。
+
+## 4.3 常用命令
 
 ```bash
 # 基线核对
-git status -sb && git rev-parse HEAD
-git log --oneline -6
+git status -sb && git rev-parse HEAD && git log --oneline -6
 
-# 全量测试（A6 口径：JUnit XML 是权威）
-./venv/Scripts/python.exe -m pytest -q --junitxml=reports/rag_ingestion_auth_review/<批>_junit.xml
+# 门禁四件套（见第三部分第 3 步）
 
-# warning 条数（不要用 --collect-only！见 D15）
-grep -i "passed.*warnings" reports/rag_ingestion_auth_review/<批>_full_test-output.txt
+# 本批相关：量延迟（都要带 4.2 的环境变量）
+./venv/Scripts/python.exe scripts/evaluate_hybrid_retrieval.py --out-prefix <新前缀>
+#   ↑ 单条耗时明细在这里；**务必用 --out-prefix 换新文件名**，别覆盖旧报告
+./venv/Scripts/python.exe scripts/audit_chat_evidence_diversity.py --label <状态>
+#   ↑ 证据多样性（B17 的验收探针；默认拒绝覆盖已存在的文件）
 
-# 门禁其余三件套
-./venv/Scripts/python.exe -m ruff check .
-./venv/Scripts/python.exe -m compileall -q main.py routers services schemas utils config scripts tests
-./venv/Scripts/python.exe scripts/check_repo_data_size.py
+# 上一批留下的两个审计脚本（只读，可复跑）
+./venv/Scripts/python.exe scripts/audit_colloquial_gold.py --top-k 50
+#   ↑ 口语化 7 条金标复核（判"真·检索失败"还是"金标假阴性"）
+./venv/Scripts/python.exe scripts/rebuild_chunk_index.py     # 只重建索引（改了切词/索引结构必跑）
 
-# 只跑本批 / 单文件（不重跑全量，A5）
-./venv/Scripts/python.exe -m pytest tests/test_intent_and_safety.py -q
+# 规范改动后的回归门禁
+./venv/Scripts/python.exe scripts/verify_acceptance_spec.py
 
-# 前端对齐批次：trace 端到端验收（令牌走环境变量，见 C7）
-export RAG_JWT_SECRET=dev-secret-please-change-me-32bytes+
-./venv/Scripts/python.exe -m uvicorn main:app --host 127.0.0.1 --port 8001
-./venv/Scripts/python.exe scripts/mint_dev_token.py --role admin --format token
-export TRACE_FIX_TOKEN=<签出的令牌>
-./venv/Scripts/python.exe scripts/verify_trace_fix.py
-
-# 复核接线仍在（B7 交付物，现由 AST 守卫盯）
-grep -n "retrieve_chunk_items\|build_chunk_access_filter" routers/retrieval.py
-
-# 复核回滚端点仍在（B8-1 交付物）
-grep -n "indexes/rollback" routers/documents.py
-
-# 复核前端契约字段名没被改（改名前端会静默失效，不报错）
-grep -n "recent_preview\|long_term_summary\|requires_safety_prefix\|matched_high_risk_intents" services/chat_service.py
-
-# 规范改动后的回归门禁（v2.1 专用）
-"C:/Users/kk/.workbuddy/binaries/python/envs/default/Scripts/python.exe" scripts/verify_acceptance_spec.py
+# README 测试数（带命中数断言，门禁非全绿时拒绝写）
+./venv/Scripts/python.exe scripts/update_readme_testcount.py <junit.xml>
 ```
 
-# 附录 C · 自检清单（开工前对一遍，交付前再对一遍）
+> ⚠️ `tmp/` **不进 git 且随时可能被清**，里面的探针（`probe_*.py`、`audit_corpus_coverage.py`
+> 等）**动手前先确认它还在**；不在就重建，或先把有长期价值的移进 `scripts/`（B22 的教训）。
+
+## 4.4 语料与入库（本批**不要**动语料，留档备查）
+
+```bash
+./venv/Scripts/python.exe scripts/build_corpus_documents.py --limit 25 --sleep 0.6
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./venv/Scripts/python.exe scripts/bulk_import_documents.py
+```
+
+- `data/corpus/`（业务主语料，103 份）与 `data/corpus_samples/`（形态补缺，23 份）
+  **都是生成物，已 gitignore**；
+- **补语料后必须跑覆盖审计**（`tmp/audit_corpus_coverage.py`）——
+  只看文件数会掩盖"某个解析器分支从未被真实文档走过"（**D19**）。
+
+---
+
+# 第五部分 · 自检清单
 
 **开工前：**
 
-- [ ] `git log` / 台账 §4 已核对，本文的基线（**949 / 0 / 0**）与实测一致
-- [ ] 已读 §1 分批表 + §2 审查汇总 + §3 最新记录（`[F1 切轨]`）
-- [ ] 本次工作项的**验收判据**已明确（不许"做着看"）
+- [ ] `git status -sb` 看清叠着哪几批（**期望：不干净，F1/B8/B17 三批**）；`HEAD == 7d4a34b`
+- [ ] 全量基线核对过：**1030 / 0 / 0 / 0**（JUnit XML 口径）
+- [ ] 已读台账 §3 最新条目（`[B17-内容级去重]`）+ §4 暂停点 + 踩坑 **F6** / **D28** / **B22**
+- [ ] 已读 `B17_task_level_review.txt`（上一批的取舍与盲区，**别重做已做的事**）
+- [ ] 本批的**验收判据**已明确（不许"做着看"）
+- [ ] 已想清 §2.3 的四件事，并把它写进了决策记录
 
 **交付前：**
 
-- [ ] 门禁四件套全绿；pytest ≥ **949**；warning ≤ 5（口径见 D15 / D18）
-- [ ] 任务级审查已写，含**结论**与**声明范围**；测试盲区已排查
-- [ ] 台账 §3 追加（带日期）；§1/§2 如涉及则更新；**§4 已改为新的当前指针**
+- [ ] 门禁四件套全绿；`pytest` **≥ 1030**；warning 按第 0 步口径取（取不到记 `N/A`）
+- [ ] **缓存命中/失效的测试**都在：尤其「**切版本后第一次检索读到新索引**」
+- [ ] **评测指标逐位不变**（缓存只该改速度、不该改结果）—— 用**新前缀**跑，别覆盖旧报告
+- [ ] **延迟变化已量到并如实报告**（打缓存前后的均值 / 中位 / P95，同一环境）
+- [ ] 若量出来耗时不在 manifest 读取上 → **停下讨论，不要硬做**
+- [ ] 任务级审查已写（六节齐全，含**结论**与**声明范围**、**测试盲区**）
+- [ ] 台账 §3 追加（带日期）；**§4 已改为新的当前指针**
 - [ ] 踩坑追加（带日期；**无坑也写"未新增"**）
 - [ ] 工作记忆追加（带时间戳小标题）
-- [ ] **本文已重写**（进度 / 工作项 / 基线 / 约束，五件事齐全）
+- [ ] **本文已重写**（进度 / 下一步 / 基线 / 约束，五件事齐全）
 - [ ] 证据文件已落 `reports/rag_ingestion_auth_review/`（含**红/绿两份**）
-- [ ] 提交用精确路径；提交后 `git rev-parse HEAD` 已复核（坑 1）
+- [ ] 提交指令已给老霸（PowerShell、分开标明、一屏给完）；提交后 `git rev-parse HEAD` 已复核
 
 ---
 
-# 第四部分 · 2026-09-23 追加：语料专项批次交接（**覆盖第一部分的部分现状描述**）
+# 附录 · 历史批次速查（要细节就读原始文档）
 
-> **追加时间**：2026-09-23（星期三）23:50。
-> **本部分是对第一部分的补充**：第一部分说「系统全景」时还没有真实语料，
-> 现在有了。**冲突处以本部分为准。**
-
-## A. 状态变化（最重要的一句）
-
-**ingestion 链路第一次有真实数据流过。**
-
-| 项 | 开工前 | 现在 |
+| 批次 | 一句话 | 权威出处 |
 | --- | --- | --- |
-| `document_chunks` / `document_versions` / `document_acl` / `index_builds` | **全 0 行** | 9229 / 209 / — / **v3 active** |
-| `data/faiss_store/` 下的版本目录 | **不存在** | `v1`（superseded）、`v2`（superseded）、**`v3`（active，2026-09-24 实测）** |
-| 检索能查到什么 | 781 条 FAQ 问答对 | **9229 个 chunk，带标题路径 + 页码 + 章条结构** |
+| B1~B7 | 摄取 / 分块 / 权限 / 检索 API 接线（B7） | 台账 §3，`stage1~6_review.txt` |
+| B8-1/2/3 | 索引回滚 + 接线守卫 + 四格式端到端 | `stage7_review.txt` |
+| 前端对齐批次 | trace 内容层 + 意图识别缺陷（B1~B7 的子批次） | `docs/BACKEND_TRACE_FIX_DELIVERY_2026-09-23.md` |
+| 语料专项 | 781 条 FAQ → 9229 个真实 chunk | 台账 §3 `[语料专项]` |
+| 形态补缺 | 让解析器每个分支都被真实语料走过（撞出 B18） | 台账 §3 `[形态补缺批次]` |
+| F1 切轨 | 聊天问答切到 chunk 索引（9229 chunk 进得了聊天） | 台账 §3 `[F1 切轨]` |
+| B8-混合检索 | 稠密 + 稀疏 FTS5 双路 + 加权 RRF，已实测 | 台账 §3 `[B8-混合检索]`、`reports/retrieval_hybrid/` |
+| **B17-内容级去重** | **检索层 Top-K 去重，聊天有效证据 2.14/3 → 3.00/3** | 台账 §3 `[B17-内容级去重]`、`reports/rag_ingestion_auth_review/B17_task_level_review.txt` |
 
-## B. 现在最该做的一件事：**B17 按 parent 去重**
-
-**切轨（F1）已于 2026-09-25 完成**，A 轨不再是默认 —— 于是「最该做的事」换成了它暴露出来的问题：
-**父子块重叠占了约 29% 的 Top-K 名额**。
-
-实测（`tmp/probe_topk_diversity.py`，7 条 query，走真实聊天路径
-`retrieve_chunk_items_for_chat` → 适配 → `build_prompt_context_items`）：
-
-| 粒度 | 结果 |
-| --- | --- |
-| `chunk_id` 重复 | **0 条** —— 检索层没有返回重复 chunk，这点它是对的 |
-| `heading` 重复 | 普遍存在：父块 `p_*` 与子块 `c_*` **同 heading 双进 Top-K** |
-| 下游文本去重 | 只吃掉了能吃得掉的那 1/6（文本**完全相同**的） |
-| **浪费的名额** | **6 / 21 ≈ 29%**；平均有效证据 **2.14 / 3** |
-
-**动手前先看清楚这三件事**：
-
-1. **`ChunkHit` 目前没有 `parent_chunk_id` 字段** —— 要么给数据模型加，
-   要么从 `chunk_type` / 父子关系表推导。**别拿 chunk_id 的 `p_` / `c_` 前缀当判据**，
-   那是当前实现的巧合，不是契约；
-2. **去重放在哪一层要想清楚**：检索层（`retrieve_chunk_items`）还是适配层？
-   放检索层能让 `POST /retrieval/search` 一并受益，但那是 B 轨 API 的对外契约，改动面更大；
-3. **「保留哪一条」别拍脑袋** —— 父块给全上下文、子块给精确匹配，通常保留分数高的，
-   但要先用这条 query 集验一遍再定。
-
-完整数据与证据：`reports/rag_ingestion_auth_review/b17_topk_diversity_20260925.json`。
-
-## C. 三个新脚本（都已跑通，别重写）
-
-| 脚本 | 用途 | 跑法 |
-| --- | --- | --- |
-| `scripts/build_corpus_documents.py` | 生成语料 | `./venv/Scripts/python.exe scripts/build_corpus_documents.py --limit 25 --sleep 0.6` |
-| `scripts/bulk_import_documents.py` | 灌库 + 重建索引 | `RAG_JWT_SECRET=... HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./venv/Scripts/python.exe scripts/bulk_import_documents.py` |
-| `tmp/smoke_retrieval.py` | 端到端检索冒烟 | 同上 |
-| `tmp/probe_topk_diversity.py` | 量化 B17（Top-K 里父子块重叠占比） | `RAG_JWT_SECRET=... HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./venv/Scripts/python.exe tmp/probe_topk_diversity.py` |
-
-**⚠️ 两个环境变量不能少**（踩坑 A10）：`HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1`。
-不加会去连 HuggingFace Hub，本机代理返回 502。
-
-**⚠️ 依赖装在 `venv/rag_ml_deps/`**（踩坑 A7）：环境的删除守卫会杀掉 pip 的覆盖安装，
-所以用了 `--target` 装独立目录 + `.pth` 插到 `sys.path[0]`。
-**别再用常规 `pip install` 动这几个包**，会装成半残。
-
-## D. 门禁与记录
-
-- **全量门禁 949 / 0F / 0E / 0S**（JUnit XML 口径）。证据
-  `reports/rag_ingestion_auth_review/junit_f1_track_final_20260925.xml`；
-  **红的那份也留了**（`junit_f1_track_20260925.xml`，01:17 轮 failures=1：
-  红用例 `tests.test_chat_api.ChatPromptApiTest::test_chat_prompt_returns_retrieved_documents_and_trace`，
-  根因是伪造替身少一个位置参数 —— 踩坑 D22 第 2 形态；两轮 tests 都是 949，
-  **是修好不是删测试**）；`compileall` / `check_repo_data_size` 证据
-  `f1_track_compileall-output.txt` / `f1_track_data-size-output.txt`；
-- **⚠️ 引用「全仓 `ruff check .`」必须带时间戳** —— 本批改动的 **8 个 Python 文件**
-  定向 ruff 全过（⚠️ 别把 `.md` 喂给 `ruff check <file>`，它会按 Python 解析报上千条假错）；
-  但全仓状态在这个仓库是"活的"：01:38 全过 → 01:45 又冒出 3 条，**全在并行会话的
-  `tests/test_hybrid_retrieval.py`**（缺 `dataclasses.replace` 的 import），**与本批无关**。
-  **判据只锚本批文件**；
-- **任务级审查**：`reports/rag_ingestion_auth_review/f1_track_review.txt`
-  （六节：门禁 / 逐条判据 / 超范围标注方向 / 中途问题处置 / 测试盲区 / 结论 + 声明范围）；
-  ⚠️ **warning 条数记 `N/A`** —— 本批没落全量 stdout 证据文件，且**不重跑**
-  （A5 一轮只跑一次全量 + 并行会话正在改 `tests/`，见审查第四节第 3 条）；
-- **取数口径按踩坑 A6/A5**：以 JUnit XML 的 tests/failures/errors 为权威，
-  **不要用退出码或 stdout 汇总行判绿红**（环境删除守卫会吞掉汇总行）；**一轮只跑一次全量**；
-- **README 的测试数已改 JUnit 单一口径**（不再有 `932 passed` vs `936` 那套双数字）——
-  更新用 `scripts/update_readme_testcount.py <junit.xml>`，它带命中数断言，
-  且**门禁非全绿时拒绝写数字**；
-- 本批踩坑：**D21（守卫判据随架构一起失效）+ D22（改默认配置静默打破 mock 型测试）**，
-  见 `docs/RAG_DEV_PITFALLS.md`；
-- 进度台账见 `docs/RAG_EXECUTION_PROGRESS.md` §3 的 `[F1 切轨]`（§4 暂停点已覆盖更新）。
-
-## E. 未做项（按优先级）
-
-1. **B17 按 parent 去重**（本部分 B）—— 已有量化（29% 名额被重叠内容占掉），动手前读 B 的三条；
-2. **评测金标重建**（F2）—— 现有 recall 按 `intent` 判相关，文档语料下算不了。
-   **切轨没有改变它**，所以对外不能说「检索质量已评测」；
-3. **chat 响应暴露 `retrieval_path`** —— 目前只有 trace 里有，前端拿不到走的哪条轨；
-4. **语料扩容** —— 2026-09-25 调研结论：`flk.npc.gov.cn/api/` **已废弃**
-   （返回前端 SPA HTML，网上 2024 年的爬虫教程全部过期）；可达源是
-   `samr.gov.cn` / `cca.org.cn` / `openstd.samr.gov.cn` / 淘宝·拼多多规则中心；
-   `sousuo.www.gov.cn/search-gov/data` 接口活着且有数据但参数未调通；
-   `rules.meituan.com` 被本机代理 502 拦（踩坑 A10 同款）；
-5. 前端对齐批次遗留的两项（界面复核、B6 第二步待老霸拍板）仍然有效。
-
-### F. 与检索轨道相关的守卫 —— 改之前先读
-
-| 守卫 | 位置 | 盯什么 |
-| --- | --- | --- |
-| `TestDeploymentGuards` | `tests/test_ingestion_pipeline.py` | compose 真的起了 worker、共享索引/对象卷、同元数据库与队列地址、启动日志点破 process-local 队列 |
-| `TestWorker::test_consumed_job_leaves_real_chunks_behind` | 同上 | worker 消费后 **chunk > 0 且版本 published 且进可见集合** |
-| `TestReadmeTrackConsistency` | 同上 | README 的机器可读锚点 `<!-- f1-track: chat-service-retrieval=... -->` 与 `chat_service.py` 的 `DEFAULT_CHAT_RETRIEVAL_PATH` **双向一致**；另有 1 条**守卫自测**（喂源码样本，验证两种取值都读得出、读不到返回空串） |
-| `tests/test_chat_retrieval_track.py`（12 条） | 新文件 | 轨道解析 / 形状适配（含反证）/ 分发 / **端到端（真实索引）** |
-
-**判据已经换过一次，别换回旧写法**：原来盯的是「AST 里有没有调用 `retrieve_rag_items`」，
-改成开关制后两条轨道**同时**调它，那条判据会永远返回 `seed-faq`、彻底失去区分度
-（踩坑 **D21**）。现在盯的是**默认值本身**。
-
-**再切一次轨道（改默认值）时要同步做三件事**：改常量 → 改 README 锚点 → 跑全量。
-漏了第三件会踩 **D22**：mock 型测试会被静默架空 —— 本次撞出 4 条红，
-其中 1 条 `TypeError` 来自伪造模块的替身签名没跟着真身改。
-
----
-
-# 第五部分 · 2026-09-25 B8-混合检索交接（**覆盖前四部分的状态描述**）
-
-> 本部分是最新一层。**凡与前四部分冲突的，以本部分为准**；前四部分保留是为了讲清演进过程。
-
-## A. 状态变化（最重要的一句）
-
-**B 轨（正式路径）真正实现了混合检索，并且有实测数字。**
-
-| 项 | 现在 |
-| --- | --- |
-| 机制 | 稠密（FAISS `IndexFlatIP`）+ 稀疏（SQLite FTS5 `bm25()`，中文 bigram 切词）**两路独立召回** → **加权 RRF** 融合 |
-| 在哪 | `utils/hybrid_retriever.py`（融合）、`utils/sparse_retriever.py`（稀疏查询）、`services/ingestion/sparse_index.py`（稀疏索引构建/校验） |
-| 怎么用 | `POST /retrieval/search` 带 `retrieval_mode=dense\|sparse\|hybrid`；聊天链路用 `RAG_CHAT_RETRIEVAL_MODE` |
-| **默认** | **仍是 `dense`** —— 见「D. 三条硬结论」第 3 条 |
-| 索引 | 生效索引 `v4`：稠密 18.9MB + manifest 19.0MB + 稀疏 32.4MB，9229 chunk |
-| 门禁 | **1004 / 0F / 0E / 0S** —— 以 `reports/retrieval_hybrid/final_junit_20260925.xml` 为准 |
-| 踩坑 | 全文 **84 条**（A11 / B21 / C8 / D27 / E11 / F6） |
-| 待提交 | **两批叠着**：F1 切轨 + B8-混合检索（清单见台账 §4 暂停点，`git add` 用精确路径） |
-
-> ⚠️ **前四部分里凡是「检索质量无结论 / 纯稠密单路 / 没有 BM25」的表述，从本部分起作废。**
-> 但**不要**因此说"检索质量已全面评测" —— F2 的 A 轨口径仍未统一（见 F. 未做项）。
-
-## B. 现在最该做的一件事：**B17（父块去重）+ F6（manifest 缓存）**
-
-两件都是"混合检索做完后暴露出来的、与检索算法本身无关的欠账"，**都有量化，别凭印象**：
-
-| 项 | 量化 | 修法要点 |
-| --- | --- | --- |
-| **B17 去重** | 父块 `p_*` 与子块 `c_*` 同 heading 双进 Top-K → **约 29% 名额被重叠内容占掉**，平均有效证据 **2.14/3**；下游文本去重只拦得住 1/6 | 检索层按 parent 去重。**`ChunkHit` 目前没有 `parent_chunk_id` 字段**，先看清再动手。证据：`reports/rag_ingestion_auth_review/b17_topk_diversity_20260925.json` |
-| **F6 延迟** | hybrid **355.7ms** ≈ dense(172.7) + sparse(185.7)，根因是 `load_active_manifest` **无缓存**，每次检索重读 19.0MB manifest | 键取 `(root, index_name, index_version)` 的缓存 + **版本切换时显式失效** + 一条"切版本后第一次检索就读到新的"测试 |
-
-**两件别混在同一个批次做**：一个改召回质量、一个改延迟，混在一起出问题分不清是谁造成的。
-
-## C. 本批新增/改动的东西（**别重写，先读**）
-
-| 文件 | 用途 |
-| --- | --- |
-| `services/ingestion/sparse_index.py` | 稀疏索引构建 / 校验 / 元数据；`row_id` 与 manifest 对齐 + `row_id_checksum` 自校验 |
-| `utils/sparse_retriever.py` | 稀疏查询：**临时表 JOIN 做权限前置过滤**（比 `rowid IN (9229参数)` 快 400 倍）、fail closed |
-| `utils/hybrid_retriever.py` | `FusionConfig`（`w_dense=10/w_sparse=1/k=60`）、`fuse_rankings`（**按 rank 融合**）、`search_hybrid_chunks` |
-| `scripts/rebuild_chunk_index.py` | **只重建索引**（不重跑解析灌库）。**改了切词算法 / 加了稀疏路之后必须跑它**，否则线上仍是旧构建 |
-| `scripts/build_retrieval_gold.py` / `build_colloquial_cases.py` | 弱监督金标：81 条标题式 + 30 条口语化（每条可回溯）+ 40 条负样本；命中判据用 **span** |
-| `scripts/evaluate_hybrid_retrieval.py` | 三模式对比评测，**走生产代码路径**；输出落 `reports/retrieval_hybrid/` |
-| `tests/test_hybrid_retrieval.py`（53 条） | 切词 / MATCH 构造 / 索引构建校验 / 融合 / **权限隔离** / 聊天开关 / 决策留痕 |
-
-## D. 混合检索的三条硬结论（**对外口径必须按这个讲**）
-
-1. **增益上限本来就很小**：两路 top-10 的**并集召回** = title 81/81、口语化 18/30 ——
-   这是**任何融合策略的天花板**；而 dense-only 已达 80/81，title 集最多再赢 1 条。
-2. **等权融合有害**：口语化集上等权 RRF 把 R@1 从 0.4000 拉到 **0.2667**；
-   扫完权重后 **`w_dense=10` 是唯一在两套集上都不掉点**的配置（title R@10 正好打到上限 1.0000）。
-3. **不是"指标全面上涨"**：收益 = title 集 R@1 **+2 条** + R@10 打满；
-   口语化集**零退化（逐列完全相同）**。所以：
-   - **聊天链路不建议切 hybrid** —— 它的输入正是口语提问，实测**零收益、双倍延迟**；
-   - 只有"短查询为主"的接口值得切。切之前：重建索引 → 确认 `index.sparse_available=true`
-     → 改 `routers/retrieval.py::DEFAULT_RETRIEVAL_MODE` **与 README 的 `b8-hybrid` 锚点**
-     （**改一边不改另一边会红，故意留的**）。
-
-数字与全部口径说明：README §3.6 + `reports/retrieval_hybrid/evaluation_20260925.txt`。
-
-## E. 门禁与记录
-
-- **门禁**：全量 **1004 / 0F / 0E / 0S**（`reports/retrieval_hybrid/final_junit_20260925.xml`）+
-  `ruff check .` 全仓过 + `scripts/check_repo_data_size.py --max-mb 1` 过 +
-  `scripts/verify_acceptance_spec.py` 8 项过；**warning 记 `N/A`**（汇总行被守卫吞掉，踩坑 A6）；
-- **⚠️ 规范回归门禁此前跑不起来**：`scripts/verify_acceptance_spec.py` 依赖 `markdown`，
-  而环境里只有 `markdown_it`（另一个库）。本批补进 `requirements-dev.txt` 并**挂进 CI** ——
-  这道门禁过去只在本地手动跑过一次，**等于不存在**；
-- **进度台账**：`docs/RAG_EXECUTION_PROGRESS.md` §3 的 `[B8-混合检索]`（§4 暂停点已覆盖更新）；
-- **本批踩坑 10 条**：B19（手拼索引目录）/ B20（假守卫·同源校验）/ B21（`mode` 跨轨撞车）/
-  D23（评测口径绑在格式差异上）/ D24（FAISS 并列顺序不稳定）/ D25（隔离测试假绿）/
-  D26（靶子取自顺序不保证的集合）/ **D27（规范「唯一口径」表的判据会过期）** /
-  E10（占位代码）/ **E11（门禁脚本依赖没进清单）**；另补历史缺口 **F6**。
-
-## F. 未做项（按优先级）
-
-1. **口语化金标复核** —— 30 条里 7 条两路 top-50 全捞不到，疑似假阴性；
-   R@1 **0.4000** 这个绝对水平对外时**必须主动说明**，不能只报 title 集的 1.0000；
-2. **B17 + F6**（见 B 节，两件分批判）；
-3. **F2 口径** —— `scripts/evaluate_retrieval_metrics.py:85` 按 `intent` 判相关（**A 轨口径**）；
-   B 轨这套 span 金标是**新增的第二套**，两者**不可互认**；
-4. **切线上默认到 hybrid**（可选，见 D 节第 3 条）；
-5. **chat 响应暴露 `retrieval_path` / 召回模式** —— 目前只有 trace 里有；
-6. **界面复核** —— `D:\llm\front\docs\diag_panel_probe.cjs`；
-7. **B6 第二步待老霸拍板** —— 往 `食品安全投诉` 加「不新鲜」会把整句话抬成 high risk，**未做**；
-8. **前端补 1 行词表** —— `src/lib/status.ts` 的 `ROUTING_TEXT` 增 `clarify` 项；
-9. **语料扩容**（源可达性见第四部分 E）；**PostgreSQL 复验**、roadmap 8.2 两条 P3。
-
-## G. 新增守卫（**改代码前先读，否则会撞红还不知为什么**）
-
-| 守卫 | 位置 | 盯什么 |
-| --- | --- | --- |
-| `TestReadmeTrackConsistency::test_readme_marker_matches_the_default_retrieval_mode` | `tests/test_ingestion_pipeline.py` | README 锚点 `<!-- b8-hybrid: default-retrieval-mode=... -->` 与 `routers/retrieval.py::DEFAULT_RETRIEVAL_MODE` **双向一致**；另有 1 条**守卫自测**（喂源码样本，验证读得出、改名/改成运行时值则返回空串） |
-| `TestHybridDecisionTrace`（`tests/test_hybrid_retrieval.py`） | 新文件 | 把本批关键取舍做成**可断言的事实**：默认权重 `w_dense=10/w_sparse=1/k=60`、`DEFAULT_RETRIEVAL_MODE == "dense"`。**改动必须重跑评测** |
-
-**切默认模式要同步做四件事**：改常量（`routers/retrieval.py`）→ 改 README 锚点 →
-同步 README §0.1 的上线顺序说明与 §3.6 现状表 → 跑全量。
-漏任一步要么变红（锚点/§3.6），要么静默误导读者（§0.1 的上线顺序）。
+**踩坑 86 条**（A11 / B22 / C8 / D28 / E11 / F6），全文 `docs/RAG_DEV_PITFALLS.md`。

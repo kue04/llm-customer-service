@@ -1,0 +1,429 @@
+任务级审查：批次 B17（检索层 Top-K 内容级去重 / 证据多样性）
+审查日期：2026-09-25
+审查人：AI（B17 批次）
+审查范围：单批次单主题 —— 检索层的证据去重，落在「条目层」截断点
+依据：docs/RAG_NEXT_WINDOW_PROMPT.md（B17 作业规程，交接时间 2026-09-25 13:24）；
+      docs/RAG_EXECUTION_PROGRESS.md 第 4 节「当前指针」（B8 批次收尾，2026-09-25）；
+      docs/RAG_DEV_PITFALLS.md 相关条目（D23 / D24 / D26 / D18 / A6）
+
+════════════════════════════════════════════════════════════════════
+本批一句话结论
+════════════════════════════════════════════════════════════════════
+B17 —— 「Top-K 被同一段内容的副本占满」——**在检索层修掉了**，
+真实聊天链路的平均有效证据从 **2.14 / 3 提升到 3.00 / 3**（7 条真实 query 实测）。
+
+但**修法不是登记里写的那一条**。登记记的是「检索层按 parent 去重，`ChunkHit` 缺
+`parent_chunk_id` 字段，要么加字段、要么从 chunk_type 推导」。
+本批先做了取证，结论是**这两个选项都不该做**：
+
+1. **父子块在本库里 100% 文本相同**（2824 对，逐字节相同、token 数相同）——
+   父子块不是「父给上下文 / 子给精确匹配」，而是同一段内容存了两遍。
+   于是「按 parent 去重」和「按文本去重」在**实际数据上等价**，
+   而后者不需要动数据模型、不需要重建索引；
+2. 登记推荐的判据 `content_hash` **达不到目标**：它是原文的 sha256，
+   而下游 `build_prompt_context_items` 按**压平空白后**的文本去重，两者口径不一致。
+   实测只按 `content_hash` 去重 → **19 / 21（2.71 / 3）**，翻不过 3.00 那关；
+   按归一化文本 → **21 / 21（3.00 / 3）**。
+
+所以本批的实质性判断是：**去重键必须取自「下游实际使用的口径」，而不是库里现成的 hash 列**。
+这条判据后来还救回一个更隐蔽的问题（见第六节）。
+
+本批同时把「库内 40.4% 冗余」第一次拆成了**精确可加的三层**
+（父子块 2824 + 多格式孪生 906 + 跨版本 0 = 3730），
+说明「父子块同文本」只是最大的一层，**还有一个独立的 906 条来自同一份内容被 md/html/pdf/docx
+各入库一次** —— 后者与检索层无关，是入库侧的口径问题，本批**只记录不修**。
+
+═══ 一、门禁结果（五件套） ═══
+
+证据文件（reports/rag_ingestion_auth_review/）：
+
+  B17_baseline_junit.xml        开工基线（JUnit XML）→ tests=1004 failures=0 errors=0 skipped=0
+  B17_full_test_junit.xml       收工全量（JUnit XML）→ tests=1030 failures=0 errors=0 skipped=0
+  B17_full_test-output.txt      收工全量的 stdout（★ 尾段；本轮汇总行**未被吞**）
+  B17_ruff-output.txt           ruff check . → All checks passed!
+  B17_compileall-output.txt     compileall → 退出码 0（文件 0 字节 = 无输出 = 无错误）
+  B17_data-size-output.txt      check_repo_data_size.py → 通过，没有超标文件
+
+起点 / 终点对比：
+
+  B8 收尾 **1004**（本批起点）→ B17 收尾 **1030**，
+  本批新增 **26** 条，**零失败零错误零回归**（failures=0 errors=0 skipped=0）。
+
+  新增 26 条**全部**来自新文件 tests/test_retrieval_dedup.py（`--collect-only` 实测）：
+
+  | 文件 | 基线 | 收工 | 增量 |
+  | --- | --- | --- | --- |
+  | tests/test_retrieval_dedup.py | 0（不存在） | 26 | **+26** |
+  | 其余 40 个文件 | 1004 | 1004 | 0 |
+  | 合计（JUnit 口径） | **1004** | **1030** | **+26** |
+
+★ **warning 数本批是实测值，不是 `N/A`**（上一批 B8 是 N/A）：
+
+      warning 总数 = **5**（取全量 stdout 的汇总行，本轮**没有被守卫吞掉**）
+
+  逐条来源，全部是既有噪声、与本批改动无关：
+  fastapi.testclient 的 httpx 弃用[1] + starlette 的 anyio 别名弃用[1] + faiss SWIG 绑定[3]。
+  与 B7 批次的 5 条持平，**未新增**。
+
+★ **两个「测试数」口径的差仍是 4（踩坑 D18 复现，本批实测再次撞到）**：
+
+      JUnit XML      口径：tests = 1030
+      --collect-only 口径：tests = 1026
+      stdout         口径：1026 passed + 4 subtests passed
+
+  差 4 = pytest-subtests 的 subtest 条数。两个口径各自自洽，
+  **本批起登记规模时一律注明用的哪个口径**，不再混用。
+
+═══ 二、交付物清单 ═══
+
+  1. utils/retrieval_dedup.py（新，约 200 行）
+     去重判据 + 保留规则 + 两个适配函数，稠密路与混合路**共用同一份实现**
+     （两份实现漂移的那天，两条链路会给出不同的证据条数）。
+  2. utils/vector_retriever.py（改，19 行）
+     retrieve_chunk_items：截断点从「第 limit 条」后移到「去重后」。
+  3. utils/hybrid_retriever.py（改，22 行）
+     retrieve_hybrid_items：同上，排序用**融合分** fused_score。
+  4. tests/test_retrieval_dedup.py（新，26 条）
+     三层各测一件事：判据层 / 接线层 / 端到端。
+  5. scripts/audit_chat_evidence_diversity.py（新）
+     把 tmp/ 下的探针提升为可复跑的门禁脚本，**带防覆盖保护**（见第六节事故）。
+  6. 证据：B17_* 六件套 + b17_layers_20260925.txt + b17_strategy_20260925.json
+         + B17_chat_evidence_diversity_after_20260925.json
+
+**生产调用点（B17 判据：定义在、测试在、有人调用）**：
+
+  utils/retrieval_dedup.py
+    ├─ utils/vector_retriever.py::retrieve_chunk_items
+    │    ├─ routers/retrieval.py（POST /retrieval/search）
+    │    └─ services/chat_service.py::retrieve_chunk_items_for_chat → 聊天链路 ★
+    └─ utils/hybrid_retriever.py::retrieve_hybrid_items
+         └─ routers/retrieval.py（retrieval_mode=hybrid）
+
+  ★ 去重放**一处**（两个 retrieve_*_items）即同时覆盖「检索 API」与「聊天链路」，
+    因为这两条链路上游共用这两个入口 —— 这是选择该层次的主要理由，不是巧合。
+
+═══ 三、库内冗余的三层分解（交付物 1） ═══
+
+证据：reports/rag_ingestion_auth_review/b17_layers_20260925.txt（可复跑：tmp/probe_b17_layers.py）
+
+  基准：document_chunks = 9229 行，content_hash 空值 = 0（0 才可作判据）
+        重复 hash 组 2378 个，落在组里的行 6108 行
+        冗余行数 Σ(c−1) = **3730（40.4%）**
+
+  | 层 | 内容 | 可消掉 | 判据 |
+  | --- | --- | --- | --- |
+  | ① 父子块层 | 同一 version 内 p_/c_ 内容相同 | **2824** | 组大小 x2 = 2824 组，**不是「1 父 + 1 子」的组 = 0** |
+  | ② 多格式孪生层 | 同一份内容跨多个 document_id 各入库一次 | **906** | 2 文档组 906，单文档组 1472 |
+  | ③ 跨版本层 | 同一 document_id 多版本同时可检索 | **0** | 多版本文档数 = 0（版本侧本来就干净） |
+  | | **合计** | **3730** | 逐组核对例外 **0**，与基准**精确相等** |
+
+  ★ 最大重复组的形态（x4）坐实了「块维度 × 格式维度」是**两个独立维度**：
+
+      hash=ffcba1142282dfc34a97…  行数=4
+        child   type=html  upload://takeout_订单支付问题.html
+        parent  type=html  upload://takeout_订单支付问题.html
+        child   type=md    upload://takeout_订单支付问题.md
+        parent  type=md    upload://takeout_订单支付问题.md
+
+  ★ 第②层不是推断，有直接证据 —— **同名文档的格式分布**：
+      《外卖平台售后与退款处理手册》x3 [docx×1][html×1][pdf×1]
+      《外卖平台配送服务规范（2026 版）》x3 [docx×1][html×1][pdf×1]
+      《食品安全与投诉应急处理指引》x3 [docx×1][html×1][pdf×1]
+
+★ 口径修正（写进这里的理由）：B17 原先登记为「同一段内容被命中 2~3 次」，
+  并推荐修法是「检索层按 parent 去重」。分解之后看清楚了：
+  **① 是检索层的责任（本批修掉），② 是入库侧的责任（本批只记录）**。
+  把两者混成一条「按 parent 去重」会在修完之后仍然留下 906 条冗余，
+  而且没人知道还差什么。
+
+═══ 四、去重判据的选择（本批最关键的一个决定） ═══
+
+证据：reports/rag_ingestion_auth_review/b17_strategy_20260925.json（可复跑：tmp/probe_b17_strategy.py）
+
+在**真实候选池**（pool=20，与生产同口径）上模拟四种策略，看 7 条 query × limit=3
+能装出多少条**互不相同**的证据：
+
+  | 策略 | 有效证据 | 折算 | 达标? |
+  | --- | --- | --- | --- |
+  | S0 不去重（现状） | 15 / 21 | 2.14 / 3 | ✗ |
+  | S1 仅 `content_hash` | 19 / 21 | 2.71 / 3 | ✗ |
+  | **S2 归一化文本（本批采用）** | **21 / 21** | **3.00 / 3** | ✓ |
+  | S3 `content_hash` + 父⊇子包含 | 19 / 21 | 2.71 / 3 | ✗ |
+  | S4 归一化文本 + 父⊇子包含 | 21 / 21 | 3.00 / 3 | ✓（与 S2 相同） |
+
+两条读法：
+
+1. **`content_hash` 翻不过 3.00 那关**（19 < 21）。根因是口径不一致：
+   `content_hash` = `services/ingestion/chunkers/models.py::hash_text`，
+   对**原文**做 sha256、不压空白；而下游按 `utils.rag_context._normalize_text`
+   压平空白后去重。同一份内容的 md / html 版本在空白上不逐字节相同，
+   于是原文 hash 判它们「不同」，**而下游照样把它们当同一条** ——
+   用 content_hash 去重，截断后仍会被下游再砍一刀，名额照样填不满。
+   （这与踩坑 D23「压平空白后 R@1 差 7 条」是同一个口径裂缝的两头。）
+2. **「父块 ⊇ 子块」包含规则在 limit=3 窗口内零增量**（S4 == S2，S3 == S1）。
+   所以**不引入**包含判定 —— 它需要拉长文本两两比对，成本不为零、收益为零。
+
+由此定下一条纪律，写进模块 docstring：
+
+    检索层的去重键，必须至少与**所有下游去重口径**一样严格。
+
+**为什么不给 `ChunkHit` 加 `parent_chunk_id`**：
+* 它不是 `ManifestEntry` 的字段，加它要改 manifest 结构并**重建索引**（9229 条），
+  为一条实测零增量的规则付这个代价不值得；
+* 库层面「父子块同文本」有 2824 对且 **100% 逐字节相同**，
+  已被归一化文本判据完全覆盖；
+* `HybridHit` 连 `chunk_id` 都是包在内层 `.hit` 里的，
+  再加一层字段的适配成本会摊到两条链路上。
+
+═══ 五、保留规则：为什么必须给「同分并列」一个确定性答案 ═══
+
+证据：tmp/probe_b17_keep_which.py + reports/rag_ingestion_auth_review/b17_keep_which_20260925.json
+
+  * 同 `content_hash` 的命中组，**20 / 20 分数严格相等**
+    （父子块同文本 → 同一向量 → 同一相似度）。
+    所以「留分数高的那条」在父子块场景里**没有任何信息量** ——
+    它不构成一个决定，只构成一个「看起来像决定」的排序；
+  * 分数相等时若依赖 FAISS / 融合的返回顺序，结果会**在不同调用路径下不一致**
+    （踩坑 **D24**），测试会随机变红（踩坑 **D26**）。
+
+因此 `_rank_key` 用三元组：`(-score, parent ? 0 : 1, chunk_id)` ——
+**分数高者优先 → 并列时 parent 优先 → 再按 chunk_id 升序**。
+
+  说明：两者正文相同时留哪条在**语义上等价**，但必须有一个**与运行环境无关的确定答案**；
+  选 parent 优先只是让「留下的那条」在元数据上更完整（父块 heading 层级更全），
+  不是因为它更相关 —— 这点在测试里显式锁了「正序与逆序两种输入给出同一条结果」。
+
+★★ 本批因此浮出一个**已知且有意不处理**的残留：
+
+  `content_hash` 只能抓「完全相同」，**抓不到「父块 ⊇ 子块」的包含关系**。
+  真实 Top-K 里确实存在这种对（探针实测：top-20 里 48 对包含 vs 22 个完全相同名额）。
+  本批不处理，理由是第四节 S4 的实测（limit=3 窗口内零增量）。
+
+═══ 六、接线前 / 接线后的实测收益（★ 本批的效果证据） ═══
+
+跑的是**真实聊天路径**，不模拟：
+`retrieve_chunk_items_for_chat` → `adapt_chunk_items_for_prompt` → `build_prompt_context_items`
+（7 条真实 query，tenant-dev，CHAT_LIMIT=3 → 共 21 个名额）
+
+  | | 平均有效证据 | 被下游按文本去重吃掉 | 证据文件 |
+  | --- | --- | --- | --- |
+  | 接线前（B8 批实测） | **2.14 / 3** | **6 / 21 名额 ≈ 29%** | 数字见台账 B8 条目 §2306-2316 |
+  | 接线后（本批） | **3.00 / 3** | **0** | B17_chat_evidence_diversity_after_20260925.json |
+
+  可复跑命令：
+
+      HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 RAG_JWT_SECRET=dev-secret-please-change-me-32bytes+ \
+        ./venv/Scripts/python.exe scripts/audit_chat_evidence_diversity.py --label after
+
+★★ 本批的一起**证据管理事故**（必须记，且是本批唯一一次「先犯错、后加防护」）：
+
+  该探针原在 `tmp/probe_topk_diversity.py`，输出路径**硬编码**为
+  `reports/rag_ingestion_auth_review/b17_topk_diversity_20260925.json`，**覆盖写**。
+  改完代码重跑时，它把「接线前 2.14/3」的那份证据**原地覆盖成了「接线后 3.00/3」**，
+  而台账 B8 条目正在引用那个文件名的数字 —— **文件与引用当场对不上**。
+
+  已处置：
+  * 接线后的数据改名隔离为 `B17_chat_evidence_diversity_after_20260925.json`（带 label）；
+  * 探针提升为 `scripts/audit_chat_evidence_diversity.py`，加 `--label` / `--out`，
+    **文件已存在时默认拒绝覆盖**（返回码 2，需 `--force`）；
+  * 接线前的**真实路径**证据 —— ★ **本批最初判断它"无法恢复"，是错的，已纠正**：
+    该文件**已被 git 跟踪**（B8 批提交过），`git show HEAD:<path>` 原样取回，
+    实测 `wasted=6 / 2.14/3`，与台账数字**逐位一致**。
+    误判原因：只看 `git status` 的 `??` 列表就下结论（`??` 恰恰代表更该去别处找）；
+    正确判据是 `git ls-files --error-unmatch <path>`。
+    **这条误判本身即 D28 的实例**（未验证的推测被当成结论写进记录）；
+  * 恢复后的两份文件现在**语义清晰、不再混淆**：
+    `b17_topk_diversity_20260925.json` = **接线前**（wasted=6），
+    `B17_chat_evidence_diversity_after_20260925.json` = **接线后**（wasted=0）；
+  * 本批起，凡「前后对比」的探针**必须**在文件名里带 label。
+
+  为什么不再跑一次接线前版本：那需要把 `utils/vector_retriever.py` /
+  `utils/hybrid_retriever.py` 回退 —— 本仓的并行会话纪律是「提交归老霸」，
+  为补一份可再生的证据去动工作区代码不划算，且探针本身**不依赖平台环境**，随时可重跑。
+
+═══ 七、反证与红绿证据 ═══
+
+按「测试必须能红」的判据，本批锁了四类**结构性**保证（不是自证）：
+
+  | 保证 | 锁它的测试 | 断言的性质 |
+  | --- | --- | --- |
+  | 截断前先去重 | TestDensePathWiring::test_retrieve_chunk_items_dedupes_before_truncating | 5 条候选（含 2 对同内容）→ 恰好出 3 条**互不相同**的，且 rank 连续 1/2/3 |
+  | 召回量**没有变大** | ::test_oversampled_recall_is_requested_from_search | 断言 `top_k == 20`（B8 之前的既有取值，本批刻意不动） |
+  | 顺序：先过滤 → 再去重 | ::test_access_filter_is_passed_through_unchanged | 断言传给 search 的 `access` 对象**就是**传进来的那个（去重层不得自己造过滤器） |
+  | 收窄白名单后不越界 | TestRealIndexChatBudget::test_narrowed_allow_list_is_respected_after_dedupe | **真实索引** + 只留 2 个 chunk 的白名单 → 结果 ⊆ 白名单**且非空** |
+  | 混合路复用同一实现、按融合分排序 | TestHybridPathWiring::test_retrieve_hybrid_items_dedupes_by_fused_score | 用 `fused_score` 而非底层稠密分 |
+  | 判据与下游一致 | TestEvidenceIdentity::* | 同一批刁钻字符串（含 `\n`、连续空格、首尾空白）**同时喂给两处**比对结果 |
+
+  最后一条是**不读 docstring 的**一致性锁定：`utils/retrieval_dedup.py` 刻意
+  **重复实现**了空白压缩而不 import `rag_context._normalize_text`（避免那边改一行就静默
+  改变检索层召回条数），代价就是这个测试必须真的比对行为。
+
+  「去重可能在权限过滤之前」这个风险，**不能用 mock 证明**（mock 绕过了 search 内部的预过滤），
+  所以真正的证据是**真实索引上的收窄白名单测试**，加上第五节表里
+  「去重只消费 `search_*_chunks` 的返回值、不自己构造过滤器」这条结构事实。
+
+═══ 八、与已有评测口径的关系（不受本批影响，但必须说清） ═══
+
+  `scripts/evaluate_hybrid_retrieval.py` 调的是 `utils.hybrid_retriever.search_hybrid_chunks`
+  （**底层**），而本批改的是 `retrieve_hybrid_items` / `retrieve_chunk_items`（**条目层截断**）。
+  底层召回一行未动。
+
+  结论：**已记录的评测数字（R@1 / R@5 / R@10）对应关系不变**，
+  本批不重跑评测、也不改规范 §1.0 第 13 行的指标数字。
+
+  这同时说明了层次选择的正确性：**评测口径（基于底层 Recall@K）与
+  「聊天证据预算」（条目层 limit=3）是解耦的两件事**，
+  本批只在后者动刀，因此不需要重新标定前者。
+
+★ 但本批**不只做论证，还重跑实测了**（`--out-prefix b17_after_20260925`，
+**新前缀、不覆盖** B8 那份报告 —— 这是第六节覆盖事故的直接教训）：
+
+  | 数据集 | mode | R@1 | R@5 | R@10 | 与 B8 报告比对 |
+  | --- | --- | ---: | ---: | ---: | --- |
+  | title(81) | dense | 0.7160 | 0.9630 | 0.9877 | 逐位相同 |
+  | title(81) | sparse | 0.7901 | 0.9012 | 0.9877 | 逐位相同 |
+  | title(81) | hybrid | 0.7407 | 0.9630 | 1.0000 | 逐位相同 |
+  | 口语化(30) | dense | 0.4000 | 0.5000 | 0.5667 | 逐位相同 |
+  | 口语化(30) | sparse | 0.1000 | 0.1000 | 0.1333 | 逐位相同 |
+  | 口语化(30) | hybrid | 0.4000 | 0.5000 | 0.5667 | 逐位相同 |
+
+  报告：`reports/retrieval_hybrid/evaluation_b17_after_20260925.{txt,json}`
+
+  「结构上不该变」+「实测确实没变」= 这条结论现在才真正站得住。
+  （只给前者是论证，只给后者是巧合，两条一起才是证据。）
+
+═══ 九、口语化金标 7 条复核（★ 推翻了登记里的「疑似假阴性」） ═══
+
+证据：reports/rag_ingestion_auth_review/B17_colloquial_gold_recheck_20260925.txt
+可复跑：scripts/audit_colloquial_gold.py --top-k 50
+
+B8 的审查留下了一句尾巴：
+
+  > 30 条里 7 条两路 top-50 全捞不到，**疑似金标假阴性**，未逐条复核 ——
+  > 所以「口语化场景已评测到可信」这句话不成立。
+
+本批把这句话判掉了。判据是**二分**的，且**刻意绕开检索**：
+
+  Q: 金标 span 到底在不在库里？
+     ├─ 在库里却没被召回 → **真·检索失败**（金标有效，检索背）
+     └─ 库里根本没有     → **金标假阴性**（金标背）
+
+「在不在库里」用的是**全库 chunk 压平文本拼接后直接做子串判断**，
+因此与检索能力完全解耦；命中判据**import** 评测脚本的 `span_matches`（不复刻，防口径漂移）。
+配套还查 `gold_document_id` 与 `gold_heading` 是否在库（假阴性的常见形态）。
+
+实测：
+
+  | 项 | 数字 |
+  | --- | --- |
+  | 用例总数 | 30 |
+  | dense top-50 命中 | 20 |
+  | sparse top-50 命中 | 4 |
+  | **两路都未命中** | **7** |
+  | ├─ span 在库里 → 真·检索失败 | **7** |
+  | └─ span 不在库里 → 金标假阴性 | **0** |
+
+  7 条**逐条**都满足「span 在库里 / 文档在库里 / 章节在库里」，就是进不了 top-50。
+  例（c024）：query「自己家卖的东西售后是按什么规矩来的」，
+  金标 span 在《售后政策（自营）常见问题解答》第 3 节里**真实存在**，两路 top-50 都召不回。
+
+★ **结论修正：登记里的猜测方向反了。** 不是金标假阴性，
+  而是**口语化改写与库内表述的词面距离过大** —— 7 条全库可达的内容，两路 top-50 都捞不回来。
+
+  影响有三条，都不许混着说：
+  1. 「口语化 R@1 0.4000」**不是**被劣质金标拖低的 → **不能用"金标有问题"去解释**；
+  2. 但**也不能**反过来当干净结论存档：**假阴性 0 条只说明金标有效，不说明口径已统一**
+     （A 轨 intent 口径 F2 仍未修，两套数字不可互认）；
+  3. 这一条给出了**下一步的真问题**：口语化查询需要的是**查询改写 / 同义扩展**，
+     而不是继续调融合权重（B8 已证等权融合有害、`w_dense=10` 已是唯一不掉点的配置）。
+
+═══ 十、延迟实测：去重 0.046 ms/次（登记要求「必须量到并如实报告」） ═══
+
+证据：reports/rag_ingestion_auth_review/B17_latency_20260925.txt
+
+登记里有一条硬要求：超额召回会推高延迟，**必须把延迟一起量到并如实报告**。
+本批的答案分两层 —— 一层是结构性事实，一层是实测：
+
+**结构层（为什么本批"不该"慢）**：召回条数**一条没改**。
+`top_k = limit × 5`（下限 20）是 B8 **之前**就有的取值，本批只把「截断」从第 limit 条
+后移到「去重之后」。有测试钉住这个常量
+（`test_oversampled_recall_is_requested_from_search` 断言 `top_k == 20`）。
+
+**实测层**（7 条 query × 3 轮 = 21 次，tenant-dev，真实索引 v4）：
+
+  | 测什么 | 均值 | 中位 | 最大 |
+  | --- | ---: | ---: | ---: |
+  | 底层 `search_chunk_index(top_k=20)` | 203.21 ms | 150.27 ms | 771.48 ms |
+  | `retrieve_chunk_items(limit=3)`（含去重） | 180.91 ms | 150.03 ms | 290.55 ms |
+  | `select_diverse_evidence(20 候选)`（纯去重） | **0.046 ms** | 0.046 ms | 0.18 ms |
+
+  * **去重纯开销 0.046 ms/次 ≈ 整次检索的 0.0253%** ——
+    对 20 条候选做一次空白归一化 + 排序，与「FAISS 检索 + 每次重读 19.0MB manifest」
+    相比完全可忽略；
+  * 条目层比底层还小了 22 ms —— 这个差值落在**同一环境的正常散布**内
+    （底层自己最大 771 ms vs 中位 150 ms），也就是说**它是噪声，不是信号**；
+  * 结论：**本批不构成延迟劣化**，也**没有**数据支持把 F6（manifest 缓存）提前。
+    真正吃掉时间的是 F6 那条「每次检索重读 19.0MB manifest」，与本批无关。
+
+═══ 十一、明确未做 / 已知残留 ═══
+
+  1. **第②层 906 条多格式孪生未处理** —— 那是**入库侧**的口径问题
+     （同一份内容的 md/html/pdf/docx 被当成不同文档各入库一次），
+     修它要动「同名不同格式是否视为同一文档」的产品口径，**不属于检索层**。
+     台账已登记，本批不越界。
+  2. **「父块 ⊇ 子块」包含关系不处理** —— 实测在 limit=3 窗口内零增量（第四节 S4）。
+     这是**已知、有意、有实测支撑**的取舍，不是遗漏。
+  3. **快照/回滚期的去重未验证** —— 去重只看当前候选，不涉及版本切换语义。
+  4. **未跑前端界面复核** —— 本批改动不影响响应结构（`chunk_id`/`rank`/`text` 字段没变），
+     但「证据条数从 2 变 3」会改变界面呈现，前端复核仍挂在待办里（台账已记）。
+  5. **聊天链路的召回模式未切换** —— 与 B17 无关，仍保持 `dense`（B8 结论：口语化输入上
+     hybrid 零收益、双倍延迟）。
+
+═══ 十二、踩坑登记 ═══
+
+  本批新增 **B22**（一条，四段式见 docs/RAG_DEV_PITFALLS.md）：
+
+  * **B22. 「先写探针再改代码」的探针会覆盖自己的基线证据** ——
+    探针硬编码输出路径 + 覆盖写，重跑即毁掉「改之前」的那份，
+    而台账正在引用它的数字。修法：前后对比类探针必须在文件名里带 label，
+    且默认拒绝覆盖已存在的证据文件。
+
+  本批另有 **D28**（一条，属**结论修正**而非新缺陷）：
+
+  * **D28. 写进正式文档的「疑似」会被下游当事实用** ——
+    登记里的「7 条疑似金标假阴性」本批验掉了，**方向反了**：
+    7 条**全部**是真·检索失败，假阴性 **0 条**，金标没毛病。
+    未验证的猜测不该直接进交付清单当任务。
+
+  本批**复现但未新增**的既有坑：
+  * **D18**（同一轮测试数两个口径，差 4）—— 本批 1030 vs 1026，差仍是 4，已按新纪律注明口径；
+  * **A6**（环境删除守卫吞汇总行）—— 本批**没有吞**，因此拿到了实测 warning = 5；
+  * **D24 / D26**（同分并列顺序不保证）—— 本批用确定性 `_rank_key` + 正逆序双测锁住。
+
+  另外，本批在**测试自身**上踩了一个小坑，值得记进条目正文（不单独立条）：
+
+  `tests/test_retrieval_dedup.py` 的 `candidate()` 工厂最初把 `chunk_type` 默认成 `"child"`，
+  而用例写的是 `candidate(0.9, "p_b", …)` —— `p_b` 被静默当成 child，
+  并列兜底键全塌到 `chunk_id` 升序，**3 条用例以「实现写错了」的样子红掉**，
+  而实现从头到尾是对的。修法：工厂**按 `chunk_id` 前缀推** `chunk_type`，
+  不设「看起来合理」的默认值。
+  教训与 D26（测试靶子取自被测逻辑自己的输出）同源：**测试夹具的默认值也是靶子的一部分**。
+
+═══ 十三、结论 ═══
+
+  * 阶段状态：**本批（B17）交付完成**，非「阶段 PASS」——
+    B 轨的发布门禁状态**不因本批改变**（见台账 §4 指针）；
+  * 未提交：`M utils/{vector_retriever,hybrid_retriever}.py`、
+    `?? utils/retrieval_dedup.py`、`?? tests/test_retrieval_dedup.py`、
+    `?? scripts/audit_chat_evidence_diversity.py`、`?? reports/rag_ingestion_auth_review/B17_*`、
+    `?? reports/.../b17_{layers,keep_which,strategy}_20260925.*`。
+    ★ 工作区里**同时叠着**一份未提交的 `docs/RAG_NEXT_WINDOW_PROMPT.md` 改写
+    （900 行，上一批留下的），与一份未跟踪的 `reports/retrieval_hybrid/metrics_dashboard.html` ——
+    **提交时按文件分辨，`git add` 一律精确路径**（坑 E2 / E9）；
+  * 对外口径：本批可以讲的是「**检索层证据去重，聊天链路有效证据 2.14/3 → 3.00/3**」。
+    **不能**讲成「检索质量提升」——
+    评测虽已重跑且**逐位不变**（第八节），但那测的是**底层召回**；
+    本批改的是**证据条数**，不是召回质量。A 轨 intent 口径（F2）仍未修，两套数字不可互认；
+  * 本批**补做了三项登记要求**（原交付清单第 5/6 项与自检项）：
+    ① 评测三模式重跑（逐位不变）；② 口语化 7 条金标复核（**推翻登记猜测**，第九节）；
+    ③ 延迟实测（去重 0.046 ms/次，第十节）。

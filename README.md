@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml/badge.svg)](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-1004%20passed-brightgreen.svg)](#测试与质量门禁)
+[![Tests](https://img.shields.io/badge/tests-1030%20passed-brightgreen.svg)](#测试与质量门禁)
 [![Last updated](https://img.shields.io/badge/updated-2026--09--25-lightgrey.svg)](#实测数据)
 
 **建议仓库 topics**：`rag`、`retrieval-augmented-generation`、`reranker`、`hybrid-search`、`fastapi`、`llm`、`customer-service`、`evaluation`
@@ -83,7 +83,7 @@ cd llm-customer-service
 python -m venv .venv
 .venv/Scripts/pip install -r requirements-dev.txt   # 约 9 个包，无 torch
 
-.venv/Scripts/python.exe -m pytest -q              # 实测：1004 条（JUnit XML 口径），~40s
+.venv/Scripts/python.exe -m pytest -q              # 实测：1030 条（JUnit XML 口径），~40s
 .venv/Scripts/python.exe -m ruff check .           # 实测：All checks passed!
 .venv/Scripts/python.exe scripts/check_repo_data_size.py   # 实测：通过，没有超标文件
 ```
@@ -344,8 +344,8 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 
 | 指标 | 数值 | 说明 |
 | --- | --- | --- |
-| pytest 用例总数 / 通过率 | **1004 / 100%**（0 failures / 0 errors）| 40 个测试文件，精简依赖热缓存 ~40s，完整依赖冷启动更久 |
-| 测试文件数 | 40 | `tests/test_*.py`（`ls tests/test_*.py \| wc -l`）|
+| pytest 用例总数 / 通过率 | **1030 / 100%**（0 failures / 0 errors）| 41 个测试文件，精简依赖热缓存 ~40s，完整依赖冷启动更久 |
+| 测试文件数 | 41 | `tests/test_*.py`（`ls tests/test_*.py \| wc -l`）|
 | 端到端 P50 | **4220 ms** | 90 条固定集 `trace.latency_ms`，CPU 推理 |
 | 端到端 P90 / P95 / P99 | 5553 / **6147** / 7409 ms | 同上 |
 | 端到端 min / max | 1430 / 10611 ms | max 是冷启动首条；去掉后 P50 4207、P95 6121 |
@@ -540,7 +540,7 @@ llm-customer-service/
 │   ├── build_release_evaluation_report.py
 │   └── check_repo_data_size.py          # 仓库单文件体积守护（本次新增）
 ├── data/                        # 知识库、评测集、SFT 数据（见下）
-├── tests/                       # 40 个测试文件 / 1004 用例
+├── tests/                       # 41 个测试文件 / 1030 用例
 ├── docs/                        # 评测报告、bad case 复盘、阶段经验、RAG 改造进度台账
 ├── requirements.txt             # 完整依赖（含 torch，约 3GB）
 ├── requirements-dev.txt         # 轻量依赖（CI / 不跑模型时用）

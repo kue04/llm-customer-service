@@ -59,6 +59,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from utils.retrieval_dedup import (  # noqa: F401  (B17：Top-K 内容级去重)
+    candidates_from_hits,
+    oversampled_top_k,
+    select_diverse_evidence,
+)
 from utils.sparse_retriever import search_sparse_index
 from utils.vector_retriever import (
     CHUNK_INDEX_NAME,
@@ -268,13 +273,19 @@ def retrieve_hybrid_items(
     root: str | Path | None = None,
     index_name: str = CHUNK_INDEX_NAME,
 ) -> list[dict]:
-    """混合检索的「条目」形态（形状对齐 ``retrieve_chunk_items``）。"""
+    """混合检索的「条目」形态（形状对齐 ``retrieve_chunk_items``）。
+
+    **B17**：与稠密路共用同一份去重实现（``utils/retrieval_dedup.py``）——
+    两条链路各写一遍去重的那天，它们会给出不同的证据条数。
+    去重发生在两路检索**之后**（权限预过滤已在各自路内完成），
+    保留规则用**融合分** ``fused_score`` 排序，而不是底层稠密分。
+    """
 
     settings = config or FusionConfig()
     hits = search_hybrid_chunks(
         query,
         access=access,
-        top_k=max(int(limit) * 5, 20),
+        top_k=oversampled_top_k(limit),
         mode=mode,
         config=settings,
         embedder=embedder,
@@ -282,8 +293,13 @@ def retrieve_hybrid_items(
         root=root,
         index_name=index_name,
     )
+    selected = select_diverse_evidence(
+        candidates_from_hits(hits, score_of=lambda item: item.fused_score),
+        limit=max(int(limit), 0),
+    )
     items: list[dict] = []
-    for rank, item in enumerate(hits[: max(int(limit), 0)], start=1):
+    for rank, candidate in enumerate(selected, start=1):
+        item = candidate.payload
         hit = item.hit
         items.append(
             {

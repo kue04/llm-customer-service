@@ -19,6 +19,11 @@ except ModuleNotFoundError:
     SentenceTransformer = None
 
 from config.rag_config import get_rag_config
+from utils.retrieval_dedup import (  # noqa: F401  (B17：Top-K 内容级去重)
+    candidates_from_hits,
+    oversampled_top_k,
+    select_diverse_evidence,
+)
 from utils.retriever import iter_knowledge_items, is_similar_answer
 
 # 阶段 3.4：chunk 级索引的 manifest 由 ingestion 子系统定义（单一真源）。
@@ -1199,9 +1204,14 @@ def retrieve_chunk_items(
 
     字段里同时给出 ``chunk_id`` / ``document_id`` / ``document_version`` / ``tenant_id``
     / ``acl`` / ``heading_path`` / 页码 / 来源，命中即自证来源（3.4 的要求）。
+
+    **B17**：候选按 ``limit × 5``（下限 20）超额召回 → **内容级去重** → 再截断到 ``limit``。
+    去重在 :func:`~utils.vector_retriever.search_chunk_index` **之后**做，
+    因此它看到的所有命中都已通过服务端权限预过滤——"留下的那条一定是他有权看的"
+    （顺序颠倒会让无权副本挤掉有权副本，且**静默**）。详见 ``utils/retrieval_dedup.py``。
     """
 
-    top_k = max(int(limit) * 5, 20)
+    top_k = oversampled_top_k(limit)
     hits = search_chunk_index(
         query,
         access=access,
@@ -1212,8 +1222,13 @@ def retrieve_chunk_items(
         root=root,
         index_name=index_name,
     )
+    selected = select_diverse_evidence(
+        candidates_from_hits(hits), limit=max(int(limit), 0)
+    )
+
     items: list[dict] = []
-    for rank, hit in enumerate(hits[: max(int(limit), 0)], start=1):
+    for rank, candidate in enumerate(selected, start=1):
+        hit = candidate.payload
         items.append(
             {
                 "rank": rank,
