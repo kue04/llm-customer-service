@@ -3,6 +3,7 @@ from datetime import datetime
 import importlib
 import json
 import os
+from types import SimpleNamespace
 from pathlib import Path
 import sys
 
@@ -47,6 +48,7 @@ JUDGE_FAILURE_TYPES = [
 
 EVALUATION_CASES_PATH = PROJECT_ROOT / "data" / "chat_grounding_cases.jsonl"
 BLIND_EVALUATION_CASES_PATH = PROJECT_ROOT / "data" / "chat_grounding_blind_cases.jsonl"
+FORMAL_CHUNK_GOLD_PATH = PROJECT_ROOT / "data" / "retrieval_colloquial_cases.jsonl"
 REQUIRED_EVALUATION_CASE_FIELDS = {
     "id",
     "scenario",
@@ -1300,6 +1302,9 @@ def save_reports_to_file(
     output_dir: str | Path = DEFAULT_REPORT_DIR,
     use_local_judge: bool = False,
     composer_mode: str = "",
+    retrieval_path: str = "seed-faq-demo",
+    data_source: str = "data/takeout_customer_service_seed.jsonl",
+    index_version: int | None = None,
 ) -> Path:
     created_at = datetime.now().astimezone()
     run_id = created_at.strftime("%Y-%m-%d_%H-%M-%S")
@@ -1328,7 +1333,7 @@ def save_reports_to_file(
         "run_id": run_id,
         "created_at": created_at.isoformat(timespec="seconds"),
         "script": "scripts/evaluate_chat_grounding.py",
-        "run_config": build_report_run_config(use_local_judge, composer_mode, retrieval_path="seed-faq-demo", data_source="data/takeout_customer_service_seed.jsonl"),
+        "run_config": build_report_run_config(use_local_judge, composer_mode, retrieval_path=retrieval_path, data_source=data_source, index_version=index_version),
         "use_local_judge": use_local_judge,
         "composer_mode": composer_mode,
         "report_count": len(complete_reports),
@@ -1347,6 +1352,28 @@ def save_reports_to_file(
         encoding="utf-8",
     )
     return output_path
+
+
+def load_formal_chunk_grounding_cases(path: Path | str = FORMAL_CHUNK_GOLD_PATH) -> list[dict]:
+    """将正式 chunk/span gold 转为 grounding 所需的最小 case 元数据。"""
+    cases = []
+    for row in load_jsonl_cases(path):
+        span = str(row.get("gold_span") or "").strip()
+        cases.append({
+            "id": row.get("id", ""),
+            "scenario": "formal_chunk_span",
+            "case_type": "chunk_span",
+            "query": row["query"],
+            "expected_intent": "",
+            "expected_evidence_keywords": [span] if span else [],
+            "forbidden_keywords": [],
+            "notes": "formal chunk/span gold",
+        })
+    return cases
+
+
+def load_jsonl_cases(path: Path | str) -> list[dict]:
+    return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -1391,6 +1418,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--blind",
         action="store_true",
         help="Use data/chat_grounding_blind_cases.jsonl.",
+    )
+    parser.add_argument(
+        "--formal-chunk",
+        action="store_true",
+        help="使用固定 tenant 身份运行正式 chunk/span grounding 评测。",
+    )
+    parser.add_argument(
+        "--tenant-id",
+        default="tenant-dev",
+        help="正式 chunk 评测租户 ID。",
     )
     parser.add_argument(
         "--legacy-seed",
@@ -1468,8 +1505,13 @@ def main() -> None:
     importlib.reload(config.rag_config)
     get_rag_config_dict = config.rag_config.get_rag_config_dict
 
-    cases_path = BLIND_EVALUATION_CASES_PATH if args.blind else args.cases_file
-    evaluation_cases = load_evaluation_cases(cases_path)
+    if args.formal_chunk and args.legacy_seed:
+        raise SystemExit("--formal-chunk 与 --legacy-seed 不能同时使用")
+    if args.formal_chunk:
+        evaluation_cases = load_formal_chunk_grounding_cases()
+    else:
+        cases_path = BLIND_EVALUATION_CASES_PATH if args.blind else args.cases_file
+        evaluation_cases = load_evaluation_cases(cases_path)
     evaluation_queries = [case["query"] for case in evaluation_cases]
     evaluation_case_metadata = [
         {
@@ -1484,20 +1526,24 @@ def main() -> None:
         for case in evaluation_cases
     ]
 
-    if not args.legacy_seed:
-        raise SystemExit(
-            "正式 chunk 语料的可复现检索评测请运行 scripts/evaluate_hybrid_retrieval.py；"
-            "本聊天 grounding 脚本使用 seed FAQ 意图金标，若需兼容调试请显式传 --legacy-seed。"
-        )
-
-    # seed FAQ 仅作为显式兼容评测，不得被误认为正式 chunk 质量。
-    os.environ["RAG_CHAT_RETRIEVAL_PATH"] = "seed"
-
     from services.chat_service import get_answer_from_rag
+    if args.formal_chunk:
+        from services.auth_context import AuthContext
+        auth = AuthContext(user_id="formal-eval", tenant_id=args.tenant_id, roles=frozenset({"admin"}))
+        answer_provider = lambda query: get_answer_from_rag(SimpleNamespace(message=query), auth=auth)
+        retrieval_path = "chunk-index"
+    elif args.legacy_seed:
+        os.environ["RAG_CHAT_RETRIEVAL_PATH"] = "seed"
+        answer_provider = get_answer_from_rag
+        retrieval_path = "seed-faq-demo"
+    else:
+        raise SystemExit(
+            "请使用 --formal-chunk 运行正式 chunk grounding，或显式传 --legacy-seed 运行兼容评测。"
+        )
 
     reports = build_grounding_reports_from_rag(
         queries=evaluation_queries,
-        answer_provider=get_answer_from_rag,
+        answer_provider=answer_provider,
         case_metadata=evaluation_case_metadata,
     )
     if args.use_local_judge:
@@ -1518,6 +1564,8 @@ def main() -> None:
             reports=reports,
             use_local_judge=args.use_local_judge,
             composer_mode=composer_mode,
+            retrieval_path=retrieval_path,
+            data_source=("formal_chunk_corpus" if args.formal_chunk else "data/takeout_customer_service_seed.jsonl"),
         )
         print()
         print(f"Saved report: {output_path}")

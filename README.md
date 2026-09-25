@@ -134,13 +134,33 @@ $env:RAG_JWT_SECRET = "dev-only-secret-change-me-please-32-bytes"
 
 索引目录包含 FAISS 向量、manifest 和 FTS5 稀疏索引。发布状态、租户和 ACL 在服务端过滤后才进入召回范围。原始数据、模型和生成索引不应提交到 Git；仓库中的样例数据仅用于测试和演示。
 
+## 当前阶段结果（2026-09-25）
+
+当前版本已经形成可运行、可测试、可审查的正式 chunk RAG 系统基线。指标来自固定 chunk/span gold 和本地性能报告，不代表线上真实业务 SLA。
+
+| 指标 | 当前结果 | 说明 |
+| --- | ---: | --- |
+| 正式索引 | v4 / 9,229 chunks | `BAAI/bge-small-zh-v1.5`，512 维，sparse 可用 |
+| Hybrid Recall@5（标题集） | 0.9630 | 81 条 gold case |
+| Hybrid MRR（标题集） | 0.7922 | 81 条 gold case |
+| Hybrid NDCG@10（标题集） | 0.8404 | 81 条 gold case |
+| Hybrid Recall@5（口语集） | 0.5000 | 30 条人工口语化 case |
+| Hybrid MRR（口语集） | 0.4274 | 30 条人工口语化 case |
+| Hybrid NDCG@10（口语集） | 0.4588 | 30 条人工口语化 case |
+| Hybrid 平均延迟 | 26.29 ms | n=30 性能基线 |
+
+相较缓存优化前的同口径性能报告：manifest 平均加载耗时下降约 94.5%，dense 下降约 76.4%，sparse 下降约 93.2%，hybrid 下降约 91.6%。这些是本地固定索引上的相对变化，不等同于线上 SLA。
+
+标题集的 hybrid Recall@5 已达到当前验收目标 0.85；口语集 Recall@5 为 0.50，说明真实口语查询仍是主要质量短板。历史 seed FAQ 指标与当前 chunk/span 指标不混用。
+
 ## 评测与质量门禁
 
 常用命令：
 
 ```powershell
-.venv/Scripts/python.exe scripts/evaluate_hybrid_retrieval.py --top-k 10
-.venv/Scripts/python.exe scripts/evaluate_chat_grounding.py --legacy-seed
+.venv/Scripts/python.exe scripts/run_formal_rag_evaluation.py --tenant-id tenant-dev --top-k 10
+.venv/Scripts/python.exe scripts/audit_manifest_load_cost.py --label perf_20260925 --repeat 15 --query-limit 30
+.venv/Scripts/python.exe scripts/evaluate_chat_grounding.py --legacy-seed  # 仅兼容 seed 评测
 .venv/Scripts/python.exe scripts/check_repo_data_size.py
 .venv/Scripts/python.exe -m pytest -q
 ```
@@ -148,6 +168,7 @@ $env:RAG_JWT_SECRET = "dev-only-secret-change-me-please-32-bytes"
 测试覆盖认证、租户隔离、ACL、文档入库、检索、回答规则、工具降级、人工转接和发布回滚。详细评测口径见：
 
 - `docs/EVALUATION.md`
+- `docs/USAGE_AND_FIELDS.md`：启动、评测和字段解释
 - `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md`
 - `docs/RAG_DEV_PITFALLS.md`
 
