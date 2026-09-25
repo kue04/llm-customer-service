@@ -1,6 +1,6 @@
 // 后端接口类型（由 scripts/export_frontend_contract.py 自动生成，请勿手改）
 //
-// 生成时间：2026-09-25 20:58
+// 生成时间：2026-09-25 21:09
 // 来源：main.app.openapi() → docs/frontend/openapi.json
 //
 // 用法：整体复制到前端 src/types/backendContract.ts，
@@ -70,6 +70,7 @@ export interface ChatRequest {
 export interface ChatResponse {
   answer_basis?: string;
   answer_mode?: string;
+  citation_quality?: Record<string, unknown>;
   citations?: Record<string, unknown>[];
   confidence_level?: string;
   confidence_score: number;
@@ -77,6 +78,7 @@ export interface ChatResponse {
   conversation_status?: string;
   data_source?: string;
   decision_trace?: Record<string, unknown>;
+  embedding_model?: string;
   evaluation_metrics?: Record<string, unknown>;
   evidence_citations?: Record<string, unknown>[];
   expected_evidence_keywords?: string[];
@@ -110,6 +112,7 @@ export interface ChatResponse {
   risky_promises?: string[];
   safety_status?: Record<string, unknown>;
   session_id?: string;
+  sparse_available?: boolean;
   suggested_layer?: string;
   token_usage?: Record<string, unknown>;
   tool_results?: Record<string, unknown>[];
@@ -146,6 +149,7 @@ export interface ChatTrace {
   answer_source: string;
   data_source?: string;
   degraded: boolean;
+  embedding_model?: string;
   failure_stage: string;
   fallback_reason: string;
   index_name?: string;
@@ -157,6 +161,7 @@ export interface ChatTrace {
   retrieval_count: number;
   retrieval_path?: string;
   session_id?: string;
+  sparse_available?: boolean;
   top1_intent?: string;
   used_fallback_prompt: boolean;
   user_id?: string;

@@ -1,3 +1,9 @@
+"""LEGACY / DEMO ONLY: seed FAQ retrieval evaluation.
+
+This script reads the seed FAQ corpus and is not a formal chunk-index quality gate.
+Use scripts/evaluate_hybrid_retrieval.py for formal evaluation.
+"""
+
 from pathlib import Path
 import sys
 

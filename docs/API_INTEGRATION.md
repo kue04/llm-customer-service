@@ -722,5 +722,10 @@ request
 | `data_source` | 数据来源 | `document_chunks` |
 | `index_name` | 生效索引名称 | 例如 `document_chunks` |
 | `index_version` | 生效索引版本 | 当前 active manifest 版本；索引不可用时为 `null` |
+| `embedding_model` | 查询向量模型 | 当前 active manifest 的 embedding 模型 |
+| `sparse_available` | 稀疏索引状态 | 当前 active manifest 是否具备 sparse 路 |
 
 这些字段与 `citations`、`evidence_citations` 配合使用：citation 记录具体证据，顶层元数据记录本次请求所使用的数据源和索引身份。`seed-faq-demo` 只出现在显式演示接口，不属于正式聊天响应。
+
+
+`citation_quality` 会报告本次 citation 是否都来自返回的证据集合，包含 `citation_count`、`missing_count`、`invalid_source_count` 和 `passed`。`/retrieval/prompt-preview` 仍是 seed FAQ 演示接口，不用于验证正式 active manifest；正式索引一致性以 `/retrieval/search` 和聊天响应中的索引元数据为准。

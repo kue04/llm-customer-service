@@ -34,6 +34,7 @@ from retrieval_fixtures import (
 )
 from services import chat_service
 from services.ingestion import db
+from services.ingestion.index_builder import rollback_index
 from services.ingestion.object_store import LocalObjectStore
 from utils.rag_context import build_prompt_context_items
 
@@ -127,6 +128,19 @@ class ChunkItemAdaptationTest(unittest.TestCase):
         )
         self.assertEqual(adapted[0]["intent"], "")
         self.assertEqual(adapted[0]["title"], "chunk-001")
+
+    def test_citation_validation_rejects_empty_or_foreign_sources(self) -> None:
+        result = chat_service.validate_evidence_citations(
+            [
+                {"evidence_id": "chunk-001", "quote": "supported"},
+                {"evidence_id": "foreign", "quote": "wrong source"},
+                {"evidence_id": "chunk-001", "quote": ""},
+            ],
+            [{"knowledge_id": "chunk-001"}],
+        )
+        assert result["passed"] is False
+        assert result["invalid_source_ids"] == ["foreign"]
+        assert result["missing_count"] == 1
 
     def test_chunk_provenance_survives_citation_conversion(self) -> None:
         adapted = chat_service.adapt_chunk_items_for_prompt([sample_chunk_hit()])
@@ -289,6 +303,54 @@ class ChatTrackEndToEndTest:
         assert items, "分发点没把 B 轨的结果带回来"
         assert items[0]["retrieval_origin"] == "chunk-index"
         assert items[0]["answer"]
+
+    def test_full_chat_entry_preserves_formal_chunk_metadata(self, chunk_env, monkeypatch) -> None:
+        auth = chunk_env.auth(TENANT_A)
+        monkeypatch.setattr(
+            chat_service,
+            "generate_reply_with_usage",
+            lambda prompt, system_prompt=None: {
+                "text": "根据资料处理。",
+                "token_usage": {"provider": "test", "model": "test", "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "counting_method": "test"},
+            },
+        )
+        result = chat_service.get_answer_from_rag(query_for("alpha"), auth=auth)
+
+        assert result["retrieval_path"] == "chunk-index"
+        assert result["data_source"] == "document_chunks"
+        assert result["index_name"] == INDEX_NAME
+        assert result["index_version"] >= 1
+        assert result["trace"]["retrieval_path"] == "chunk-index"
+        assert result["evidence_citations"]
+        assert result["evidence_citations"][0]["chunk_id"] in chunk_env.doc_a.chunk_ids
+
+    def test_chat_follows_active_index_after_rollback(self, chunk_env, monkeypatch) -> None:
+        auth = chunk_env.auth(TENANT_A)
+        monkeypatch.setattr(
+            chat_service,
+            "generate_reply_with_usage",
+            lambda prompt, system_prompt=None: {
+                "text": "ok",
+                "token_usage": {"provider": "test", "model": "test", "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "counting_method": "test"},
+            },
+        )
+        old_version = chunk_env.manifest().index_version
+        chunk_env.rebuild(TENANT_A)
+        new_version = chunk_env.manifest().index_version
+        assert new_version > old_version
+
+        rollback_index(
+            chunk_env.session,
+            tenant_id=TENANT_A,
+            root=chunk_env.index_root,
+            index_version=old_version,
+            index_name=INDEX_NAME,
+        )
+        response = chat_service.get_answer_from_rag(query_for("alpha"), auth=auth)
+
+        assert response["index_version"] == old_version
+        assert response["trace"]["index_version"] == old_version
+        assert chunk_env.manifest().index_version == old_version
 
     def test_chunk_track_is_tenant_isolated(self, chunk_env) -> None:
         """跨租户零命中：B 轨的租户过滤在聊天链路上同样生效。

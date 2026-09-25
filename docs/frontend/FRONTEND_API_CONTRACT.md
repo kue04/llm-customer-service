@@ -1,6 +1,6 @@
 # 后端接口与字段契约（前端对齐用）
 
-> 生成时间：2026-09-25 20:58　|　来源：`main.app.openapi()`　|　生成器：`scripts/export_frontend_contract.py`
+> 生成时间：2026-09-25 21:09　|　来源：`main.app.openapi()`　|　生成器：`scripts/export_frontend_contract.py`
 >
 > **本文件是机器生成的，不要手改。** 后端接口变了，重跑一次脚本即可：
 >
@@ -170,6 +170,7 @@
 | --- | --- | --- | --- | --- |
 | `answer_basis` | string | 否 | "" | - |
 | `answer_mode` | string | 否 | "complete" | - |
+| `citation_quality` | object | 否 | - | - |
 | `citations` | object[] | 否 | - | - |
 | `confidence_level` | string | 否 | "medium" | - |
 | `confidence_score` | number | 是 | - | - |
@@ -177,6 +178,7 @@
 | `conversation_status` | string | 否 | "pending_agent_review" | - |
 | `data_source` | string | 否 | "document_chunks" | - |
 | `decision_trace` | object | 否 | - | - |
+| `embedding_model` | string | 否 | "" | - |
 | `evaluation_metrics` | object | 否 | - | - |
 | `evidence_citations` | object[] | 否 | - | - |
 | `expected_evidence_keywords` | string[] | 否 | - | - |
@@ -210,6 +212,7 @@
 | `risky_promises` | string[] | 否 | - | - |
 | `safety_status` | object | 否 | - | - |
 | `session_id` | string | 否 | "" | - |
+| `sparse_available` | boolean | 否 | false | - |
 | `suggested_layer` | string | 否 | "" | - |
 | `token_usage` | object | 否 | - | - |
 | `tool_results` | object[] | 否 | - | - |
@@ -1684,6 +1687,7 @@
 | --- | --- | --- | --- | --- |
 | `answer_basis` | string | 否 | "" | - |
 | `answer_mode` | string | 否 | "complete" | - |
+| `citation_quality` | object | 否 | - | - |
 | `citations` | object[] | 否 | - | - |
 | `confidence_level` | string | 否 | "medium" | - |
 | `confidence_score` | number | 是 | - | - |
@@ -1691,6 +1695,7 @@
 | `conversation_status` | string | 否 | "pending_agent_review" | - |
 | `data_source` | string | 否 | "document_chunks" | - |
 | `decision_trace` | object | 否 | - | - |
+| `embedding_model` | string | 否 | "" | - |
 | `evaluation_metrics` | object | 否 | - | - |
 | `evidence_citations` | object[] | 否 | - | - |
 | `expected_evidence_keywords` | string[] | 否 | - | - |
@@ -1724,6 +1729,7 @@
 | `risky_promises` | string[] | 否 | - | - |
 | `safety_status` | object | 否 | - | - |
 | `session_id` | string | 否 | "" | - |
+| `sparse_available` | boolean | 否 | false | - |
 | `suggested_layer` | string | 否 | "" | - |
 | `token_usage` | object | 否 | - | - |
 | `tool_results` | object[] | 否 | - | - |
@@ -1766,6 +1772,7 @@
 | `answer_source` | string | 是 | - | rag or fallback |
 | `data_source` | string | 否 | "document_chunks" | - |
 | `degraded` | boolean | 是 | - | - |
+| `embedding_model` | string | 否 | "" | - |
 | `failure_stage` | string | 是 | - | none, retrieval, generation, or reply_rules |
 | `fallback_reason` | string | 是 | - | - |
 | `index_name` | string | 否 | "" | - |
@@ -1777,6 +1784,7 @@
 | `retrieval_count` | integer | 是 | - | - |
 | `retrieval_path` | string | 否 | "chunk-index" | - |
 | `session_id` | string | 否 | "" | - |
+| `sparse_available` | boolean | 否 | false | - |
 | `top1_intent` | string | 否 | "" | - |
 | `used_fallback_prompt` | boolean | 是 | - | - |
 | `user_id` | string | 否 | "" | - |

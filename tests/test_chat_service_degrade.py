@@ -128,6 +128,9 @@ class ChatServiceDegradeTest(unittest.TestCase):
         self.assertEqual(result["trace"]["answer_source"], "fallback")
         self.assertTrue(result["trace"]["degraded"])
         self.assertEqual(result["trace"]["failure_stage"], "retrieval")
+        self.assertEqual(result["trace"]["fallback_reason"], "retrieval_failed:retrieval_error")
+        self.assertEqual(result["answer_mode"], "retrieval_error")
+        self.assertEqual(result["conversation_status"], "pending_agent_review")
         self.assertIn("request_id", result["trace"])
         self.assertIn("latency_ms", result["trace"])
         self.assertEqual(result["trace"]["top1_intent"], "")
@@ -158,6 +161,7 @@ class ChatServiceDegradeTest(unittest.TestCase):
         result = chat_service.get_answer_from_rag("refund")
 
         self.assertEqual(result["trace"]["failure_stage"], "generation")
+        self.assertTrue(result["trace"]["fallback_reason"].startswith("generation_failed:"))
         self.assertEqual(result["trace"]["answer_source"], "fallback")
         self.assertTrue(result["trace"]["degraded"])
         self.assertLess(result["confidence_score"], 0.5)

@@ -18,6 +18,9 @@ class ChatTrace(BaseModel):
     data_source: str = "document_chunks"
     index_name: str = ""
     index_version: int | None = None
+    embedding_model: str = ""
+    sparse_available: bool = False
+    index_load_ms: float = 0.0
     request_id: str = ""
     user_id: str = ""
     session_id: str = ""
@@ -81,6 +84,10 @@ class ChatResponse(BaseModel):
     data_source: str = "document_chunks"
     index_name: str = ""
     index_version: int | None = None
+    embedding_model: str = ""
+    sparse_available: bool = False
+    index_load_ms: float = 0.0
+    citation_quality: dict = Field(default_factory=dict)
     confidence_score: float
     session_id: str = ""
     user_id: str = "demo_user"

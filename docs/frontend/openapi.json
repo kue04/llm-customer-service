@@ -255,6 +255,11 @@
             "title": "Answer Mode",
             "type": "string"
           },
+          "citation_quality": {
+            "additionalProperties": true,
+            "title": "Citation Quality",
+            "type": "object"
+          },
           "citations": {
             "items": {
               "additionalProperties": true,
@@ -291,6 +296,11 @@
             "additionalProperties": true,
             "title": "Decision Trace",
             "type": "object"
+          },
+          "embedding_model": {
+            "default": "",
+            "title": "Embedding Model",
+            "type": "string"
           },
           "evaluation_metrics": {
             "additionalProperties": true,
@@ -499,6 +509,11 @@
             "title": "Session Id",
             "type": "string"
           },
+          "sparse_available": {
+            "default": false,
+            "title": "Sparse Available",
+            "type": "boolean"
+          },
           "suggested_layer": {
             "default": "",
             "title": "Suggested Layer",
@@ -695,6 +710,11 @@
             "title": "Degraded",
             "type": "boolean"
           },
+          "embedding_model": {
+            "default": "",
+            "title": "Embedding Model",
+            "type": "string"
+          },
           "failure_stage": {
             "description": "none, retrieval, generation, or reply_rules",
             "title": "Failure Stage",
@@ -758,6 +778,11 @@
             "default": "",
             "title": "Session Id",
             "type": "string"
+          },
+          "sparse_available": {
+            "default": false,
+            "title": "Sparse Available",
+            "type": "boolean"
           },
           "top1_intent": {
             "default": "",

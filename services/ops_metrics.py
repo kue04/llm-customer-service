@@ -7,12 +7,16 @@ from threading import Lock
 
 _lock = Lock()
 _latencies: list[float] = []
+_dimension_metrics: dict[str, dict[str, int]] = {}
+
 _metrics = {
     "request_count": 0,
     "failure_count": 0,
     "empty_retrieval_count": 0,
     "reply_rules_hit_count": 0,
     "fallback_count": 0,
+    "clarify_count": 0,
+    "human_handoff_route_count": 0,
     "accepted_count": 0,
     "edited_sent_count": 0,
     "human_handoff_count": 0,
@@ -26,16 +30,34 @@ _metrics = {
 
 def record_chat_metrics(trace: dict) -> None:
     with _lock:
+        dimension_key = "|".join(
+            str(trace.get(field) or "unknown")
+            for field in ("retrieval_path", "index_version", "tenant_id", "answer_mode")
+        )
+        bucket = _dimension_metrics.setdefault(
+            dimension_key,
+            {"request_count": 0, "failure_count": 0, "empty_retrieval_count": 0, "fallback_count": 0, "citation_missing_count": 0},
+        )
+        bucket["request_count"] += 1
         _metrics["request_count"] += 1
         failure_stage = str(trace.get("failure_stage") or "")
         if trace.get("degraded") or failure_stage not in {"", "none"}:
             _metrics["failure_count"] += 1
+            bucket["failure_count"] += 1
         if int(trace.get("retrieval_count") or 0) == 0:
             _metrics["empty_retrieval_count"] += 1
+            bucket["empty_retrieval_count"] += 1
         if trace.get("reply_rules_applied"):
             _metrics["reply_rules_hit_count"] += 1
         if trace.get("used_fallback_prompt") or trace.get("answer_source") == "fallback":
             _metrics["fallback_count"] += 1
+            bucket["fallback_count"] += 1
+        if str(trace.get("answer_mode") or "") == "clarify":
+            _metrics["clarify_count"] += 1
+        if str(trace.get("conversation_status") or "") == "human_handoff":
+            _metrics["human_handoff_route_count"] += 1
+        if not (trace.get("citation_quality") or {}).get("passed", True):
+            bucket["citation_missing_count"] += 1
 
         _latencies.append(float(trace.get("latency_ms") or 0.0))
         if len(_latencies) > 1000:
@@ -236,4 +258,8 @@ def get_ops_metrics() -> dict:
                 int(_metrics["total_tokens"]) / request_count,
                 2,
             ) if request_count else 0.0,
+            "dimensions": {
+                key: {**value, "failure_rate": _rate(value["failure_count"], value["request_count"]), "empty_retrieval_rate": _rate(value["empty_retrieval_count"], value["request_count"]), "fallback_rate": _rate(value["fallback_count"], value["request_count"]), "citation_missing_rate": _rate(value["citation_missing_count"], value["request_count"])}
+                for key, value in _dimension_metrics.items()
+            },
         }

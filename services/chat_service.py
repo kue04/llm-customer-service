@@ -195,11 +195,15 @@ def describe_chat_retrieval_source() -> dict:
     元数据探测失败不改变检索结果，只将版本标为未知，避免观测逻辑反过来
     影响正式回答链路。
     """
+    started_at = time.perf_counter()
     metadata = {
         "retrieval_path": "chunk-index",
         "data_source": "document_chunks",
         "index_name": _chunk_index_name(),
         "index_version": None,
+        "embedding_model": "",
+        "sparse_available": False,
+        "index_load_ms": 0.0,
     }
     try:
         from utils.vector_retriever import describe_chunk_index
@@ -207,8 +211,11 @@ def describe_chat_retrieval_source() -> dict:
         info = describe_chunk_index(root=_chunk_index_root(), index_name=_chunk_index_name())
         metadata["index_name"] = str(info.get("index_name") or metadata["index_name"])
         metadata["index_version"] = int(info["index_version"])
+        metadata["embedding_model"] = str(info.get("embedding_model") or "")
+        metadata["sparse_available"] = bool(info.get("sparse_available", False))
     except Exception:
         pass
+    metadata["index_load_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
     return metadata
 
 
@@ -803,6 +810,27 @@ def build_evidence_citations(prompt_context_items: list) -> list[dict]:
     return citations
 
 
+def validate_evidence_citations(citations: list[dict], evidence_items: list[dict]) -> dict:
+    """校验 citation 是否来自本次返回的证据集合。"""
+    evidence_ids = {str(item.get("knowledge_id") or item.get("chunk_id") or "") for item in evidence_items}
+    missing = []
+    invalid = []
+    for citation in citations:
+        evidence_id = str(citation.get("evidence_id") or citation.get("knowledge_id") or "")
+        if not evidence_id or not str(citation.get("quote") or "").strip():
+            missing.append(evidence_id or "<empty>")
+        elif evidence_id not in evidence_ids:
+            invalid.append(evidence_id)
+    return {
+        "citation_count": len(citations),
+        "missing_count": len(missing),
+        "invalid_source_count": len(invalid),
+        "missing_ids": missing,
+        "invalid_source_ids": invalid,
+        "passed": not missing and not invalid,
+    }
+
+
 def evidence_citations_from_result(result: dict) -> list[dict]:
     class ItemAdapter:
         def __init__(self, data: dict):
@@ -978,6 +1006,9 @@ def attach_enhanced_fields(
     risk_level = normalize_prd_risk_level(intent_analysis.get("risk_level", "low"))
     human_review_reason = build_human_review_reason(result, safety_status, handoff_ticket)
     result["evidence_citations"] = evidence_citations
+    result["citation_quality"] = validate_evidence_citations(
+        evidence_citations, result.get("prompt_context_items", [])
+    )
     result["request_id"] = request_id
     result["risk_level"] = risk_level
     result["confidence_level"] = build_confidence_level(confidence_score)
@@ -1356,6 +1387,9 @@ def get_answer_from_rag(request, auth=None):
                 "data_source": retrieval_source["data_source"],
                 "index_name": retrieval_source["index_name"],
                 "index_version": retrieval_source["index_version"],
+                "embedding_model": retrieval_source["embedding_model"],
+                "sparse_available": retrieval_source["sparse_available"],
+                "index_load_ms": retrieval_source["index_load_ms"],
                 "retrieval_mode": resolve_chat_retrieval_mode(),
                 "original_query": mask_sensitive_text(query_plan["original_query"])[:160],
                 "resolved_query": mask_sensitive_text(query_plan["resolved_query"])[:160],
@@ -1420,12 +1454,13 @@ def get_answer_from_rag(request, auth=None):
     except Exception as error:
         degraded = True
         failure_stage = "retrieval"
-        fallback_reason = f"retrieval_failed: {error}"
+        error_code = str(getattr(error, "error_code", "retrieval_error"))
+        fallback_reason = f"retrieval_failed:{error_code}"
         retrieved_items = []
         prompt_context_items = []
         subquery_coverage = []
         evidence_status = "retrieval_error"
-        evidence_decision = {"mode": "complete", "missing_subqueries": []}
+        evidence_decision = {"mode": "retrieval_error", "missing_subqueries": ["main"]}
         full_trace.append(
             trace_step(
                 "rerank_completed",
@@ -1527,6 +1562,8 @@ def get_answer_from_rag(request, auth=None):
             "data_source": retrieval_source["data_source"],
             "index_name": retrieval_source["index_name"],
             "index_version": retrieval_source["index_version"],
+            "embedding_model": retrieval_source["embedding_model"],
+            "sparse_available": retrieval_source["sparse_available"],
             "missing_subqueries": evidence_decision.get("missing_subqueries", []),
             "confidence_score": 0.2,
             "final_prompt": prompt,
@@ -1634,6 +1671,8 @@ def get_answer_from_rag(request, auth=None):
         "data_source": retrieval_source["data_source"],
         "index_name": retrieval_source["index_name"],
         "index_version": retrieval_source["index_version"],
+        "embedding_model": retrieval_source["embedding_model"],
+        "sparse_available": retrieval_source["sparse_available"],
         "missing_subqueries": evidence_decision.get("missing_subqueries", []),
         "confidence_score": confidence_score,
         "final_prompt": prompt,
