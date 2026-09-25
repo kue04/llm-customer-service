@@ -34,6 +34,17 @@ flowchart LR
     S --> O[正常回答 / 澄清 / 转人工]
 ```
 
+### 两条检索路径：正式链路与演示链路
+
+<!-- f1-track: chat-service-retrieval=chunk-index -->
+<!-- b8-hybrid: default-retrieval-mode=hybrid -->
+
+聊天问答默认使用正式的 `chunk-index` 路径：从文档 chunk 索引召回，并在服务端执行 tenant、发布状态和 document ACL 过滤。`seed-faq-demo` 只保留给演示和兼容调试，不代表正式多租户检索能力。
+
+正式检索接口是 `POST /retrieval/search`，演示接口是 `POST /retrieval/search-demo`。响应中的 `retrieval_path` 会标明实际使用的路径，调用方不需要根据文本猜测检索来源。
+
+正式路径的默认召回模式是 `hybrid`（FAISS 稠密检索 + SQLite FTS5 稀疏检索 + 加权 RRF）。切换或发布 `hybrid` 前，必须先重建同时包含 dense 和 sparse 两路的生效索引，并确认索引状态返回 `sparse_available=true`；否则服务会显式返回不可用错误，不会静默退回其他模式。
+
 核心代码：
 
 | 能力 | 位置 |
