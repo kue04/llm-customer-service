@@ -1530,7 +1530,8 @@ def main() -> None:
     if args.formal_chunk:
         from services.auth_context import AuthContext
         auth = AuthContext(user_id="formal-eval", tenant_id=args.tenant_id, roles=frozenset({"admin"}))
-        answer_provider = lambda query: get_answer_from_rag(SimpleNamespace(message=query), auth=auth)
+        def answer_provider(query: str) -> dict:
+            return get_answer_from_rag(SimpleNamespace(message=query), auth=auth)
         retrieval_path = "chunk-index"
     elif args.legacy_seed:
         os.environ["RAG_CHAT_RETRIEVAL_PATH"] = "seed"
