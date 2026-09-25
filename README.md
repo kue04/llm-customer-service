@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml/badge.svg)](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-1030%20passed-brightgreen.svg)](#测试与质量门禁)
+[![Tests](https://img.shields.io/badge/tests-1045%20passed-brightgreen.svg)](#测试与质量门禁)
 [![Last updated](https://img.shields.io/badge/updated-2026--09--25-lightgrey.svg)](#实测数据)
 
 **建议仓库 topics**：`rag`、`retrieval-augmented-generation`、`reranker`、`hybrid-search`、`fastapi`、`llm`、`customer-service`、`evaluation`
@@ -83,7 +83,7 @@ cd llm-customer-service
 python -m venv .venv
 .venv/Scripts/pip install -r requirements-dev.txt   # 约 9 个包，无 torch
 
-.venv/Scripts/python.exe -m pytest -q              # 实测：1030 条（JUnit XML 口径），~40s
+.venv/Scripts/python.exe -m pytest -q              # 实测：1045 条（JUnit XML 口径），~40s
 .venv/Scripts/python.exe -m ruff check .           # 实测：All checks passed!
 .venv/Scripts/python.exe scripts/check_repo_data_size.py   # 实测：通过，没有超标文件
 ```
@@ -344,8 +344,8 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 
 | 指标 | 数值 | 说明 |
 | --- | --- | --- |
-| pytest 用例总数 / 通过率 | **1030 / 100%**（0 failures / 0 errors）| 41 个测试文件，精简依赖热缓存 ~40s，完整依赖冷启动更久 |
-| 测试文件数 | 41 | `tests/test_*.py`（`ls tests/test_*.py \| wc -l`）|
+| pytest 用例总数 / 通过率 | **1045 / 100%**（0 failures / 0 errors）| 42 个测试文件，精简依赖热缓存 ~40s，完整依赖冷启动更久 |
+| 测试文件数 | 42 | `tests/test_*.py`（`ls tests/test_*.py \| wc -l`）|
 | 端到端 P50 | **4220 ms** | 90 条固定集 `trace.latency_ms`，CPU 推理 |
 | 端到端 P90 / P95 / P99 | 5553 / **6147** / 7409 ms | 同上 |
 | 端到端 min / max | 1430 / 10611 ms | max 是冷启动首条；去掉后 P50 4207、P95 6121 |
@@ -395,8 +395,8 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv/Scripts/python.exe scripts/evaluat
 
 | 项 | 现状 |
 | --- | --- |
-| 口语化查询绝对水平 | R@1 只有 0.4000、R@10 0.5667 —— **低**。30 条里有 7 条两路 top-50 全捞不到，疑似金标假阴性，未逐条复核 |
-| 检索延迟 | hybrid 均值 **355.7 ms** ≈ dense(172.7) + sparse(185.7) 之和。**瓶颈不是检索本身**，而是每次请求都重新加载整份 manifest（含 9229 条正文、无缓存）—— 已记为待修项 |
+| 口语化查询绝对水平 | R@1 只有 0.4000、R@10 0.5667 —— **低**。30 条里有 7 条两路 top-50 全捞不到；**已逐条复核（2026-09-25）**：7 条**全部是真·检索失败**（金标 span / 文档 / 章节三样都在库里），金标假阴性 **0 条**。真因是口语化改写与库内表述的**词面距离过大** → 该做查询改写 / 同义扩展，不是修金标、也不是继续调融合权重 |
+| 检索延迟 | **F6 已修（2026-09-25）**：瓶颈实测确认在「每次检索重读 19.0MB manifest」（`read_manifest` 约 100–120 ms，同一份索引的 `faiss.read_index` 只要约 5 ms；hybrid 一次请求读**两遍**）。加进程内缓存后 hybrid 单条**中位 268.5 → 25.9 ms（−90.3%）**，dense 127.1 → 14.9、sparse 139.8 → 10.8；**评测指标逐位不变**（缓存只该改速度）。冷启动首读仍付一次约 100 ms。证据：`reports/rag_ingestion_auth_review/F6_manifest_load_cost_before_20260925.txt` / `..._after_...` |
 | §3.1/3.2 的数字 | **仍是演示路径口径**，B 轨这节的 0.7160 / 0.4000 才是正式路径。**两套数字不能混用** |
 | 线上默认 | 仍是 `dense`。`hybrid` 要等"重建索引 + 确认 `sparse_available=true`"之后才切（见 §0.1） |
 
@@ -540,7 +540,7 @@ llm-customer-service/
 │   ├── build_release_evaluation_report.py
 │   └── check_repo_data_size.py          # 仓库单文件体积守护（本次新增）
 ├── data/                        # 知识库、评测集、SFT 数据（见下）
-├── tests/                       # 41 个测试文件 / 1030 用例
+├── tests/                       # 42 个测试文件 / 1045 用例
 ├── docs/                        # 评测报告、bad case 复盘、阶段经验、RAG 改造进度台账
 ├── requirements.txt             # 完整依赖（含 torch，约 3GB）
 ├── requirements-dev.txt         # 轻量依赖（CI / 不跑模型时用）

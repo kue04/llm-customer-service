@@ -37,6 +37,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import threading
 from typing import Any
 
 
@@ -618,6 +619,76 @@ def read_pointer(root: str | Path, index_name: str = DEFAULT_INDEX_NAME) -> Inde
     return IndexPointer.from_dict(payload)
 
 
+# ------------------------------------------------- 生效 manifest 的进程内缓存（F6）
+
+#: 缓存条数上限（每个 ``(root, index_name)`` 只留**当前生效**那一版，
+#: 这里再兜一层总量上限，防止"很多临时 root"把内存吃掉 —— 测试会造临时索引根）。
+MAX_CACHED_MANIFESTS = 8
+
+#: 计数口径（供测试与探针断言，不做业务判断）
+_MANIFEST_CACHE_STATS: dict[str, int] = {"hit": 0, "miss": 0}
+
+_ACTIVE_MANIFEST_CACHE: dict[tuple[str, str, int, str, str], IndexManifest] = {}
+_ACTIVE_MANIFEST_CACHE_LOCK = threading.Lock()
+
+
+def _manifest_cache_key(
+    root: Path,
+    index_name: str,
+    pointer: IndexPointer,
+) -> tuple[str, str, int, str, str]:
+    """缓存键取「**这份索引的身份**」，不取时间。
+
+    五维缺一不可，每一维都对应一个静默错误：
+
+    * ``root``（规范化绝对路径）—— 同一个 ``index_name`` 在不同根下是不同索引；
+    * ``index_name`` —— 本仓同时存在 chunk 索引与别的索引名，
+      少这一维会**串味**：查 A 拿 B 的条目，命中一堆不属于该索引的 chunk_id；
+    * ``index_version`` —— 版本切换的**显式失效信号**。索引切换是原子发布
+      （新版本目录 + ``current.json``），所以"版本号变了"正是失效条件；
+    * ``manifest_path`` —— 同版本号在不同目录布局下不该混用；
+    * ``fingerprint`` —— 指针里记录的内容指纹。版本目录按设计不可变，
+      但万一有人原地重写了同版本的 manifest，指纹会变 → 键变 → 重新读，
+      而不是继续返回已被替换的旧内容。
+    """
+
+    return (
+        os.path.normcase(str(root.resolve())),
+        index_name,
+        int(pointer.index_version),
+        str(pointer.manifest_path),
+        str(pointer.fingerprint or ""),
+    )
+
+
+def _cache_manifest(key: tuple[str, str, int, str, str], manifest: IndexManifest) -> None:
+    """写入缓存，并保证同一 ``(root, index_name)`` 只留当前生效版本。"""
+
+    with _ACTIVE_MANIFEST_CACHE_LOCK:
+        scope = key[:2]
+        for existing in [item for item in _ACTIVE_MANIFEST_CACHE if item[:2] == scope and item != key]:
+            _ACTIVE_MANIFEST_CACHE.pop(existing, None)
+        _ACTIVE_MANIFEST_CACHE[key] = manifest
+        while len(_ACTIVE_MANIFEST_CACHE) > MAX_CACHED_MANIFESTS:
+            oldest = next(iter(_ACTIVE_MANIFEST_CACHE))
+            _ACTIVE_MANIFEST_CACHE.pop(oldest, None)
+
+
+def reset_active_manifest_cache() -> None:
+    """清空缓存并归零计数（测试与探针用；**不触碰磁盘**）。"""
+
+    with _ACTIVE_MANIFEST_CACHE_LOCK:
+        _ACTIVE_MANIFEST_CACHE.clear()
+    _MANIFEST_CACHE_STATS["hit"] = 0
+    _MANIFEST_CACHE_STATS["miss"] = 0
+
+
+def active_manifest_cache_stats() -> dict[str, int]:
+    """缓存命中/未命中计数（只读快照）。"""
+
+    return dict(_MANIFEST_CACHE_STATS)
+
+
 def load_active_manifest(
     root: str | Path,
     index_name: str = DEFAULT_INDEX_NAME,
@@ -626,10 +697,30 @@ def load_active_manifest(
 
     指纹不一致说明「指针指的文件被人改过 / 复制错了版本」，
     这时**宁可拒绝加载**（检索层 fail closed）也不要拿一份来路不明的索引去检索。
+
+    **缓存语义（F6，2026-09-25）**：manifest 含 9229 条正文、19.0MB，实测
+    ``read_manifest`` 单次约 100~120ms（``faiss.read_index`` 只要 5ms），
+    而每次检索都要走一次 —— 所以这里做进程内缓存。三条约束：
+
+    1. **指针每次都真读**（约 0.09ms）：失效判据是**指针里的版本号/指纹**，
+       不是文件 mtime。索引切换是原子发布，读指针就等于读到了当前生效版本；
+       只有真的读指针，才不存在"版本已切、缓存还以为自己是新的"这个静默窗口；
+    2. **返回的是共享对象**：``IndexManifest`` / ``ManifestEntry`` 都是 frozen
+       dataclass（``entries`` 是 ``tuple``），所以只读共享是安全的。
+       调用方**不得**改写拿到的 manifest（要改就复制）；
+    3. **缓存不改变只读语义**：这里既不预热也不写盘，miss 时才读文件。
     """
 
-    pointer = read_pointer(root, index_name)
-    manifest_file = Path(root) / pointer.manifest_path
+    root_path = Path(root)
+    pointer = read_pointer(root_path, index_name)
+    key = _manifest_cache_key(root_path, index_name, pointer)
+    cached = _ACTIVE_MANIFEST_CACHE.get(key)
+    if cached is not None:
+        _MANIFEST_CACHE_STATS["hit"] += 1
+        return cached, pointer, root_path / pointer.index_path
+
+    _MANIFEST_CACHE_STATS["miss"] += 1
+    manifest_file = root_path / pointer.manifest_path
     manifest = read_manifest(manifest_file)
     if pointer.fingerprint and manifest.fingerprint() != pointer.fingerprint:
         raise IndexManifestError(
@@ -637,8 +728,8 @@ def load_active_manifest(
             "指针记录的指纹与实际 manifest 不一致（索引被外部改动过）",
             detail={"pointer": pointer.fingerprint, "manifest": manifest.fingerprint()},
         )
-    index_file = Path(root) / pointer.index_path
-    return manifest, pointer, index_file
+    _cache_manifest(key, manifest)
+    return manifest, pointer, root_path / pointer.index_path
 
 
 def list_versions(root: str | Path, index_name: str) -> list[int]:
@@ -681,12 +772,14 @@ __all__ = [
     "INDEX_FILENAME",
     "MANIFEST_FILENAME",
     "MANIFEST_VERSION",
+    "MAX_CACHED_MANIFESTS",
     "POINTER_FILENAME",
     "VISIBILITY_POLICY",
     "IndexManifest",
     "IndexManifestError",
     "IndexPointer",
     "ManifestEntry",
+    "active_manifest_cache_stats",
     "index_root",
     "list_versions",
     "load_active_manifest",
@@ -694,6 +787,7 @@ __all__ = [
     "publish_build_directory",
     "read_manifest",
     "read_pointer",
+    "reset_active_manifest_cache",
     "resolve_version_directory",
     "switch_pointer",
     "utc_now_iso",
