@@ -1,12 +1,12 @@
 # 外卖客服 RAG 智能问答系统
 
-> 面向外卖售后场景的检索增强客服后端：混合召回 → Reranker 精排 → 证据分级 → 生成 → 规则兜底 → 可归因评测。
+> 面向外卖售后场景的检索增强客服后端：多信号检索（稠密 / 稀疏 FTS5 / 混合 RRF，见 §0.1）→ Reranker 精排 → 证据分级 → 生成 → 规则兜底 → 可归因评测。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml/badge.svg)](https://github.com/kue04/llm-customer-service/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-332%20passed-brightgreen.svg)](#测试与质量门禁)
-[![Last updated](https://img.shields.io/badge/updated-2026--09--14-lightgrey.svg)](#实测数据)
+[![Tests](https://img.shields.io/badge/tests-1004%20passed-brightgreen.svg)](#测试与质量门禁)
+[![Last updated](https://img.shields.io/badge/updated-2026--09--25-lightgrey.svg)](#实测数据)
 
 **建议仓库 topics**：`rag`、`retrieval-augmented-generation`、`reranker`、`hybrid-search`、`fastapi`、`llm`、`customer-service`、`evaluation`
 
@@ -27,6 +27,47 @@
 换句话说：**下面章节里基于 781 条种子 FAQ 的评测数字，描述的是演示路径的检索质量**，
 不能直接当成 chunk 级检索线上能力（口径问题另见 `docs/RAG_DEV_PITFALLS.md` 的 F2）。
 
+<!-- f1-track: chat-service-retrieval=chunk-index -->
+> **✅ 双轨已合（F1 关闭，2026-09-25）**：`services/chat_service.py` 的问答检索默认走
+> **chunk 级正式路径**（`retrieve_chunk_items_for_chat()`，带 tenant + `document_acl` 服务端前置过滤），
+> 文档语料的 209 份文档 / 9229 个 chunk **在聊天接口里可检索**。
+> 种子 FAQ 路径保留为**可回退开关**：`RAG_CHAT_RETRIEVAL_PATH=seed`（默认值为 `chunk`）。
+> 判定口径：读 `services/chat_service.py` 的 `DEFAULT_CHAT_RETRIEVAL_PATH` 常量 ——
+> 它与上面这行锚点由 `tests/test_ingestion_pipeline.py::TestReadmeTrackConsistency` **双向校验**，
+> 改一边不改另一边会让测试变红。守卫是故意留的：**切轨是里程碑事件，不该被静默忘记。**
+> 注意：聊天链路切的是**检索**，不是评测口径 —— 下面基于 781 条种子 FAQ 的评测数字
+> 仍然是演示路径的数字，F2 的口径问题（`docs/RAG_DEV_PITFALLS.md`）不因切轨而消。
+
+### 0.1 「混合」在本仓库有两个含义 —— 只有第二套是真混合检索（2026-09-25）
+
+<!-- b8-hybrid: default-retrieval-mode=dense -->
+> 上面这行是**机器可读锚点**（不渲染）：现役默认模式 = `dense`。它与
+> `routers/retrieval.py::DEFAULT_RETRIEVAL_MODE` 由
+> `tests/test_ingestion_pipeline.py::TestReadmeTrackConsistency` **双向校验**，
+> 改一边不改另一边会红。切默认之前先读下面第三条的**上线顺序**。
+
+「混合检索」的通行定义是**稠密 + 稀疏两路独立召回，再融合**。本仓库有两套机制都被叫过"混合"：
+
+| 叫法 | 机制 | 在哪里 | 关键词参与**召回**吗 |
+| --- | --- | --- | --- |
+| A 轨 `mode=hybrid` | 向量**单路抽查** + `keyword_bonus − direction_penalty` **加权重排** | `POST /retrieval/search-demo`（演示路径） | ❌ **不参与**。只在已召回的候选上加减分，救不回低向量分的文档 |
+| **B 轨 `retrieval_mode=hybrid`** | 稠密（FAISS）＋ 稀疏（SQLite FTS5 `bm25()`）**两路各自召回** → 加权 RRF 融合 | `POST /retrieval/search`（**正式路径**）、`utils/hybrid_retriever.py` | ✅ 两路独立出候选，按 `1/(k+rank)` 融合 |
+
+> **这是本仓库最容易被误读的一处。** 真实情况：直到 2026-09-25 之前，**正式路径一直是纯稠密单路**，
+> A 轨那个"hybrid"只是召回**之后**的加权重排 —— 把它读成"向量+关键词混合检索"是错的。
+> 一句话判别法：**看关键词能不能把"向量分低"的文档捞进候选** —— A 轨不能
+> （`utils/vector_retriever.py` 里 `if similarity < min_score: continue` 发生在加分之前），B 轨能。
+
+**B 轨三种模式**（请求体字段 `retrieval_mode`，取值 `dense` / `sparse` / `hybrid`）：
+
+* **`dense` 是默认** —— 因为已部署的生效索引可能是不含稀疏路的**旧构建**，
+  把默认切成 `hybrid` 会让所有检索请求在发版瞬间 503（稀疏索引不可用是**显式失败，不降级**）。
+  上线顺序：`python scripts/rebuild_chunk_index.py` 重建 → 确认接口返回 `index.sparse_available=true`
+  → 再切默认（**唯一一处**常量：`routers/retrieval.py::DEFAULT_RETRIEVAL_MODE`）；
+* 字段名刻意叫 `retrieval_mode` 而不是 `mode` —— A 轨已经占了 `mode`，同名不同义是最难查的兼容性事故
+  （踩坑 B21）。响应里回显实际生效值；
+* 三种模式的**实测数字见 §3.6**。注意：**混合检索的收益不是"指标全面上涨"**，结论见该节。
+
 ---
 
 ## 1. 60 秒快速验证
@@ -42,7 +83,7 @@ cd llm-customer-service
 python -m venv .venv
 .venv/Scripts/pip install -r requirements-dev.txt   # 约 9 个包，无 torch
 
-.venv/Scripts/python.exe -m pytest -q              # 实测：332 passed，~10s
+.venv/Scripts/python.exe -m pytest -q              # 实测：1004 条（JUnit XML 口径），~40s
 .venv/Scripts/python.exe -m ruff check .           # 实测：All checks passed!
 .venv/Scripts/python.exe scripts/check_repo_data_size.py   # 实测：通过，没有超标文件
 ```
@@ -115,7 +156,7 @@ full_trace:   request_received → memory_loaded → intent_detected → risk_pr
 flowchart TD
     Q[用户问题] --> I[意图识别 + 风险预检<br/>intent_service / safety_guard]
     I --> T[订单工具<br/>query_order_status / query_refund_status]
-    I --> R[混合召回<br/>FAISS 向量 + keyword_bonus - direction_penalty]
+    I --> R[召回<br/>B 轨：稠密 + 稀疏 FTS5<br/>A 轨演示：向量 + keyword_bonus]
     R --> S[意图提示补充<br/>detect_intent_hint]
     S --> RR[Reranker 精排<br/>bge-reranker-base]
     RR --> E[证据分级<br/>primary / supporting]
@@ -135,7 +176,9 @@ flowchart TD
 
 | 阶段 | 代码位置 |
 | --- | --- |
-| 混合召回 + 意图提示 + 精排 | `utils/vector_retriever.py` |
+| 多信号召回（A 轨演示）+ 意图提示 + 精排 | `utils/vector_retriever.py` |
+| **双路混合检索（B 轨：稠密 + 稀疏 RRF 融合）** | `utils/hybrid_retriever.py` |
+| 稀疏索引构建 / 校验 / 查询（FTS5 + bigram） | `services/ingestion/sparse_index.py`、`utils/sparse_retriever.py` |
 | 证据分级（primary / supporting） | `utils/rag_context.py` |
 | 编排、降级、trace | `services/chat_service.py` |
 | 结论/动作/限制三段式渲染 | `services/answer_composer.py` |
@@ -147,7 +190,7 @@ flowchart TD
 
 ## 3. 实测数据
 
-**全部数字来自 2026-09-14 本机实测**，运行命令与产物都在下方，可复现。未实测的项目一律标注「未实测」。本机：Windows 11 / CPU 推理 / Python 3.12 venv。
+**正式路径的全部数字来自 2026-09-24 本机实测**（演示路径保留 2026-09-14 的数字），运行命令与产物都在下方，可复现。未实测的项目一律标注「未实测」。本机：Windows 11 / CPU 推理 / Python 3.12 venv。
 
 ### 3.1 知识库与数据规模
 
@@ -156,11 +199,30 @@ flowchart TD
 | 知识库条目数 | **781**（人工种子 515 + 京东帮助中心真实 FAQ 清洗入库 266）| `data/takeout_customer_service_seed.jsonl` 行数 |
 | 覆盖 category / intent | 14 / 117 | 同上，按字段去重 |
 | 向量库 | 781 条 × 512 维，FAISS `IndexFlatIP` | `faiss.read_index` 读取 `data/faiss_store/real_vector.index` |
-| 切分方式 | **未切分，1 条知识 = 1 个片段** | `utils/vector_retriever.py:build_document_text` |
+| 切分方式（演示路径） | 未切分，1 条知识 = 1 个片段 | `utils/vector_retriever.py:build_document_text` |
 | 知识库文件体积 | 299.4 KB | 磁盘实测 |
 | 固定评测集 / 盲测集 / 高风险集 | 90 / 30 / 4 | `data/chat_grounding_*.jsonl` 行数 |
 | 检索评测集 | 12 | `scripts/evaluate_vector_retrieval.py:EVAL_QUERIES` |
 | SFT 数据 all / train / val / test | 500 / 400 / 50 / 50 | `data/messages/*.jsonl` 行数 |
+
+#### 正式路径：文档切片语料（2026-09-23/24 实测）
+
+上面那张表描述的是**演示路径**（种子 FAQ）。正式路径的语料是完全不同的另一套：
+
+| 项目 | 数值 | 来源 |
+| --- | --- | ---: |
+| 入库文档数 | **209 份** | `scripts/build_corpus_documents.py` 产出 `data/corpus/`（已 gitignore） |
+| 切片数（chunk） | **9229** | FAISS chunk 索引 `v4` 的 manifest：`chunk_count` |
+| 向量 | 9229 × 512 维，FAISS `IndexFlatIP` | `data/faiss_store/chunk_index/document_chunks/v4/vectors.faiss` |
+| embedding 模型 | `BAAI/bge-small-zh-v1.5` | 同上 manifest 的 `embedding_model` |
+| 索引体积 | 稠密 18.9 MB + manifest **19.0 MB** + 稀疏（FTS5）**32.4 MB** | `v4/` 目录磁盘实测（`sparse.sqlite` 比稠密索引还大：bigram 倒排本身就重，见 §3.6 与踩坑 F6） |
+| 语料形态覆盖 | pdf / docx / html / md / txt / 表格 / 代码块 / 图片 / 扫描件 OCR | `scripts/build_corpus_samples.py` 的形态补缺样本 `data/corpus_samples/` |
+| pipeline 处理成功 | 215 条 job `succeeded` | `ingestion_jobs` 表实测 |
+
+> 语料来源与全部命令见 `docs/RAG_DOCUMENT_CORPUS_PLAN.md`；这 9229 个 chunk
+> **聊天问答与 `POST /retrieval/search` 都能检索到**（F1 已于 2026-09-25 合轨，见 §0）。
+> 注意：**"检索得到"不等于"评测口径已换"** —— 本节及下节的检索质量数字仍是基于种子 FAQ
+> 的演示路径口径，F2（按 intent 判相关）在文档语料下算不了，未修。
 
 > 知识库主体为合成数据（种子 515 条），2026-09-14 起混入 266 条京东帮助中心公开 FAQ（真实话术，已做领域中性化，见 3.2 节数据来源）。评测用例不含真实用户手机号或订单号（见 `data/dataset_sources.md`）。
 
@@ -176,9 +238,9 @@ flowchart TD
 
 | 评测集 | 问题数 | Recall@1 | Recall@5 | Recall@10 | MRR | NDCG@10 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 原始内嵌集（hybrid） | 12 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
-| **固定集（hybrid）** | **90** | **0.9667** | 0.9889 | 1.0000 | **0.9773** | 0.9827 |
-| **盲测集（hybrid）** | **30** | **0.9000** | 0.9667 | 0.9667 | **0.9222** | 0.9333 |
+| 原始内嵌集（A 轨 hybrid） | 12 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| **固定集（A 轨 hybrid）** | **90** | **0.9667** | 0.9889 | 1.0000 | **0.9773** | 0.9827 |
+| **盲测集（A 轨 hybrid）** | **30** | **0.9000** | 0.9667 | 0.9667 | **0.9222** | 0.9333 |
 
 > **扩库影响（2026-09-14，知识库 515 → 781 条）**：固定集指标与扩库前**完全持平**（Recall@1 0.9667 / MRR 0.9773）。盲测集 Recall@1 从 0.9333 → 0.9000（-3.3pp），归因：新增的唯一 miss 是口语化模糊 query「票子去哪儿开」，被京东 FAQ 来源的泛化条目（时效咨询/常见问答）抢占 top1；其余 2 条 miss 是扩库前就存在的安全意图拦截（inducement 类）。这暴露了跨领域知识混入的真实代价，后续可做来源先验（source prior）或意图分类校准。
 
@@ -194,7 +256,7 @@ flowchart TD
 
 备用数据源（路线 A）：JDDC 京东客服对话数据集（100 万轮），可经 GitHub 竞赛基线仓库免注册获取（如 `SimonJYang/JDDC-Baseline-Seq2Seq` 的 `data/chat.txt`，21MB 真实对话），蒸馏管道待建。
 
-12 条原始集上的消融（hybrid vs 纯向量）：hybrid Recall@1 **1.0000** vs vector only **0.9167**（+8.3pp）。
+12 条原始集上的消融（A 轨 `mode=hybrid` vs 纯向量）：hybrid Recall@1 **1.0000** vs vector only **0.9167**（+8.3pp）。
 
 固定集按 case_type 分层，可以看出哪类问题最弱：
 
@@ -282,14 +344,61 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 
 | 指标 | 数值 | 说明 |
 | --- | --- | --- |
-| pytest 用例总数 / 通过率 | **332 / 100%** | 精简依赖热缓存 ~10s，完整依赖冷启动 ~22s |
-| 测试文件数 | 30 | `tests/` |
+| pytest 用例总数 / 通过率 | **1004 / 100%**（0 failures / 0 errors）| 40 个测试文件，精简依赖热缓存 ~40s，完整依赖冷启动更久 |
+| 测试文件数 | 40 | `tests/test_*.py`（`ls tests/test_*.py \| wc -l`）|
 | 端到端 P50 | **4220 ms** | 90 条固定集 `trace.latency_ms`，CPU 推理 |
 | 端到端 P90 / P95 / P99 | 5553 / **6147** / 7409 ms | 同上 |
 | 端到端 min / max | 1430 / 10611 ms | max 是冷启动首条；去掉后 P50 4207、P95 6121 |
 | 并发压测 | **未实测** | 没有做过 QPS / 并发测试 |
 
 延迟构成：本地 1.5B 模型生成（max_new_tokens=256）占大头，检索侧 embedding + FAISS + cross-encoder rerank 在 781 条库上是毫秒级。
+
+### 3.6 检索质量（B 轨：文档 chunk 级三模式对比，2026-09-25 实测）
+
+上面 3.1/3.2 是**演示路径**（781 条种子 FAQ）。这一节是**正式路径**在 9229 个文档 chunk 上的实测，
+走的是**生产代码**（`utils.hybrid_retriever.search_hybrid_chunks`），不是另写一套评测逻辑。
+
+```bash
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv/Scripts/python.exe scripts/rebuild_chunk_index.py   # 重建稠密+稀疏索引
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv/Scripts/python.exe scripts/evaluate_hybrid_retrieval.py
+```
+
+**评测集怎么来的**（弱监督，无人工逐条标注成本）：从索引 manifest 的 9229 个 chunk 里抽 QA 对
+（`scripts/build_retrieval_gold.py`）→ **81 条**「标题式查询」；再对其中 **30 条**做人工口语化改写
+（`scripts/build_colloquial_cases.py`，每条都能回溯到原金标）；外加 **40 条语料外负样本**。
+命中判据是 **span**（答案特征片段）而非 `chunk_id` —— 后者重新切分即失效。
+
+| 数据集 | mode | R@1 | R@5 | R@10 | MRR | NDCG@10 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| title（81 条） | dense | 0.7160 | 0.9630 | 0.9877 | 0.7698 | 0.8204 |
+| title（81 条） | sparse | **0.7901** | 0.9012 | 0.9877 | **0.8257** | **0.8621** |
+| title（81 条） | **hybrid** | 0.7407 | 0.9630 | **1.0000** | 0.7922 | 0.8404 |
+| 口语化（30 条） | dense | 0.4000 | 0.5000 | 0.5667 | 0.4274 | 0.4588 |
+| 口语化（30 条） | sparse | 0.1000 | 0.1000 | 0.1333 | 0.1037 | 0.1100 |
+| 口语化（30 条） | **hybrid** | **0.4000** | **0.5000** | **0.5667** | **0.4274** | **0.4588** |
+
+> 证据：`reports/retrieval_hybrid/evaluation_20260925.txt`（含延迟分布与互补性明细）。
+> 权重选择同样有据：`w_dense=10, w_sparse=1, k=60` 是**扫过权重后唯一在两套集上都不掉点**的配置
+> （等权 RRF 在口语化集上 R@1 会掉到 0.2667）。默认值被一条测试锁着，改动必须重跑评测。
+
+**四条结论（和"混合检索=指标全面上涨"的直觉相反，必须按这个口径对外讲）**：
+
+1. **增益上限本来就很小**：两路 top-10 的并集召回 = title 81/81、口语化 18/30 ——
+   这是**任何融合策略的天花板**。dense-only 已经是 80/81，所以 title 集最多也就再赢 1 条；
+2. **等权融合有害**：口语化查询上稀疏路 R@1 只有 0.1000（人工改写刻意避开正文用词，词法匹配必然失手），
+   等权 RRF 会把稠密路 0.4000 拉到 0.2667。**必须靠权重把稀疏路压住**；
+3. **稀疏路的真正价值在"短标题式查询的 R@1"，不在召回**：title 集 sparse R@1 = 0.7901 > dense 0.7160；
+4. **实测收益**：title 集 R@1 +0.0247（+2 条）、**R@10 打满到 1.0000（= 融合上限）**；
+   口语化集**零退化**（hybrid 与 dense 每一列完全相同）。
+
+**不达标 / 未做（不许粉饰）**：
+
+| 项 | 现状 |
+| --- | --- |
+| 口语化查询绝对水平 | R@1 只有 0.4000、R@10 0.5667 —— **低**。30 条里有 7 条两路 top-50 全捞不到，疑似金标假阴性，未逐条复核 |
+| 检索延迟 | hybrid 均值 **355.7 ms** ≈ dense(172.7) + sparse(185.7) 之和。**瓶颈不是检索本身**，而是每次请求都重新加载整份 manifest（含 9229 条正文、无缓存）—— 已记为待修项 |
+| §3.1/3.2 的数字 | **仍是演示路径口径**，B 轨这节的 0.7160 / 0.4000 才是正式路径。**两套数字不能混用** |
+| 线上默认 | 仍是 `dense`。`hybrid` 要等"重建索引 + 确认 `sparse_available=true`"之后才切（见 §0.1） |
 
 ---
 
@@ -309,7 +418,7 @@ A: 不能向用户提供骑手或他人的身份证信息、完整手机号等�
 
 **做法**：在纯向量分之上加 `score = vector_score + keyword_bonus − direction_penalty`。`direction_penalty` 针对已知的方向相反组合硬编码扣分（如 query 只说「超时」但没说取消时，命中「超时取消」意图扣 0.08；食品安全类 query 命中发票/优惠/会员类意图扣 0.15）。另外还有一套 `detect_intent_hint` 规则把高风险意图（私下转账、验证码、食品安全等）直接补充进候选并加权 0.10。
 
-**效果**：hybrid 相对纯向量 Recall@1 从 0.9167 提到 1.0000（12 条集上）。**但这套规则是硬编码的、面向已知 bad case 的，换领域就得重写——这是它最大的代价。**
+**效果**：A 轨 `mode=hybrid`（= 向量 + `keyword_bonus`）相对纯向量 Recall@1 从 0.9167 提到 1.0000（12 条集上）。**但这套规则是硬编码的、面向已知 bad case 的，换领域就得重写——这是它最大的代价。**
 
 ### 4.3 reply_rules 为什么用规则而不是靠模型
 
@@ -380,7 +489,10 @@ Top1 错了，回答整个跑偏到「退款到账时间」。根因是 cross-en
 2. **评测集仍偏小**。检索已从 12 条扩到 90/30 条（Recall@1 0.9667 / 0.9333），但 120 条仍是同一批作者标注；grounding 盲测 30 条偏小。下一步：扩到 100–300 条并做独立人工标注，同时统一「安全意图改写」与金标之间的口径冲突（见 3.2 的 inducement 分析）。
 3. **规则硬编码，换领域要重写**。`detect_intent_hint` 是 30+ 条 `if` 判断，`direction_penalty` / `keyword_bonus` 是面向已知 bad case 的手工调参。这是「可控性」换「泛化性」的取舍，不是可长期维护的方案。
 4. **LLM-as-judge 用的是 1.5B 模型给自己打分**。同模型既生成又评判，存在系统性偏差。已用 `suggested_layer: judge` 做人工复核分流，但没做 judge 与外部模型的一致性校验。
-5. **没有切分（chunking）**。1 条知识 = 1 个片段，781 条刚好够用，长文档场景不适用。
+5. ~~**没有切分（chunking）**~~ **已于 2026-09-23 补齐**：文档入库链路（解析 → 归一化 →
+   父子切分 → 落库 → 建索引 → 发布）已跑通并灌入真实语料 209 份文档 / 9229 chunk
+   （`docs/RAG_DOCUMENT_CORPUS_PLAN.md`）。**剩余缺口是接线而非能力**：聊天问答
+   （`chat_service.py`）仍在走演示路径，`/retrieval/search` 才走 chunk 级（见 §0 的 F1）。
 6. **订单状态是 mock + SQLite**，不是真实外卖平台接口。
 7. **未实测的部分**：并发/QPS 压测、在线模型（需 API Key）路径、LoRA adapter 对最终回复质量的增量、真实对抗集上的拦截率、auto 模式下的盲测集重跑。这些都没有跑过，不要当成已有结论。
 8. **知识库运营有副作用**：`scripts/build_takeout_training_data.py` 会把扩增结果**回写到** `data/takeout_customer_service_seed.jsonl`（知识库本身），重复运行会让知识库不断膨胀。跑之前先备份。
@@ -402,7 +514,7 @@ llm-customer-service/
 ├── services/
 │   ├── auth_context.py          # 身份上下文与 JWT 校验（角色→scope 策略表，本期新增）
 │   ├── auth_service.py          # FastAPI 鉴权依赖：Bearer → AuthContext（本期重写）
-│   ├── ingestion/               # 数据接入：db / models / repository（本期新增）
+│   ├── ingestion/               # 数据接入：db / models / repository / index_builder / index_manifest / sparse_index
 │   ├── chat_service.py          # 编排：意图→工具→检索→证据→prompt→生成→规则→诊断→trace
 │   ├── answer_composer.py       # 结论/动作/限制三段式渲染
 │   ├── reply_rules.py           # 高风险规则兜底
@@ -412,19 +524,23 @@ llm-customer-service/
 │   ├── order_tool_service.py    # 订单/退款/人工接管工具
 │   └── grounding_diagnostics.py # grounding 诊断字段
 ├── utils/
-│   ├── vector_retriever.py      # FAISS + embedding + 混合打分 + rerank + 意图提示
+│   ├── vector_retriever.py      # A 轨：FAISS + embedding + 多信号打分 + rerank + 意图提示
+│   ├── hybrid_retriever.py      # B 轨：稠密 + 稀疏双路召回 + 加权 RRF 融合（B8 新增）
+│   ├── sparse_retriever.py      # B 轨：FTS5 稀疏路查询（权限前置过滤与稠密路等价）
 │   ├── rag_context.py           # primary / supporting 证据分级
-│   └── retriever.py             # 关键词检索与去重
+│   └── retriever.py             # 纯词法检索与去重（已退役：仅 3 个脚本调用）
 ├── models/prompt.py             # 客服 prompt 模板
 ├── scripts/
 │   ├── evaluate_vector_retrieval.py     # 检索评测（Top1/Top3/未命中 + rerank 影响）
 │   ├── evaluate_retrieval_metrics.py    # 检索指标：Recall@K / MRR / NDCG@K（本次新增）
 │   ├── evaluate_chat_grounding.py       # grounding 评测 + 本地 LLM-as-judge
 │   ├── analyze_grounding_report.py      # bad case 归因与修复层建议
+│   ├── rebuild_chunk_index.py           # 从已有 chunk 重建稠密+稀疏索引（改切词算法后必跑）
+│   ├── evaluate_hybrid_retrieval.py     # 三模式对比评测：dense / sparse / hybrid（B8 新增）
 │   ├── build_release_evaluation_report.py
 │   └── check_repo_data_size.py          # 仓库单文件体积守护（本次新增）
 ├── data/                        # 知识库、评测集、SFT 数据（见下）
-├── tests/                       # 30 个测试文件 / 332 用例
+├── tests/                       # 40 个测试文件 / 1004 用例
 ├── docs/                        # 评测报告、bad case 复盘、阶段经验、RAG 改造进度台账
 ├── requirements.txt             # 完整依赖（含 torch，约 3GB）
 ├── requirements-dev.txt         # 轻量依赖（CI / 不跑模型时用）

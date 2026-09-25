@@ -1,0 +1,407 @@
+{
+  "request_id": "1ab45d6423d8463bb3d507fc4848f71e",
+  "reply": "抱歉，这个问题我暂时无法稳定判断。建议您先在订单页面查看最新状态，如仍有疑问，请通过官方客服渠道进一步核实处理。",
+  "risk_level": "medium",
+  "confidence_level": "low",
+  "need_human_review": true,
+  "human_review_reason": "订单工具失败且证据不足",
+  "citations": [],
+  "conversation_status": "pending_agent_review",
+  "answer_basis": "工具结果：order_user_mismatch；order_user_mismatch",
+  "evidence_citations": [],
+  "tool_results": [
+    {
+      "tool_name": "query_order_status",
+      "status": "failed",
+      "input": {
+        "user_id": "demo_user",
+        "order_id": "WM73865302"
+      },
+      "output": {},
+      "error_type": "order_user_mismatch",
+      "latency_ms": 1.17,
+      "retryable": false
+    },
+    {
+      "tool_name": "query_refund_status",
+      "status": "failed",
+      "input": {
+        "user_id": "demo_user",
+        "order_id": "WM73865302"
+      },
+      "output": {},
+      "error_type": "order_user_mismatch",
+      "latency_ms": 1.5,
+      "retryable": false
+    }
+  ],
+  "memory_snapshot": {
+    "short_term": {
+      "session_id": "sess_trace_verify_3",
+      "summary": "",
+      "facts": {
+        "last_primary_intent": "退款进度",
+        "last_risk_level": "medium",
+        "refund_mentioned": "true"
+      },
+      "recent_messages": [
+        {
+          "role": "user",
+          "content": "我想退款要多久",
+          "risk_level": "medium",
+          "created_at": "2026-09-23T15:42:36.696842+00:00",
+          "intent": {
+            "primary_intent": "退款进度",
+            "secondary_intents": [],
+            "risk_level": "medium",
+            "routing": "rag",
+            "intents": [
+              {
+                "name": "退款进度",
+                "confidence": 0.84,
+                "risk_level": "medium",
+                "priority": 20,
+                "evidence": [
+                  "退款"
+                ]
+              }
+            ],
+            "requires_safety_prefix": false
+          }
+        },
+        {
+          "role": "assistant",
+          "content": "抱歉，这个问题我暂时无法稳定判断。建议您先在订单页面查看最新状态，如仍有疑问，请通过官方客服渠道进一步核实处理。",
+          "risk_level": "medium",
+          "created_at": "2026-09-23T15:42:36.881844+00:00",
+          "intent": {
+            "primary_intent": "退款进度",
+            "secondary_intents": [],
+            "risk_level": "medium",
+            "routing": "rag",
+            "intents": [
+              {
+                "name": "退款进度",
+                "confidence": 0.84,
+                "risk_level": "medium",
+                "priority": 20,
+                "evidence": [
+                  "退款"
+                ]
+              }
+            ],
+            "requires_safety_prefix": false
+          }
+        },
+        {
+          "role": "user",
+          "content": "那要多久才能到",
+          "risk_level": "medium",
+          "created_at": "2026-09-23T15:42:37.325786+00:00",
+          "intent": {
+            "primary_intent": "退款进度",
+            "secondary_intents": [],
+            "risk_level": "medium",
+            "routing": "rag",
+            "intents": [
+              {
+                "name": "退款进度",
+                "confidence": 0.6,
+                "risk_level": "medium",
+                "priority": 50,
+                "evidence": [],
+                "inherited_from_context": true
+              }
+            ],
+            "requires_safety_prefix": false,
+            "inherited_from_context": "退款进度"
+          }
+        }
+      ]
+    },
+    "long_term": {
+      "used": true,
+      "fields": {
+        "common_issue_types": "退款/售后",
+        "last_service_summary": "最近咨询：退款进度；风险等级：medium",
+        "communication_preference": "优先平台内文字沟通",
+        "risk_tags": "食品安全相关咨询",
+        "address_preference": "地址[已脱敏]"
+      },
+      "updated_fields": {
+        "last_reply_summary": "抱歉，这个问题我暂时无法稳定判断。建议您先在订单页面查看最新状态，如仍有疑问，请通过官方客服渠道进一步核实处理。"
+      },
+      "priority_note": "user_memory 只作客服提示，低于订单状态和知识库证据。"
+    }
+  },
+  "decision_trace": {
+    "request_id": "1ab45d6423d8463bb3d507fc4848f71e",
+    "primary_intent": "退款进度",
+    "risk_level": "medium",
+    "routing": "rag",
+    "primary_evidence_id": "",
+    "tool_statuses": {
+      "query_order_status": "failed",
+      "query_refund_status": "failed"
+    },
+    "safety_status": {
+      "passed": true,
+      "blocked": false,
+      "issues": [],
+      "fallback_applied": false
+    },
+    "needs_manual_review": true,
+    "handoff_ticket_id": ""
+  },
+  "full_trace": [
+    {
+      "step": "request_received",
+      "status": "success",
+      "input_summary": "那要多久才能到",
+      "output_summary": "",
+      "latency_ms": 0.01,
+      "metadata": {
+        "request_id": "1ab45d6423d8463bb3d507fc4848f71e",
+        "channel": "app",
+        "user_id": "demo_user",
+        "order_id": "WM73865302"
+      }
+    },
+    {
+      "step": "memory_loaded",
+      "status": "success",
+      "input_summary": "",
+      "output_summary": "recent=2, user_memory_fields=5",
+      "latency_ms": 170.55,
+      "metadata": {
+        "session_id": "sess_trace_verify_3",
+        "recent_preview": [
+          "用户：我想退款要多久",
+          "客服：抱歉，这个问题我暂时无法稳定判断。建议您先在订单页面查看最新状态，如仍有疑问，请"
+        ],
+        "long_term_summary": "common_issue_types=退款/售后；last_service_summary=最近咨询：退款进度；风险等级：medium；communication_preference=优先平台内文字沟通；risk_tags=食品安全相关咨询；address_preference=地址[已脱敏]"
+      }
+    },
+    {
+      "step": "intent_detected",
+      "status": "success",
+      "input_summary": "",
+      "output_summary": "退款进度",
+      "latency_ms": 0.05,
+      "metadata": {
+        "risk_level": "medium",
+        "primary_intent": "退款进度",
+        "evidence": [],
+        "secondary_intents": [],
+        "confidence": 0.6,
+        "inherited_from_context": "退款进度"
+      }
+    },
+    {
+      "step": "risk_precheck",
+      "status": "success",
+      "input_summary": "",
+      "output_summary": "rag",
+      "latency_ms": 0.01,
+      "metadata": {
+        "routing": "rag",
+        "risk_level": "medium",
+        "risk_source": "intent_detected",
+        "matched_high_risk_intents": [],
+        "requires_safety_prefix": 0
+      }
+    },
+    {
+      "step": "order_tool_called",
+      "status": "degraded",
+      "input_summary": "",
+      "output_summary": "query_order_status: order_user_mismatch；query_refund_status: order_user_mismatch",
+      "latency_ms": 2.74,
+      "metadata": {
+        "tool_count": 2,
+        "tools": [
+          {
+            "tool_name": "query_order_status",
+            "status": "failed",
+            "latency_ms": 1.17,
+            "summary": "order_user_mismatch"
+          },
+          {
+            "tool_name": "query_refund_status",
+            "status": "failed",
+            "latency_ms": 1.5,
+            "summary": "order_user_mismatch"
+          }
+        ]
+      }
+    },
+    {
+      "step": "retrieval_started",
+      "status": "success",
+      "input_summary": "那要多久才能到\n意图提示：退款进度",
+      "output_summary": "",
+      "latency_ms": 0.01,
+      "metadata": {}
+    },
+    {
+      "step": "rerank_completed",
+      "status": "failed",
+      "input_summary": "",
+      "output_summary": "sentence-transformers is not installed; install it to use model reranking and embeddings",
+      "latency_ms": 0.03,
+      "metadata": {}
+    },
+    {
+      "step": "evidence_selected",
+      "status": "degraded",
+      "input_summary": "",
+      "output_summary": "selected=0",
+      "latency_ms": 0.04,
+      "metadata": {}
+    },
+    {
+      "step": "prompt_built",
+      "status": "success",
+      "input_summary": "",
+      "output_summary": "source=fallback, chars=295",
+      "latency_ms": 0.82,
+      "metadata": {
+        "used_fallback_prompt": true,
+        "prompt_version": "release_audit_smoke_20260706092214"
+      }
+    },
+    {
+      "step": "generation_completed",
+      "status": "failed",
+      "input_summary": "",
+      "output_summary": "local generation dependencies are unavailable",
+      "latency_ms": 0.02,
+      "metadata": {}
+    },
+    {
+      "step": "grounding_checked",
+      "status": "success",
+      "input_summary": "",
+      "output_summary": "needs_manual_review=False",
+      "latency_ms": 42.88,
+      "metadata": {
+        "missing_evidence_keywords": [],
+        "risky_promises": []
+      }
+    },
+    {
+      "step": "handoff_recommended",
+      "status": "success",
+      "input_summary": "订单工具失败且证据不足",
+      "output_summary": "waiting_agent_confirmation",
+      "latency_ms": 0.01,
+      "metadata": {
+        "write_tool_deferred": true
+      }
+    },
+    {
+      "step": "memory_updated",
+      "status": "success",
+      "input_summary": "",
+      "output_summary": "short_term=updated,long_term_fields=6",
+      "latency_ms": 47.23,
+      "metadata": {}
+    },
+    {
+      "step": "response_returned",
+      "status": "success",
+      "input_summary": "",
+      "output_summary": "response assembled",
+      "latency_ms": 108.43,
+      "metadata": {}
+    }
+  ],
+  "handoff_ticket": null,
+  "token_usage": {},
+  "confidence_score": 0.2,
+  "session_id": "sess_trace_verify_3",
+  "user_id": "demo_user",
+  "order_id": "WM73865302",
+  "intent_analysis": {
+    "primary_intent": "退款进度",
+    "secondary_intents": [],
+    "risk_level": "medium",
+    "routing": "rag",
+    "intents": [
+      {
+        "name": "退款进度",
+        "confidence": 0.6,
+        "risk_level": "medium",
+        "priority": 50,
+        "evidence": [],
+        "inherited_from_context": true
+      }
+    ],
+    "requires_safety_prefix": false,
+    "inherited_from_context": "退款进度"
+  },
+  "context_used": {
+    "session_id": "sess_trace_verify_3",
+    "recent_message_count": 3,
+    "summary_chars": 0,
+    "fact_count": 3,
+    "redis_enabled": false
+  },
+  "safety_status": {
+    "passed": true,
+    "blocked": false,
+    "issues": [],
+    "fallback_applied": false
+  },
+  "final_prompt": "没有检索到完全匹配的知识库材料。请只基于外卖客服通用处理原则回答，不要编造具体平台政策；如果需要平台核实，请建议用户在订单页或官方客服渠道处理。\n\n订单工具结果：\n- 无\n\n长期用户记忆（user_memory，优先级低于订单状态）：\n- common_issue_types: 退款/售后\n- last_service_summary: 最近咨询：退款进度；风险等级：medium\n- communication_preference: 优先平台内文字沟通\n- risk_tags: 食品安全相关咨询\n- address_preference: 地址[已脱敏]\n\n用户问题：那要多久才能到",
+  "prompt_version": "release_audit_smoke_20260706092214",
+  "retrieved_documents": [],
+  "retrieved_items": [],
+  "prompt_context_items": [],
+  "trace": {
+    "retrieval_count": 0,
+    "request_id": "1ab45d6423d8463bb3d507fc4848f71e",
+    "user_id": "demo_user",
+    "session_id": "sess_trace_verify_3",
+    "order_id": "WM73865302",
+    "latency_ms": 446.89,
+    "top1_intent": "",
+    "used_fallback_prompt": true,
+    "reply_rules_applied": false,
+    "answer_source": "fallback",
+    "degraded": true,
+    "failure_stage": "generation",
+    "fallback_reason": "generation_failed: local generation dependencies are unavailable"
+  },
+  "expected_intent": "",
+  "expected_evidence_keywords": [],
+  "matched_evidence_keywords": [],
+  "missing_evidence_keywords": [],
+  "forbidden_keywords": [],
+  "forbidden_keyword_hits": [],
+  "used_primary_evidence": false,
+  "mixed_supporting_intent": false,
+  "risky_promises": [],
+  "needs_manual_review": true,
+  "manual_judgment": {
+    "direct_answer": "",
+    "grounded": "",
+    "useful": "",
+    "notes": ""
+  },
+  "issue_type": "retrieval_bad",
+  "suggested_layer": "retrieval",
+  "evaluation_metrics": {
+    "total_cases": 1,
+    "expected_intent_case_count": 0,
+    "top1_intent_hit_count": 0,
+    "top1_intent_hit_rate": 0.0,
+    "matched_evidence_keyword_count": 0,
+    "expected_evidence_keyword_count": 0,
+    "evidence_keyword_coverage": 0.0,
+    "forbidden_hit_count": 0,
+    "judge_pass_count": null,
+    "judge_pass_rate": null,
+    "judge_status": "not_run"
+  }
+}

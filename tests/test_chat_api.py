@@ -14,7 +14,10 @@ from auth_helpers import auth_headers
 class ChatPromptApiTest(unittest.TestCase):
     def test_chat_prompt_returns_retrieved_documents_and_trace(self) -> None:
         fake_chat_service = types.ModuleType("services.chat_service")
-        fake_chat_service.get_answer_from_rag = lambda request: {
+        # auth 是 2026-09-25 切轨（F1）后新增的位置参数（聊天路由会把已校验的
+        # AuthContext 传下来）。伪造模块的替身签名必须跟着真身走 —— 这类漂移
+        # 类型检查看不见，只在运行时炸（踩坑 D22）。
+        fake_chat_service.get_answer_from_rag = lambda request, auth=None: {
             "request_id": "req-test",
             "reply": "answer",
             "risk_level": "medium",

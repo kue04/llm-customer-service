@@ -35,5 +35,11 @@ jobs:
       - name: Repo data size guard
         run: python scripts/check_repo_data_size.py --max-mb 1
 
+      - name: Acceptance spec render guard
+        # 长文档最容易出的静默故障：未闭合围栏把大段内容吞进代码块，源文件肉眼看正常。
+        # 这道门禁在本地只手动跑过一次 —— 挂进 CI 才算真的存在（踩坑 E8 同款：
+        # 不被自动跑到的检查会随文档改动静默失效）。
+        run: python scripts/verify_acceptance_spec.py
+
       - name: Pytest
         run: pytest -q

@@ -1,0 +1,189 @@
+审查日期：2026-09-25
+
+任务级审查：F1 切轨 —— 聊天问答从种子 FAQ 切到 chunk 索引
+================================================================================
+审查对象：F1（「双轨制：两条链路都叫检索，没人知道哪条是真的」）
+本次改动：services/chat_service.py      切轨三层 + 唯一分发点 + 4 个惰性注入点
+          routers/chat.py               把已校验的 auth 传进问答入口
+          tests/test_chat_retrieval_track.py   新增，12 条（4 层）
+          tests/test_ingestion_pipeline.py     守卫判据升级 + 守卫自测
+          tests/test_chat_service_degrade.py   显式锚定 RAG_CHAT_RETRIEVAL_PATH=seed
+          tests/test_release_smoke_flow.py     伪造替身签名跟上（加 auth）
+          tests/test_chat_api.py               同上（lambda request, auth=None）
+          scripts/evaluate_chat_grounding.py   显式锚定 seed
+          README.md                     f1-track 锚点 + §0 / §3.1 口径 + 测试数
+          docs/RAG_DEV_PITFALLS.md      D21 / D22
+          docs/RAG_EXECUTION_PROGRESS.md §3 的 [F1 切轨]（§4 暂停点覆盖更新）
+          docs/RAG_NEXT_WINDOW_PROMPT.md 交接文件重写（五件事齐全）
+交付说明：docs/RAG_EXECUTION_PROGRESS.md §3 的 [F1 切轨] 条目
+          docs/RAG_NEXT_WINDOW_PROMPT.md §0.2 / §0.5
+
+--------------------------------------------------------------------------------
+一、门禁结果（证据落 reports/rag_ingestion_auth_review/）
+--------------------------------------------------------------------------------
+  pytest（JUnit XML）    PASS   junit_f1_track_final_20260925.xml
+                                tests=949  failures=0  errors=0  skipped=0
+
+  本批 8 个 Python 文件的定向 ruff   PASS（All checks passed!）
+  compileall             PASS   f1_track_compileall-output.txt（exit 0，无输出）
+  check_repo_data_size   PASS   f1_track_data-size-output.txt（无超标文件）
+
+  ⚠️ warning 条数：**N/A（本批未留全量 stdout 证据文件）**
+     不重跑的理由见第四节第 3 条。**不许拿「949 − 4」倒推**（踩坑 D18 的引申）：
+     差额是个定值没错，但那是**历史实测**的差，不是本轮实测的数。
+
+  ⚠️ 全仓 `ruff check .` 在写本审查时是 **红**（3 条：F401×1 + F821×2），
+     **全部落在 `tests/test_hybrid_retrieval.py`** —— 那是**并行会话**正在写的
+     「B 轨混合检索」文件（01:41 创建，01:38–01:41 仍在改，缺 `dataclasses.replace` 的 import）。
+     **与本批无关**：本批判据只认**本批改动文件的定向 ruff**（8/8 过）。
+     → 登记价值：**并行会话活跃期，「全仓 ruff」不能当批次判据**（见第五节第 6 条）。
+
+  红 → 绿的集合 diff（**两份都留库，规程要求**）：
+     01:17 轮  junit_f1_track_20260925.xml        tests=949  failures=**1**
+     01:25 轮  junit_f1_track_final_20260925.xml  tests=949  failures=0
+     两轮 tests **相同**（949）→ 是**修好**了那 1 条，**不是靠删测试变绿**。
+     红的那条：tests.test_chat_api.ChatPromptApiTest
+               ::test_chat_prompt_returns_retrieved_documents_and_trace
+     根因：伪造替身 `lambda request: {...}` 少一个位置参数（踩坑 D22 第 2 形态）。
+
+--------------------------------------------------------------------------------
+二、逐条对照 F1 的验收判据
+--------------------------------------------------------------------------------
+ J1  聊天问答**默认**走 B 轨                       PASS
+     `services/chat_service.py:76` `DEFAULT_CHAT_RETRIEVAL_PATH = "chunk"`；
+     `resolve_chat_retrieval_path()` 未知值回落到默认；
+     端到端测试 3 条走**真实 chunk 索引**（不是替身）。
+
+ J2  权限过滤在候选暴露之前                        PASS
+     `retrieve_chunk_items_for_chat()` 内部调 `build_chunk_access_filter`
+     （唯一生产构造点 `services/retrieval_access.py`），走 FAISS 原生预过滤。
+
+ J3  **无身份 = 零命中，不回退 A 轨**（fail closed）  PASS
+     `auth is None` 直接 `return []`。**没有**「拿不到结果就回退种子 FAQ」的分支。
+     承决策 [D-12] / [D-13]，未重开。
+
+ J4  字段适配：B 轨的 `text` → 下游认的 `answer`     PASS（含**反证**）
+     `adapt_chunk_items_for_prompt()`；
+     反证用例 `test_raw_chunk_shape_would_be_dropped_by_downstream`
+     —— 证明**不经过适配层，原始 chunk 形状会被下游静默丢掉**（守卫不是摆设）。
+
+ J5  回退开关可用                                  PASS
+     `RAG_CHAT_RETRIEVAL_PATH=seed` 可退回 A 轨；
+     `tests/test_chat_retrieval_track.py` 的轨道解析 4 条覆盖（含非法值回落）。
+
+ J6  文档与代码**双向**校验在线                     PASS
+     `tests/test_ingestion_pipeline.py::TestReadmeTrackConsistency`
+     读 README 的 `<!-- f1-track: chat-service-retrieval=chunk-index -->`
+     与 `DEFAULT_CHAT_RETRIEVAL_PATH` 比对；
+     判据已从「AST 里在不在调用图」换成「读默认值字面量」（为什么换：踩坑 D21）；
+     并加了**守卫自测** `test_guard_can_actually_read_the_default_path`（4 组样本，防空值假绿）。
+
+ J7  依赖旧默认值的调用点已显式锚定                 PASS
+     `scripts/evaluate_chat_grounding.py`（`os.environ.setdefault(..., "seed")`）、
+     `tests/test_chat_service_degrade.py`（`setUp` 锚定，`tearDown` 复原）。
+
+ J8  门禁四件套 + 测试只增不减                      PASS（warning 条数除外，见第一节）
+
+--------------------------------------------------------------------------------
+三、超出「最小改动」的部分（标注方向：更严 / 更宽）
+--------------------------------------------------------------------------------
+ 1. 新增 4 个**惰性依赖注入点**：`_chunk_index_root()` / `_chunk_embedder(text)` /
+    `_chunk_embedding_model()` / `_chunk_index_name()`（chat_service.py:136/144/152/158）
+    方向：**更严**（让测试能在不起真模型的前提下断言真实装配路径）。
+    风险：注入点与生产默认实现可能**漂移**（测试锚的是注入点，线上走的是默认实现）。
+    缓解：`ChatTrackEndToEndTest` 3 条**不过注入点**，走真实索引 —— 覆盖真实装配。
+
+ 2. 守卫判据从「符号在不在调用图」改成「读默认值字面量」
+    方向：**更严**。理由：旧判据只证明「有个叫 retrieve_rag_items 的调用存在」，
+    改成可切换双路之后，这句话与「默认走哪条轨」已经无关了（踩坑 D21）。
+
+ 3. `adapt_chunk_items_for_prompt()` 里 `intent` 用 **heading 末级**顶替
+    方向：**更宽**（构造了一个原来不存在的字段值）。
+    理由：`intent` 是 `build_prompt_context_items` 的展示字段，留空会掉键。
+    ⚠️ **它不是真实意图标签** —— 不得拿去做意图统计或召回口径。已在台账标注。
+
+ 4. 给两个既有测试文件补 `auth=None` 形参（`test_release_smoke_flow` / `test_chat_api`）
+    方向：**中性**（纯签名跟随），但因为它们是**mock 型**测试，
+    改默认配置时**不会报错、只会静默失效**（踩坑 D22）—— 所以列出来，不是顺手改。
+
+--------------------------------------------------------------------------------
+四、中途发现的问题与处置
+--------------------------------------------------------------------------------
+ 1. 守卫的判据会随架构一起失效（**新坑 D21**）
+    现象：切轨后旧判据仍 PASS —— 它检查的是「AST 里有没有调 retrieve_rag_items」，
+          而这条链**还在代码里**（只是不再是默认路径），所以守卫测不出任何东西。
+    处置：换判据（读默认值字面量）+ 加守卫自测；登记 D21。
+    教训：**守卫的判据要跟着"被守卫的语义"改，而不是跟着符号存在性**。
+
+ 2. 改默认配置**静默**打破 mock 型测试（**新坑 D22**，一次撞出两种形态）
+    形态 a：`tests/test_chat_service_degrade.py` 3 条失败 —— mock 的是
+            `retrieve_rag_items`，默认改 chunk 后**整条被绕开**，mock 根本没被调用。
+    形态 b：`tests/test_chat_api.py` 的 `lambda request: {...}` 抛 TypeError（少一个参数）。
+    处置：a 显式锚定 seed；b 补签名。**红→绿两份 XML 都留库**。
+    教训：**默认值变更的影响面 = 谁在"假设"这个默认值**，不是谁 import 了这个符号。
+
+ 3. **本批没留全量 stdout 证据文件** → warning 条数不可复算
+    处置：如实记 `N/A`，**不为了把表填满而重跑**。两个理由：
+      (a) 踩坑 A5：一轮只跑一次全量（守卫按轮计数，重跑有把绿跑成红的记录）；
+      (b) 并行会话 01:38–01:41 正在改 `tests/` 下的文件，此刻重跑会把**别人的半成品**
+          算进本批结果 —— 那比"缺一个数字"更糟。
+    ⚠️ **遗留（交接项）**：下次全量务必 `| tee <批>_full_test-output.txt`。
+
+ 4. 发现「工作区不是只有本批」
+    22 个已跟踪文件 + 约 46 个未跟踪文件，分属 **6 个更早批次**
+    （部署准备 / F5-F4 专项 / 语料 / 形态补缺 / 前端对齐 / 交接），外加**并行会话**
+    正在写的「B 轨混合检索」11 个路径。
+    处置：**没有**擅自替用户决定怎么切 commit；把依赖关系写进第五节与第六节，
+          由老霸决定（提交/推送本就归他，见 MEMORY 第 6 节）。
+
+ 5. `tests/test_ingestion_pipeline.py` **同时**承载 F5/F4 与 F1 的改动
+    → 结论：**本批无法"只提交 F1"**。该文件里的 `TestDeploymentGuards` 会去读
+      `docker-compose.yml`，而后者尚未提交 → 单独提交本批 = **E9 式半提交**
+      （提交出一个"测试跑不过"的中间态）。
+    处置：把这个事实显式写进审查，并给出「一起提交、但排除并行会话路径」的建议。
+
+--------------------------------------------------------------------------------
+五、测试盲区（显式列出，不许藏着）
+--------------------------------------------------------------------------------
+ 1. **界面复核未做**（延续 trace 修复批次）—— 字段在 JSON 里有 ≠ 前端用上了。
+ 2. **B17 父子块重叠未修**：同 heading 的 `p_*` / `c_*` 双进 Top-K，
+    **6/21 ≈ 29% 名额被重叠内容占掉**，平均有效证据 **2.14/3**
+    （证据 `b17_topk_diversity_20260925.json`）。→ **检索质量未验收**。
+ 3. **F2 评测口径未修**：`scripts/evaluate_retrieval_metrics.py:85` 按 `intent` 判相关，
+    文档语料下算不出可信召回。**切轨没有改变它** → 对外不能说「检索质量已评测」。
+ 4. **检索质量本身无结论**：`test_release_gate.py` 验证的是**链路连通性**
+    （query 取自待检索文档自己的 chunk），不是检索效果。
+ 5. **chat 响应没有暴露 `retrieval_path`** —— 只有 trace 里有，前端拿不到走的哪条轨。
+ 6. 👆 **"全仓 ruff"的时效性**：并行会话在活跃地改 `utils/` `tests/`，
+   同一分钟内「全仓全过」与「全仓 3 条错」都出现过（本批亲眼所见）。
+    → 判据要锚在**本批文件**上；引用全仓状态必须带**时间戳**。
+
+--------------------------------------------------------------------------------
+六、结论
+--------------------------------------------------------------------------------
+  F1 切轨本体（聊天问答默认检索路径 = chunk 索引）：   **PASS**
+
+  判据逐条：
+   J1 默认轨道 = chunk                          PASS
+   J2 权限预过滤在候选暴露之前                  PASS
+   J3 无身份 = 零命中，不回退（fail closed）    PASS
+   J4 字段适配有测试 + 有反证                   PASS
+   J5 回退开关可用                              PASS
+   J6 文档 ↔ 代码双向守卫在线（含守卫自测）     PASS
+   J7 依赖旧默认值的调用点已显式锚定            PASS
+   J8 门禁：pytest 949 / 0F / 0E / 0S + ruff + compileall + data-size  PASS
+      （**唯一缺口：warning 条数 N/A**，原因是本批未留 stdout 证据，非"未达标"）
+
+  声明范围：本结论**只覆盖**「聊天问答的默认检索路径从种子 FAQ 切到 chunk 索引」
+  这件事，以及上述门禁结果。
+  它**不覆盖**：
+    * 检索质量（B17 未修、F2 口径未修 → 召回数字不可信）；
+    * 生成质量、性能与成本；
+    * 任何前端侧行为（界面复核未做）；
+    * 并行会话的「B 轨混合检索」——**那是另一个人的另一批**，本审查不为其背书。
+
+  **不得把本结论读作「RAG 检索效果已验收」** —— 切轨解决的是「检索不到」，
+  不是「检索得准」。这两件事本批只做完了前者。
+
+  提交状态：**本批改动尚未提交**（连同更早批次一起留在工作区）。
+  提交与推送由老霸本人执行（MEMORY 第 6 节）。

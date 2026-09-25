@@ -1,10 +1,29 @@
 import importlib
+import os
 import sys
 import types
 import unittest
 
 
 class ChatServiceDegradeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        """把检索轨道**显式锚定到 seed**（A 轨）。
+
+        本类的用例锁定的是**降级语义**（检索失败 / 生成失败 / 规则失败），
+        与走哪条检索轨道无关。2026-09-25 切轨后默认轨道变成 chunk，
+        而这里 mock 的是 ``retrieve_rag_items`` —— 不锚定的话 mock 会被整个绕开，
+        用例测的东西就悄悄变了（红是显性的，还算好的；怕的是它变成"绿的空壳"）。
+        """
+
+        self._previous_track = os.environ.get("RAG_CHAT_RETRIEVAL_PATH")
+        os.environ["RAG_CHAT_RETRIEVAL_PATH"] = "seed"
+
+    def tearDown(self) -> None:
+        if self._previous_track is None:
+            os.environ.pop("RAG_CHAT_RETRIEVAL_PATH", None)
+        else:
+            os.environ["RAG_CHAT_RETRIEVAL_PATH"] = self._previous_track
+
     def _generation_result(self, text: str) -> dict:
         return {
             "text": text,

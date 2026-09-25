@@ -39,3 +39,6 @@ python-multipart==0.0.32
 # 既不连真实 Redis 也不 import redis，因此 CI 无需安装。
 # OCR 的 rapidocr-onnxruntime 刻意不进 dev：它会拖进 onnxruntime 与模型权重，
 # 而全部解析器测试都用注入的假引擎覆盖 OCR 触发逻辑，不需要真实引擎。
+# 规范回归门禁（scripts/verify_acceptance_spec.py）需要它渲染 Markdown；
+# 缺了它这道门禁根本跑不起来，而"跑不起来的门禁"等于没有门禁。
+markdown==3.10.3

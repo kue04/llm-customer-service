@@ -72,6 +72,13 @@ from services.ingestion.index_manifest import (
     version_dir,
     write_manifest,
 )
+from services.ingestion.sparse_index import (
+    SPARSE_FILENAME,
+    build_sparse_index,
+    declared_sparse_filename,
+    sparse_meta_from_manifest,
+    verify_sparse_index,
+)
 from sqlalchemy.orm import Session
 
 
@@ -112,6 +119,9 @@ class IndexBuildResult:
     switched: bool = False
     skipped: bool = False
     skip_reason: str = ""
+    #: 本次构建出的索引是否带词法（稀疏）路。调用方与排障都靠它一眼看出
+    #: 「这份索引能不能做混合检索」，不用去翻 manifest。
+    sparse: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -126,6 +136,7 @@ class IndexBuildResult:
             "switched": self.switched,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
+            "sparse": self.sparse,
         }
 
 
@@ -256,6 +267,7 @@ def rebuild_index(
     chunking_config_version: str = CONFIG_VERSION,
     faiss_module: object | None = None,
     all_tenants: bool = True,
+    sparse: bool = True,
 ) -> IndexBuildResult:
     """重建索引并原子切换。任一步失败 → 当前索引保持不变。
 
@@ -266,6 +278,14 @@ def rebuild_index(
     会让后入库的租户把先入库租户的 chunk 从生效索引里挤出去 ——
     检索层只表现为"查不到"，没有任何报错（踩坑 **B14**）。
     传 ``False`` 可退回按租户取数（供按租户分片的部署形态使用）。
+
+    ``sparse``（B8 新增，默认 ``True``）：同时构建词法（FTS5）索引，
+    落在**同一个** ``v{n}/`` 目录里。默认开启且**失败即整体失败**，理由是
+    与 F1 同一判据：混合检索若在稀疏索引缺席时静默退化成纯稠密，
+    接口仍报 ``retrieval_origin=hybrid``，那就成了"承诺变假"而不是"能力变弱"
+    （见模块头部关于降级与失败的区分）。传 ``False`` 可显式构建纯稠密索引，
+    此时 manifest ``extra["sparse"]`` 为空，检索层的混合模式会**明确拒绝**
+    而不是降级。
 
     失败时的处理分两段：
     ① 构建期（临时目录里）失败 → 清掉临时目录，``index_builds`` 记 ``failed`` +
@@ -315,6 +335,19 @@ def rebuild_index(
 
     try:
         vectors = _embed_all(entries, embedder)
+        building_dir.mkdir(parents=True, exist_ok=True)
+
+        index_path = building_dir / INDEX_FILENAME
+        faiss_module = faiss_module or _require_faiss()
+        index = faiss_module.IndexFlatIP(int(vectors.shape[1]))
+        index.add(vectors)
+        faiss_module.write_index(index, str(index_path))
+
+        # 稀疏路与稠密路同目录、同版本。**先建索引文件、再写 manifest**：
+        # manifest 是「这份索引里有什么」的唯一声明，必须在校验之前就完整 ——
+        # 否则校验只是在核对 manifest 与它自己，等于没校验。
+        sparse_meta = build_sparse_index(building_dir, entries) if sparse else {}
+
         manifest = IndexManifest(
             index_name=index_name,
             tenant_id=tenant_id,
@@ -338,19 +371,17 @@ def rebuild_index(
                 # 「谁被写进了这份索引」是排障时的第一个问题（踩坑 B14）。
                 "scope": "all_tenants" if all_tenants else "tenant",
                 "tenants": sorted({entry.tenant_id for entry in entries}),
+                # 稀疏路声明：检索层据此判断「这份索引能不能做混合检索」。
+                # 空 dict = 本次是纯稠密构建，混合模式必须显式拒绝而不是降级。
+                "sparse": sparse_meta,
             },
         )
-
-        building_dir.mkdir(parents=True, exist_ok=True)
-        index_path = building_dir / INDEX_FILENAME
-        faiss_module = faiss_module or _require_faiss()
-        index = faiss_module.IndexFlatIP(int(vectors.shape[1]))
-        index.add(vectors)
-        faiss_module.write_index(index, str(index_path))
 
         # 先写 manifest，再校验（校验要读 manifest 的条数与维度）
         write_manifest(building_dir, manifest)
         verify_index_file(index_path, manifest, faiss_module=faiss_module)
+        if sparse:
+            verify_sparse_index(building_dir / SPARSE_FILENAME, manifest)
 
         # 校验通过后才让目录"转正"，最后写指针
         publish_build_directory(building_dir, final_dir)
@@ -409,6 +440,7 @@ def rebuild_index(
         embedding_dimension=int(manifest.embedding_dimension),
         manifest_uri=pointer.manifest_path,
         switched=True,
+        sparse=bool(sparse_meta),
     )
 
 
@@ -442,6 +474,11 @@ def rollback_index(
     manifest = read_manifest(directory / "index_manifest.json")
     faiss_module = faiss_module or _require_faiss()
     verify_index_file(directory / INDEX_FILENAME, manifest, faiss_module=faiss_module)
+    # 稀疏路同理：manifest 声明了它，文件就必须在。少了一半的索引与
+    # "指针指向坏索引"是同一类问题 —— 回滚时不说，下一次检索才炸。
+    sparse_declared = bool(sparse_meta_from_manifest(manifest))
+    if sparse_declared:
+        verify_sparse_index(directory / declared_sparse_filename(manifest), manifest)
 
     if manifest.tenant_id != tenant_id:
         raise IndexBuildError(
@@ -496,6 +533,7 @@ def rollback_index(
         embedding_dimension=int(manifest.embedding_dimension),
         manifest_uri=pointer.manifest_path,
         switched=True,
+        sparse=sparse_declared,
     )
 
 

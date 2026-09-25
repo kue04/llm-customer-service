@@ -44,7 +44,9 @@ from services.auth_service import AuthContext, get_auth_context, require_read_op
 from services.ingestion.db import session_scope
 from services.ingestion.pipeline import default_embedder, default_embedding_model, default_index_root
 from services.retrieval_access import build_chunk_access_filter
+from utils.hybrid_retriever import retrieve_hybrid_items
 from utils.rag_context import build_prompt_context_items
+from utils.sparse_retriever import ERROR_SPARSE_UNAVAILABLE
 from utils.vector_retriever import (
     CHUNK_INDEX_NAME,
     ERROR_EMBEDDING_MODEL_MISMATCH,
@@ -57,6 +59,16 @@ from utils.vector_retriever import (
 
 
 router = APIRouter()
+
+#: B 轨检索的**默认模式**。
+#:
+#: 刻意保持 ``dense``：把默认切成 ``hybrid`` 会让"生效索引是纯稠密构建"的部署
+#: 在发版瞬间全部返回 503（稀疏索引不可用是显式失败，不降级）。
+#: 切换顺序：① 用默认参数重建索引（会同时产出 ``sparse.sqlite``）；
+#: ② 调 ``POST /retrieval/search`` 确认响应里 ``index.sparse_available == true``；
+#: ③ 把这里改成 ``"hybrid"``（一行改动 + 重跑门禁）。
+#: **不要**在索引还没重建时先改这个常量 —— 那正是"改了配置没改数据"的经典事故。
+DEFAULT_RETRIEVAL_MODE = "dense"
 
 #: 正式检索路径读的 operation 名（权限表里的 ``retrieval_read``）
 READ_OPERATION = "retrieval_read"
@@ -72,9 +84,15 @@ READ_OPERATION = "retrieval_read"
 #:   → 500；这条从设计上不该在生产出现，出现即说明代码写错了。
 STATUS_BY_ERROR_CODE: dict[str, int] = {
     ERROR_INDEX_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
+    # 稀疏索引不可用（manifest 未声明 / 文件缺失 / 与 manifest 错配）：
+    # 与 ``chunk_index_unavailable`` 同类 —— 是**服务可用性**问题，
+    # 调用方可以稍后重试（例如运维刚重建完索引），不是调用方写错了。
+    ERROR_SPARSE_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
     ERROR_EMBEDDING_MODEL_MISMATCH: status.HTTP_500_INTERNAL_SERVER_ERROR,
     "chunk_filter_required": status.HTTP_500_INTERNAL_SERVER_ERROR,
     "chunk_filter_tenant_missing": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    # 稀疏索引与 manifest 错配是**部署事故**（文件被换/拷错），重试无用 → 500
+    "sparse_index_mismatch": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
 
@@ -120,6 +138,10 @@ def _chunk_hit_item(rank: int, item: dict) -> ChunkRetrievalItem:
         text=item["text"],
         score=item["score"],
         retrieval_origin=item["retrieval_origin"],
+        # 路由溯源：``dense`` 模式下这两项为 None（该模式本就没有第二路）
+        dense_rank=item.get("dense_rank"),
+        sparse_rank=item.get("sparse_rank"),
+        routes=list(item.get("routes") or []),
     )
 
 
@@ -138,28 +160,63 @@ def search_retrieval_chunks(
 
     1. ``access`` 过滤器在**服务端**构造（``build_chunk_access_filter``），
        输入只有已校验的 ``AuthContext`` 与库里的 ACL / 版本状态；
-    2. 过滤发生在**候选暴露之前**（FAISS ``IDSelectorBatch`` 预过滤），
-       不是"先全局 top-k 再筛" —— 后者在长尾租户上会静默返回 0 条；
+    2. 过滤发生在**候选暴露之前**（FAISS ``IDSelectorBatch`` 预过滤；
+       稀疏路是 FTS5 临时表 JOIN 预过滤）—— 不是"先全局 top-k 再筛"，
+       后者在长尾租户上会静默返回 0 条；
     3. 零命中是**正常结果**（无权限 = 零命中，不返回 403），
        因为返回 403 会泄漏"这条文档存在但你没权限"。
+
+    ``retrieval_mode`` 决定走哪条召回路径（见 :data:`DEFAULT_RETRIEVAL_MODE`）。
+    无论哪种模式，**权限过滤都在检索层内、候选暴露之前完成** —— 混合检索
+    不是"绕过隔离的第二条路"，它复用的是同一个 :class:`ChunkAccessFilter`。
     """
 
     require_read_operation_role(READ_OPERATION, auth)
+
+    mode = request.retrieval_mode or DEFAULT_RETRIEVAL_MODE
+    if mode != "dense" and request.min_score is not None:
+        # 显式拒绝而不是静默忽略。``min_score`` 是余弦相似度阈值（[0,1]），
+        # 而 hybrid/sparse 的分数是 RRF 融合分 / ``-bm25``，量纲完全不同。
+        # 若改为静默忽略，调用方会以为自己设的阈值生效了 —— 这类"设置被悄悄丢弃"
+        # 是排查成本最高的一类问题。
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "min_score_not_supported",
+                "message": (
+                    f"mode={mode} 的分数不是余弦相似度（hybrid 是 RRF 融合分，"
+                    "sparse 是 -bm25），不支持 min_score；请改用 mode=dense，"
+                    "或通过融合权重控制质量"
+                ),
+            },
+        )
 
     index_root = default_index_root()
     with session_scope() as session:
         access = build_chunk_access_filter(session, auth)
         try:
-            items = retrieve_chunk_items(
-                request.query,
-                access=access,
-                limit=request.limit,
-                min_score=request.min_score,
-                embedder=default_embedder,
-                embedding_model=default_embedding_model(),
-                root=index_root,
-                index_name=CHUNK_INDEX_NAME,
-            )
+            if mode == "dense":
+                items = retrieve_chunk_items(
+                    request.query,
+                    access=access,
+                    limit=request.limit,
+                    min_score=request.min_score,
+                    embedder=default_embedder,
+                    embedding_model=default_embedding_model(),
+                    root=index_root,
+                    index_name=CHUNK_INDEX_NAME,
+                )
+            else:
+                items = retrieve_hybrid_items(
+                    request.query,
+                    access=access,
+                    limit=request.limit,
+                    mode=mode,
+                    embedder=default_embedder,
+                    embedding_model=default_embedding_model(),
+                    root=index_root,
+                    index_name=CHUNK_INDEX_NAME,
+                )
             index_info = describe_chunk_index(root=index_root, index_name=CHUNK_INDEX_NAME)
         except ChunkRetrievalError as error:
             raise _translate_chunk_retrieval_error(error) from error
@@ -169,6 +226,7 @@ def search_retrieval_chunks(
     return ChunkRetrievalResponse(
         query=request.query,
         count=len(results),
+        retrieval_mode=mode,
         index=ChunkIndexInfo(
             index_name=str(index_info["index_name"]),
             index_version=int(index_info["index_version"]),
@@ -178,6 +236,9 @@ def search_retrieval_chunks(
             chunk_count=int(index_info["chunk_count"]),
             tokenizer_id=str(index_info.get("tokenizer_id", "")),
             visible_chunk_count=len(visible),
+            sparse_available=bool(index_info.get("sparse_available", False)),
+            sparse_index_file=str(index_info.get("sparse_index_file", "")),
+            sparse_gram_algorithm=str(index_info.get("sparse_gram_algorithm", "")),
         ),
         results=results,
     )

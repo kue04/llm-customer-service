@@ -26,14 +26,24 @@ models/takeout-qwen-lora-*/
 # reports/ 整体是运行产物；但执行计划（docs/RAG_EXECUTION_PLAN_*.md）明确要求
 # 阶段评审材料落盘到 reports/execution_baseline 与 reports/rag_ingestion_auth_review，
 # 属于交付证据，因此这两个目录例外入库（内容均为小体积文本）。
+# reports/retrieval_hybrid/ 同理：B 轨混合检索的评测基线与对比结论是面试可讲证据，
+# 也必须入库；其中放的是 JUnit XML / 评测 JSON / 文本结论，不含大二进制。
 reports/*
 !reports/execution_baseline/
 !reports/rag_ingestion_auth_review/
+!reports/retrieval_hybrid/
 eval_outputs/
 tmp/
 output/pdf/
 data/faiss_store/
 data/knowledge_backups/
+# 以下两个都是**生成物**，不进仓：
+# - data/corpus/      ：scripts/build_corpus_documents.py 产出（6MB+，含爬取的法规原文）
+# - data/object_store/：文档上传后的原始对象存储（7MB+，可从 corpus 重新灌入）
+# 仓库只收生成脚本 + 清单结构说明，不收产物本身，避免撞仓库体积门禁（踩坑 E6）。
+data/corpus/
+data/corpus_samples/
+data/object_store/
 *.db
 *.sqlite3
 *.safetensors

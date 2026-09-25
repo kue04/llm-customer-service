@@ -11,6 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from routers import audit, chat, documents, example, feedback, info, knowledge, ops, order, prompt, release, retrieval
 
 from services.auth_context import AuthConfigError, load_auth_config
+from services.ingestion.queue import get_queue
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -37,9 +38,44 @@ def _check_auth_configuration() -> None:
         logger.info("authentication configuration loaded")
 
 
+def _check_ingestion_queue() -> None:
+    """启动时检查异步接入链路是否**有可能**闭环。
+
+    背景（踩坑 F5）：api 只负责投递 job，消费由 worker 进程负责。
+    若 ``RAG_REDIS_STREAM_URL`` 未配置，队列降级为**进程内** deque ——
+    消息出不了当前进程，此时就算另外起了 worker 进程，也一条都读不到：
+    上传的文档会永远停在 ``pending / received``，``document_chunks`` 恒为 0。
+
+    这里只告警不中断（与鉴权检查同一取舍）：本机不带 Redis 起服务仍然可用，
+    但那意味着「上传能入库」这条链路**在结构上就是断的**，必须由日志说清楚。
+    """
+
+    try:
+        queue = get_queue()
+    except Exception as error:  # pragma: no cover - 队列构造失败时保持可启动
+        logger.error("ingestion queue is unavailable (%s); uploads will fail", error)
+        return
+
+    if queue.name == "memory":
+        logger.error(
+            "ingestion queue is PROCESS-LOCAL memory (RAG_REDIS_STREAM_URL is unset): "
+            "jobs published by the API cannot reach any separate worker process, so uploaded "
+            "documents will stay 'pending/received' with 0 chunks forever. "
+            "Set RAG_REDIS_STREAM_URL (e.g. redis://127.0.0.1:6379/0) and run "
+            "'python -m services.ingestion.worker', or use docker compose which starts both."
+        )
+    else:
+        logger.info(
+            "ingestion queue=%s; ensure 'python -m services.ingestion.worker' is running "
+            "(docker compose starts it as the 'worker' service)",
+            queue.name,
+        )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _check_auth_configuration()
+    _check_ingestion_queue()
     yield
 
 

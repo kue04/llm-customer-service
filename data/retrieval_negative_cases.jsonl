@@ -1,0 +1,40 @@
+{"id": "n001", "query": "如何申请发明专利的实质审查", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n002", "query": "个人所得税专项附加扣除怎么申报", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n003", "query": "办理护照需要准备哪些材料", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n004", "query": "高血压患者的日常饮食要注意什么", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n005", "query": "Python 里怎么用装饰器缓存函数结果", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n006", "query": "如何用 React 实现虚拟滚动列表", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n007", "query": "去日本旅游需要提前多久订机票", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n008", "query": "新能源汽车的电池衰减怎么检测", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n009", "query": "考研数学应该怎么安排复习计划", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n010", "query": "如何给家里的小猫做驱虫", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n011", "query": "洗衣机脱水时剧烈晃动是什么原因", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n012", "query": "怎么用 GIMP 给照片换背景", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n013", "query": "滑雪初学者应该选单板还是双板", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n014", "query": "冰箱冷藏室结冰了怎么处理", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n015", "query": "小孩子几岁开始学游泳比较合适", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n016", "query": "如何在家自己发豆芽", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n017", "query": "吉他换弦的时候要注意什么", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n018", "query": "种植多肉植物应该多久浇一次水", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n019", "query": "怎么挑选适合跑步的运动鞋", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n020", "query": "企业年会节目该怎么策划", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n021", "query": "手机进水后第一时间应该做什么", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n022", "query": "怎么判断家里是不是有白蚁", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n023", "query": "学习油画需要准备哪些基础工具", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n024", "query": "高铁上可以带宠物吗", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n025", "query": "如何用 Photoshop 做证件照", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n026", "query": "入职体检一般要查哪些项目", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n027", "query": "怎么给老式自行车换链条", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n028", "query": "露营的时候帐篷应该怎么选", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n029", "query": "如何判断西瓜是不是熟了", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n030", "query": "给宝宝冲奶粉的水温多少合适", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n031", "query": "怎么练习自由泳的换气", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n032", "query": "家里墙面发霉了要怎么处理", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n033", "query": "如何挑选一款适合自己的键盘", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n034", "query": "第一次去健身房应该练什么", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n035", "query": "怎么用 Excel 做数据透视表", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n036", "query": "养金鱼的水多久换一次", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n037", "query": "怎样把旧手机的数据迁移到新手机", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n038", "query": "冬天手部皮肤干裂怎么办", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n039", "query": "如何准备一场半程马拉松", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}
+{"id": "n040", "query": "怎么判断家里的甲醛是否超标", "query_type": "negative", "gold_span": null, "corpus_probe_hits": 0, "note": "语料外问题，期望系统不给出高置信度答案", "source": "handwritten"}

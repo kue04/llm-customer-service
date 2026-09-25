@@ -1463,6 +1463,15 @@ def main() -> None:
         for case in evaluation_cases
     ]
 
+    # 本脚本的用例集带 ``expected_intent`` / ``expected_evidence_keywords``，
+    # 那是**种子 FAQ 的 intent 体系**（A 轨口径）。2026-09-25 聊天链路默认切到
+    # chunk 轨之后，这里若不锚定，就会以「无身份 + B 轨」运行 → 检索零命中 →
+    # 评测结果整片为空 —— 而"全空"看起来像"模型答不出来"，不像配置问题。
+    # 所以显式锚定，并允许外部用环境变量覆盖（但因 ``auth=None`` 会 fail closed，
+    # 覆盖成 chunk 目前拿不到结果）。
+    # ⚠️ 因此**本脚本的分数仍是 A 轨口径**，不能当作切轨后的检索质量（F2 同族缺口）。
+    os.environ.setdefault("RAG_CHAT_RETRIEVAL_PATH", "seed")
+
     from services.chat_service import get_answer_from_rag
 
     reports = build_grounding_reports_from_rag(

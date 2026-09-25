@@ -684,6 +684,34 @@ def test_html_blockquote_text_is_not_duplicated():
     assert blocks[0].type == "quote"
 
 
+def test_markdown_empty_blockquote_is_dropped_not_fatal():
+    """空引用块（原文里光秃秃的 ``>``）必须被丢弃，而不是让整份文档解析失败。
+
+    真实语料发现的缺陷（2026-09-24）：MDN 中文文档经 trafilatura 抽取后
+    会出现孤立的 ``>`` 行。解析器若如产出空文本的 quote block，
+    ``ParsedDocument`` 的契约校验会判定「第 N 个 block 没有文本」，
+    于是**整份文档**被 ``parse_failed`` 拒绝 —— 一份文档因为一个空块全废，
+    这个代价是不成比例的。正确做法是源头丢弃，与空段落的处理保持一致。
+    """
+
+    markdown = (
+        "# 标题\n"
+        "\n"
+        "正文第一段。\n"
+        "\n"
+        ">\n"
+        "\n"
+        ">\n"
+        "\n"
+        "正文第二段。\n"
+    ).encode()
+
+    blocks = MarkdownParser().parse(markdown, "t.md").blocks
+
+    assert [block.text for block in blocks] == ["标题", "正文第一段。", "正文第二段。"]
+    assert not [block for block in blocks if block.type == "quote"]
+
+
 def test_html_falls_back_to_trafilatura_when_structure_yields_too_little():
     """正文被塞在畸形结构里时，结构遍历提取不到东西，应降级并留下警告。"""
 

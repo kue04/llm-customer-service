@@ -1274,4 +1274,14 @@ def describe_chunk_index(
         "tokenizer_id": manifest.tokenizer_id,
         "scope": str(manifest.extra.get("scope", "")),
         "tenants": [str(item) for item in (manifest.extra.get("tenants") or ())],
+        # B8：稀疏路可用性由 manifest 的 ``extra["sparse"]`` 声明决定。
+        # 这里**不需要**去碰文件系统 —— 声明与文件是否一致由
+        # ``verify_sparse_index`` 在构建/回滚时保证；查询期再 stat 一次
+        # 只会引入"声明有、文件没了"的第三种状态，而那种情况由
+        # ``utils.sparse_retriever.load_sparse_index`` 显式报错更合适。
+        "sparse_available": bool(manifest.extra.get("sparse")),
+        "sparse_index_file": str((manifest.extra.get("sparse") or {}).get("file", "")),
+        "sparse_gram_algorithm": str(
+            (manifest.extra.get("sparse") or {}).get("gram_algorithm", "")
+        ),
     }

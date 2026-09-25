@@ -49,25 +49,25 @@
 
 文中所有数值门槛均为**建议初始目标**，不是行业统一标准，也不是项目已达结果。正式门槛需在冻结数据集、实际设备和预算上批准。安全不变量要求持续成立；“测试未发现泄漏”不等于证明未来绝无泄漏。
 
-### 1.0 本项目当前状态总览（2026-09-23 实测，导航用）
+### 1.0 本项目当前状态总览（2026-09-25 更新，导航用）
 
 **取值只用三档**：`已实现` / `部分实现`（表中可简写为「部分」）/ `未实现`；另有三个受控标注 —— `已建未启用`（代码已定义、测试和调用点均为零，按 §17.3 判据**计为未完成**）、`未就绪`（评测/指标类，口径或数据集尚不具备，**不得引用其数字**）、`未演练`（恢复/回滚类，无演练证据，**不得号称能力已具备**）。逐条判据见「详见」列所指章节，本节不重复论证。
 
 | # | 规范要求 | 当前状态 | 证据（实测） | 详见 |
 |---|---|---|---|---|
-| 1 | 混合检索：稠密 + 稀疏(BM25) + RRF 融合 | **未实现**（纯稠密单路） | 全仓 `bm25` / `sparse` 零命中；`services/ingestion/index_builder.py:348` 仅 `faiss.IndexFlatIP` | §8.1 |
+| 1 | 混合检索：稠密 + 稀疏(BM25) + RRF 融合 | **已实现**（默认 `dense`，需显式启用） | `services/ingestion/sparse_index.py`（SQLite FTS5 + `bm25()` + 中文 bigram）、`utils/sparse_retriever.py`、`utils/hybrid_retriever.py`（加权 RRF，`w_dense=10 / w_sparse=1 / k=60`）；默认值 `routers/retrieval.py:71 DEFAULT_RETRIEVAL_MODE="dense"`；实测 `reports/retrieval_hybrid/evaluation_20260925.txt` | §8.1 |
 | 2 | 重排（reranker） | **已实现** | `utils/vector_retriever.py:88 get_reranker_model`、`:664 rerank_candidates`（CrossEncoder，权重 `model_rerank_weight`） | §8.1 |
 | 3 | 格式覆盖：OCR / XLSX·CSV / 图表视觉理解 | **部分实现**：5 种格式可跑；OCR 仅接口；无 XLSX·CSV、无视觉 | `services/ingestion/models.py:46`（pdf/docx/html/md/txt）；`parsers/ocr.py` 模块头明示「默认不安装 OCR 引擎」 | §6.2 |
 | 4 | 解析质量门禁 | **未实现** | `grep -ri quality services/ingestion` 零命中 | §6.3 / §7.3 |
 | 5 | 三状态字段（processing / quality / publication） | **未实现**（单一 `status` 枚举） | `services/ingestion/models.py:76-86` `DOCUMENT_STATUSES` 九值枚举 | §7.3 |
 | 6 | 索引版本 manifest 与原子发布 | **已实现** | `services/ingestion/index_builder.py:247 rebuild_index` | §7.3 |
-| 7 | 索引回滚 | **已建未启用**（函数在、仓库内零调用零测试） | `index_builder.py` 定义 `rollback_index:416`、`active_index_version:503`、`available_versions:510`、`index_root_for:516`、`build_entries:148`、`ERROR_INDEX_ROLLBACK_FAILED:87`；排除本文件后各 0 命中 | §11.3 |
+| 7 | 索引回滚 | **已实现**（2026-09-25 由「已建未启用」订正） | B8-1 交付：`routers/documents.py:753 POST /ingestion/indexes/rollback`（需 `index:rollback`，见 `:126`）+ `services/ingestion/index_builder.py::rollback_index` + `tests/test_index_rollback.py`（8 条）。**注意**：回滚的**演练证据**（真在故障场景下用过）仍无 —— 与第 12 条同类，属「能力已具备、未演练」 | §11.3 |
 | 8 | 恶意内容 / 病毒扫描 | **未实现** | `grep -ri "virus\|clamav\|malware"` 零命中；上传侧现有 MIME + magic bytes + SHA-256 去重 + 大小限制 | §5.2 |
 | 9 | 身份校验 + 限流 | **部分实现**：服务端身份已实现；限流未实现 | `grep -ri "rate_limit\|limiter"` 仅命中 `parsers/markdown.py` 的 `_TABLE_DELIMITER_RE`（**误命中**，非限流实现） | §2.1 |
 | 10 | 总 deadline / 背压 / 死信 | **未实现** | `grep -ri "deadline\|backpressure\|dead_letter"` 零命中 | §11.1 |
 | 11 | 成本账本（含失败、重试、评测） | **未实现** | 无逐请求成本记录 | §11.2 |
 | 12 | 恢复目标 RPO≤24h / RTO≤4h | **未演练**（不满足 §11.3「必须演练证明」） | 无恢复演练记录与产物 | §11.3 |
-| 13 | 检索指标 M10 Recall@5≥0.85 | **未就绪**：口径失真 + 无 gold 源 span | `scripts/evaluate_retrieval_metrics.py:85-87` `is_relevant()` 按 `candidate["source"]["intent"]` 判相关 | §10.3 / §10.5 |
+| 13 | 检索指标 M10 Recall@5≥0.85 | **部分实现**：B 轨 span 金标已具备（2026-09-25），实测 Recall@5 = **0.9630**（标题式 81 条）/ **0.5000**（口语化 30 条）→ 门槛 0.85 **只在标题式查询上达到** | `scripts/build_retrieval_gold.py`、`scripts/build_colloquial_cases.py`、`scripts/evaluate_hybrid_retrieval.py`、`reports/retrieval_hybrid/evaluation_20260925.txt` | §10.3 / §10.5 |
 
 **使用纪律**：上表 `未实现` / `未就绪` / `已建未启用` / `未演练` 的项，**不得被读作已达标，也不得被当作工作清单倒推** —— 它们列的是**目标与差距**，不是成绩。§10.5 的门槛表因此天然是一份路线图，而不是「本项目已完成项清单」；该表的「本项目可测性」列（同样在 2026-09-23 补入）回答的才是「现在能不能拿到可信数字」。
 
@@ -400,18 +400,30 @@ Child 命中扩展 Parent 时必须重新检查父块权限；如果父块包含
 
 候选数量、重排数量、最终上下文数量是不同参数。初始可试每路 top30、融合去重后最多40、重排后选8个，再依据任务覆盖和预算裁剪；全部只是实验起点。
 
-> **本项目现状（2026-09-23 实测）**
+> **本项目现状（2026-09-25 更新；上一版为 2026-09-23）**
 >
 > | 推荐路线 | 状态 | 证据 |
 > |---|---|---|
 > | 稠密向量检索 | **已实现** | `services/ingestion/index_builder.py:348 faiss.IndexFlatIP`（内积）+ `utils/vector_retriever.py` |
-> | 精确匹配 / BM25（编号、错误码、型号） | **未实现** | 全仓 `grep -ri "bm25\|sparse"` 零命中 → **没有稀疏路可选** |
-> | 稠密 + 稀疏混合、RRF 融合 | **未实现** | 同上；无多路融合代码 |
-> | 元数据硬过滤（ACL / 租户） | **已实现** | `routers/retrieval.py` 调 `build_chunk_access_filter` / `retrieve_chunk_items`，`tenant\|acl` 命中 10 处（B7 接线，手工核对） |
+> | 精确匹配 / BM25（编号、错误码、型号） | **已实现** | `services/ingestion/sparse_index.py`（SQLite FTS5 + `bm25()`；中文 bigram 切词，纯 ASCII token 走整词）+ `utils/sparse_retriever.py` |
+> | 稠密 + 稀疏混合、RRF 融合 | **已实现** | `utils/hybrid_retriever.py`：**按 rank** 加权 RRF（`w_dense=10 / w_sparse=1 / k=60`，权重经扫描校准），两路复用同一个 `ChunkAccessFilter`；默认 `retrieval_mode=dense` |
+> | 元数据硬过滤（ACL / 租户） | **已实现** | `routers/retrieval.py` 调 `build_chunk_access_filter` / `retrieve_chunk_items`；稀疏路经**临时表 JOIN** 在同一层做前置过滤（两路都有测试锁着） |
 > | 重排 | **已实现** | `utils/vector_retriever.py:88 get_reranker_model`、`:664 rerank_candidates`（CrossEncoder） |
 > | 分层覆盖 / 结构化查询 / 只读工具 | **未实现** | 无对应链路 |
 >
-> **连带影响（必读）**：§11.1 降级矩阵中「Dense 不可用 → 在验证过的场景切 BM25」这条**在本项目不可执行** —— 没有 BM25 可切。稠密路不可用时，正确行为是**明确失败或拒绝回答**，不得表述为「已切换到等价检索」。
+> **实测（2026-09-25，`reports/retrieval_hybrid/evaluation_20260925.txt`）**：
+> 标题式查询（81 条）上 hybrid 的 R@10 = **1.0000**（= 两路并集上限），dense = 0.9877；
+> **但口语化查询（30 条）上 hybrid 与 dense 逐列完全相同**，且**等权融合有害**
+> （R@1 0.4000 → 0.2667）。**结论：混合检索的收益是"短查询更准 + 更鲁棒"，
+> 不是"指标全面上涨"** —— 详见 README 第 3.6 节（`§` 号在本文件里只指本规范自身章节，
+> 故此处不用 `§`，避免被校验器当成悬空引用）。
+>
+> **连带影响（本版更新）**：§11.1 降级矩阵中「Dense 不可用 → 在验证过的场景切 BM25」这条
+> **现在可执行了**（稀疏路已可用），但有两个前提必须一起说：
+> ① 稀疏索引必须**已随生效版本构建**（旧构建没有它；缺失时 `load_sparse_index` **显式报错，不降级**）；
+> ② 中文查询在稀疏路上**只有 bigram 词法匹配**，口语化提问实测 R@1 仅 0.1000 ——
+> 它不是稠密的等价替代，**只能作为"短查询 / 编号型号类"的降级路径**，
+> 且必须在验证过的场景里用。
 
 ### 8.2 权限与融合
 
@@ -515,6 +527,19 @@ Faithfulness 关注答案与给定上下文的一致性，不证明上下文本�
 >
 > 原则：**名字相同、口径不同，视为两个不同指标。** 引用任何指标数字时，必须能指出它的分母来自哪个数据集、相关性由什么判定。
 
+> **补充（2026-09-25）—— B 轨已具备可用的 M10 口径，但它是"第二套"，不与 A 轨互认**：
+>
+> `scripts/build_retrieval_gold.py` 从生效索引的 9229 个 chunk 里抽 QA 对，
+> 金标用**答案 span**（而非 `chunk_id`）标识证据单元，命中判据为
+> `normalize(span) in normalize(text)`；`scripts/evaluate_hybrid_retrieval.py`
+> 据此按本表定义算 Recall@k / MRR / NDCG@k。因此 **B 轨的 Recall@5 可以引用**：
+> 标题式 81 条 = **0.9630**，口语化 30 条 = **0.5000**（门槛 0.85 只在标题式上达到）。
+>
+> **但 A 轨（`scripts/evaluate_retrieval_metrics.py` 的 intent 口径）仍不满足第 3 条** ——
+> 两套数字**不可互认**。对外只能说「B 轨有结论」，**不能说「检索质量已评测」**。
+> 另注：B 轨金标的两条已知局限见 `reports/retrieval_hybrid/b8_hybrid_review.txt` 第五节
+> （口语化 30 条中 7 条两路 top-50 全无命中，疑假阴性，未逐条复核；负样本无业务拒答定义）。
+
 “上下文召回”的不同框架可能使用参考答案声明或文档 ID，必须记录具体实现，不能与本表源证据 Recall@k 混用。[S4]
 
 ### 10.4 评测器自身也要评测
@@ -532,7 +557,7 @@ Faithfulness 关注答案与给定上下文的一致性，不证明上下文本�
 | 安全不变量 | 权限回归集 M23=0；禁止动作执行数=0；高风险未验证正文释放数=0 | 任一确认失败阻断发布；记录测试范围 | **部分可测**：权限/租户隔离回归测试已有（`tests/test_retrieval_isolation.py`、`tests/test_tenant_isolation.py`）；M23 未按指标口径统计；「未验证正文释放」无对应实现 |
 | 输入 | M01≥0.90，M02≥0.95，M03≥0.95 | 关键高风险路由单独检查，无标签不给通过 | **不可测**：无意图/路由 gold 标注集（现有 `data/chat_grounding_*.jsonl` 不是意图 gold），缺标签按 §10.3 记 N/A |
 | 解析 | 支持范围关键字段 M08≥0.99；坏文件隔离测试全部正确 | 严重金额/否定/归属错误不得自动发布 | **部分可测**：解析器单测与 fixtures 已有（`tests/test_document_parsers.py`）；M08 无标注 gold，且**质量门禁未实现**（§7.3），无自动放行/拒绝分区 |
-| 检索 | M10 Recall@5≥0.85、Recall@10≥0.92 | 按类型/语言切片；历史/权限单测 | **不可测**：口径失真 + 无 gold 源 span + 无 BM25，三项缺一不可用（见 §10.3 与 §8.1） |
+| 检索 | M10 Recall@5≥0.85、Recall@10≥0.92 | 按类型/语言切片；历史/权限单测 | **仅 B 轨可测**（2026-09-25）：三项缺项已补（span 金标 + BM25 + 按源证据判相关）。实测 Recall@5 = **0.9630**（标题式 81 条）/ **0.5000**（口语化 30 条）→ 门槛**只在标题式上达到**；A 轨 intent 口径仍不满足 N/A 第 3 条，两套数字不可互认（见 §10.3 与 §8.1） |
 | 生成 | 人工 M14≥0.97，M15≥0.98，M16≥0.95 | 高风险关键错误独立阻断，不能平均抵消 | **部分可测**：grounding 用例集与相关测试已有；M14/M15/M16 **未按人工标注口径统计**，不得把现有占比当作该指标 |
 | 拒答与覆盖 | M18≥0.95，M05≤0.05，M17≥0.85 | 三项共同达标，防止全部拒答刷分 | **部分可测**：有拒答相关用例；M17/M18 无 gold 集 |
 | 性能 | 示例负载下 M19 P95≤5s，M20 P95≤15s，M21<1% | 仅在固定设备/并发/文档规模下有效 | **不可测**：无压测脚本、无 P95/P99 聚合（`grep -ri deadline` 零命中，§11.1 亦无总 deadline） |
@@ -718,11 +743,11 @@ grep -rn "rollback_index" --include=*.py . | grep -v "/venv/" | grep -v "index_b
 | I04 | 索引与发布 | 阶段 3（B6，`services/ingestion/index_builder.py`、`index_manifest.py`） |
 | Q01 | 身份和接入安全 | 阶段 1（B2，`services/auth_context.py`） |
 | Q02 | 意图和会话 | 现有 `services/chat_service.py` 链路（**未按本计划改造**） |
-| Q03 | 检索与排序 | 阶段 4（B7，`routers/retrieval.py`、`services/retrieval_access.py`） |
+| Q03 | 检索与排序 | 阶段 4（B7，`routers/retrieval.py`、`services/retrieval_access.py`）+ **B8 混合检索**（`utils/hybrid_retriever.py`、`utils/sparse_retriever.py`、`services/ingestion/sparse_index.py`） |
 | Q04 | 证据与工具 | **未排期** |
 | Q05 | 生成与核验 | 部分落在现有 chat 链路，**未排期** |
 | Q06 | 输出与反馈 | **未排期** |
-| O01 | 评测与运维 | 阶段 7（B8 总审查与发布门禁）；评测口径修正仍待办 |
+| O01 | 评测与运维 | 阶段 7（B8 总审查与发布门禁）；**B 轨检索评测口径已建**（`scripts/evaluate_hybrid_retrieval.py` + span 金标，2026-09-25）；**A 轨 intent 口径仍待办** |
 
 > **两个编号陷阱，引用时务必带前缀**：
 > 1. **本规范的 `§7.x` 与执行计划的「阶段 7.x」编号撞车**，但内容完全不同 —— 本规范 §7.3 是「状态与原子发布」，执行计划「阶段 7.3」是「安全审查」。引用时必须写全，如「执行计划 阶段 7.4」。

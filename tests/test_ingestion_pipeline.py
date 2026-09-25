@@ -803,6 +803,38 @@ class TestWorker:
         assert queue.depth() == 0  # 消息被取走
         assert len(queue.acked) == 1  # 处理完即 ack
 
+    def test_consumed_job_leaves_real_chunks_behind(self, harness):
+        """消费完的产物必须看得见 —— 这是 F5（已实现、未部署）的最小修复验证。
+
+        这条之所以要单独写：此前所有 worker 断言都停在 ``job.succeeded``，
+        而 F5 的实际形态是 job 停在 ``pending / received``、**chunk 数为 0**。
+        换句话说，**只看 job 状态是看不出链路断没断的** ——
+        库里那两条卡了 25 小时的 job，状态栏写着 pending，看起来毫无异常。
+
+        判定标准因此定死为两个可见产物：chunk 数 > 0，且版本落到 ``published``。
+        """
+
+        queue = RecordingQueue()
+        job, document = harness.upload()
+        queue.publish(job.id)
+
+        outcomes = self._worker(harness, queue).run_once()
+        assert outcomes, "worker 没有消费到任何消息 —— 这正是 F5 的形态（投递了、没人取）"
+        assert outcomes[0].succeeded
+
+        # 1) 版本真的落成 published
+        versions = harness.versions(document)
+        assert len(versions) == 1
+        assert versions[0].status == "published"
+        # 2) chunk 真的写了行
+        assert repository.count_chunks(harness.session, TENANT, versions[0].id) > 0
+        # 3) 且这些 chunk 已经进入**检索可见集合**（published 才可见）
+        visible = repository.list_published_chunk_refs(harness.session, TENANT)
+        assert any(doc_id == document.id for doc_id, _chunk_id in visible), (
+            "worker 跑完后该文档必须出现在已发布可见集合里 —— F5 的形态正是"
+            "job 停 pending、chunk 为 0，只断言 job 状态抓不到它"
+        )
+
     def test_empty_queue_is_not_an_error(self, harness):
         assert self._worker(harness, RecordingQueue()).run_once() == []
 
@@ -1001,3 +1033,334 @@ class TestContractGuards:
                 func = node.func
                 name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
                 assert name not in ("getenv", "environ"), "流水线不得从环境变量读取归属信息"
+
+
+# ================================================================ 10. 部署层守卫
+
+
+class TestDeploymentGuards:
+    """部署层守卫 —— F5「已实现、未部署」的直接产物。
+
+    上一层的 AST 守卫（``TestProductionCallPoints``）只能证明
+    **``worker.py`` 里调用了 ``read`` / ``ack`` / ``process_job``**；
+    它证明不了**有一个进程会跑到 ``worker.py``**。2026-09-24 复核发现：
+    worker 代码、单测、调用关系三样全齐，但 ``docker-compose.yml`` 里
+    只编排了 api / postgres / redis —— 于是 HTTP 上传的 job 在库里
+    卡了 25 小时停在 ``pending / received``、``document_chunks`` 恒为 0。
+
+    这一层守卫补的就是「组件写对了」到「链路真的跑起来」之间的那一段。
+    """
+
+    #: compose 里可能出现在一级缩进上的非服务键，用于结束 services 段扫描
+    _TOP_LEVEL_KEYS = {"volumes", "networks", "configs", "secrets", "include", "name"}
+
+    @classmethod
+    def _compose_services(cls) -> dict[str, str]:
+        """按缩进切出顶层服务块（**不引入 yaml 依赖** —— 依赖清单里没有它）。
+
+        不是完整的 YAML 实现，够用即可：只认 ``services:`` 下两缩进的服务名
+        与其体内的原文，让守卫得以引用每个服务的原始配置。
+        """
+
+        text = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        services: dict[str, str] = {}
+        in_services = False
+        current: str | None = None
+        for line in text.splitlines():
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            indent = len(line) - len(line.lstrip())
+            stripped = line.strip()
+            if not in_services:
+                if stripped.startswith("services:"):
+                    in_services = True
+                continue
+            if indent <= 0:
+                break
+            if indent == 2 and stripped.endswith(":"):
+                key = stripped[:-1]
+                if key in cls._TOP_LEVEL_KEYS:
+                    in_services = False
+                    continue
+                current = key
+                services[current] = ""
+                continue
+            if current is not None and indent > 2:
+                services[current] += line + "\n"
+        return services
+
+    @staticmethod
+    def _block_items(block: str, key: str) -> list[str]:
+        """取出服务块里某个键下面的列表项（行处理，零依赖）。"""
+
+        prefix = f"{key}:"
+        items: list[str] = []
+        capturing = False
+        for line in block.splitlines():
+            stripped = line.strip()
+            indent = len(line) - len(line.lstrip())
+            if not capturing:
+                if stripped.startswith(prefix):
+                    inline = stripped[len(prefix) :].strip()
+                    if inline:
+                        items.append(inline.strip("[]").strip())
+                    else:
+                        capturing = True
+                continue
+            if indent <= 4:
+                capturing = False
+                continue
+            items.append(stripped.lstrip("- ").strip().strip('"').strip("'"))
+        return items
+
+    def test_compose_starts_an_ingestion_worker(self):
+        """投递端在 api 进程里，消费端必须有人起，否则上传永远停在 received。"""
+
+        assert "worker" in self._compose_services()
+
+    def test_worker_command_starts_the_consumer(self):
+        services = self._compose_services()
+
+        assert "services.ingestion.worker" in services["worker"]
+
+    def test_worker_shares_index_and_object_storage_with_api(self):
+        """索引与对象存储必须是同一份。
+
+        两边各挂各的卷时，「api 写对象、worker 读不到」或
+        「worker 建索引、api 读旧索引」都不会报错，只会静默地给出错的结果。
+        """
+
+        services = self._compose_services()
+        api_volumes = set(self._block_items(services.get("api", ""), "volumes"))
+        worker_volumes = set(self._block_items(services.get("worker", ""), "volumes"))
+
+        for mount in ("faiss_store", "object_store"):
+            assert any(mount in item for item in worker_volumes), f"worker 缺 {mount} 卷"
+
+        shared = api_volumes & worker_volumes
+        assert any("faiss_store" in item for item in shared)
+        assert any("object_store" in item for item in shared)
+
+    def test_worker_uses_the_same_metadata_store_and_stream_as_api(self):
+        services = self._compose_services()
+
+        for service in ("api", "worker"):
+            body = services[service]
+            assert "RAG_DATABASE_URL" in body, f"{service} 未声明元数据库"
+            assert "RAG_REDIS_STREAM_URL" in body, f"{service} 未声明队列地址"
+
+    def test_startup_reports_a_process_local_queue(self):
+        """进程内队列必须在启动日志里被点破。
+
+        无 Redis 时队列是 process-local deque，消息出不了当前进程。
+        这不是一个可以靠文档记住的约定 —— 必须让服务自己喊出来。
+        """
+
+        tree = ast.parse((PROJECT_ROOT / "main.py").read_text(encoding="utf-8"))
+        called = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                called.add(func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", ""))
+
+        assert "_check_ingestion_queue" in called
+        assert "_check_auth_configuration" in called
+
+
+class TestReadmeTrackConsistency:
+    """README 与实现的一致性守卫 —— F4「文档说一套、代码跑另一套」的直接产物。
+
+    README 里的规模数字（781 条 / 9229 chunk / 930 测试）每次改动都会漂移，
+    而仓库里**没有任何东西**在它们漂移时报警。与其硬编码一个"必须等于 N"的断言
+    （那样每次加测试都要改 README，反而制造新的漂移），这条守卫盯住的是
+    **最危险、且可以双向校验的那一条**：聊天问答到底走哪条检索路径。
+
+    为什么这条最危险：切轨（F1）一旦完成而 README 没同步，读者会以为文档语料
+    已经进了聊天（夸大能力）；反过来 README 说"还在演示路径"但代码已经切了，
+    又会低估。**两种漂移方向都必须有人喊** —— 所以这里是双向断言。
+    """
+
+    #: README 里的机器可读锚点。**不用中文措辞当锚点** —— 「演示路径」这个词在
+    #: README 里出现 6 处，删掉 F1 提示块后还有别处在说同一件事，
+    #: 于是"看起来有证据"其实证据是另一句话（即踩坑 D1：grep 型检查守不住东西）。
+    #: 锚点必须是一个只有它有、且改起来只需改一个词的东西。
+    _MARKER = "f1-track: chat-service-retrieval="
+    _PATH_CONST = "DEFAULT_CHAT_RETRIEVAL_PATH"
+    _README = PROJECT_ROOT / "README.md"
+    _CHAT = PROJECT_ROOT / "services" / "chat_service.py"
+
+    @classmethod
+    def _declared_default_chat_path(cls, source: str | None = None) -> str:
+        """读 ``chat_service.py`` 里检索轨道默认值的**字符串字面量**。
+
+        2026-09-25 切轨时换掉了原来的判据（"AST 里有没有调用 ``retrieve_rag_items``"）：
+        改成开关制之后两条轨道的调用**同时存在**（``seed`` 分支仍然调它），
+        旧判据会永远指向 ``seed-faq``，把"有开关但默认没切"和"压根没切轨"混为一谈 ——
+        一个再也说不出真话的探针，比没有探针更危险。
+
+        改读默认值本身，它才是"默认走哪条"的答案。**读不到返回空串**，
+        由调用方判成失败：不做"读不到就放行"的假绿（踩坑 D20）。
+        """
+
+        text = source if source is not None else cls._CHAT.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            return ""
+        # 只看模块顶层：函数内 / 测试里的同名赋值不算数
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            if not any(
+                isinstance(target, ast.Name) and target.id == cls._PATH_CONST
+                for target in node.targets
+            ):
+                continue
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                return node.value.value
+        return ""
+
+    @classmethod
+    def _declared_empty_path(cls) -> str:
+        """读 README 里声明的接线状态：``seed-faq`` / ``chunk-index``。"""
+
+        for line in cls._README.read_text(encoding="utf-8").splitlines():
+            if cls._MARKER in line:
+                value = line.split(cls._MARKER, 1)[1].strip().rstrip("-").strip()
+                return value.split()[0] if value else ""
+        return ""
+
+    def test_readme_marker_matches_the_actual_chat_wiring(self):
+        default_path = self._declared_default_chat_path()
+        actual = {"chunk": "chunk-index", "seed": "seed-faq"}.get(default_path, "")
+        declared = self._declared_empty_path()
+
+        assert actual, (
+            f"读不到 {self._CHAT.name} 里 {self._PATH_CONST} 的字符串字面量"
+            f"（读到 '{default_path}'）。切轨后的判据就是它，读不到即失败 —— "
+            "把常量改名或改成运行时才算出来的值，都会让这道守卫失去判据，"
+            "而它失效的样子和「没切轨」一模一样。"
+        )
+        assert declared in ("seed-faq", "chunk-index"), (
+            f"README 缺少（或写坏了）{self._MARKER.strip()} 这个锚点，读到 '{declared}'。"
+            "它不是给人看的装饰：`tests/test_ingestion_pipeline.py::TestReadmeTrackConsistency` "
+            "靠它校验 README 与真实接线是否一致。切轨后请把值改成 chunk-index。"
+        )
+        assert declared == actual, (
+            f"README 声明聊天走 {declared}，实际代码默认走 {actual}"
+            f"（{self._PATH_CONST} = {default_path!r}）。"
+            "两边不一致本身就是 F4 的形态：读者会按 README 判断能力边界。"
+            "改到一致为止 —— 要么改代码的默认值，要么改 README 的锚点与 §0 说明。"
+        )
+
+    def test_guard_can_actually_read_the_default_path(self):
+        """守卫自身的假绿防护（踩坑 D20：探针失效会伪装成通过）。
+
+        直接喂源码样本，验证三件事：``chunk`` / ``seed`` 都读得出来、
+        被改名或改成非字面量时**返回空串**（而不是悄悄沿用旧值）。
+        """
+
+        reader = self.__class__._declared_default_chat_path
+
+        assert reader('DEFAULT_CHAT_RETRIEVAL_PATH = "chunk"\n') == "chunk"
+        assert reader("DEFAULT_CHAT_RETRIEVAL_PATH = 'seed'\n") == "seed"
+        # 改名 → 读不到
+        assert reader('OTHER_NAME = "chunk"\n') == ""
+        # 改成运行时才算出来的值 → 读不到
+        assert reader('DEFAULT_CHAT_RETRIEVAL_PATH = os.getenv("X", "chunk")\n') == ""
+        # 只在函数内赋值 → 不是模块级默认值
+        assert reader('def f():\n    DEFAULT_CHAT_RETRIEVAL_PATH = "chunk"\n') == ""
+
+    def test_readme_declares_the_chunk_index_as_the_formal_path(self):
+        """§0 必须明确"哪条是真的" —— 否则两条路径会被当成等价选项。"""
+
+        text = self._README.read_text(encoding="utf-8")
+        assert "两条检索路径" in text
+        assert "chunk-index" in text
+        assert "seed-faq-demo" in text
+
+    #: B8 锚点：正式路径（chunk 索引）的**默认检索模式**。
+    #:
+    #: 为什么它值得被锁：默认模式是**上线顺序相关**的决策 ——
+    #: 若已部署的生效索引是**不含稀疏路**的旧构建，而默认被切成 ``hybrid``，
+    #: 所有检索请求会在发版瞬间 503（稀疏索引不可用是**显式失败，不降级**）。
+    #: 所以 README 说 ``dense`` 而代码切了 ``hybrid`` 是**必须有人喊**的漂移：
+    #: 读者会以为"混合检索已经在线上了"，实际它还需要先重建索引。
+    _MODE_MARKER = "b8-hybrid: default-retrieval-mode="
+    _MODE_CONST = "DEFAULT_RETRIEVAL_MODE"
+    _RETRIEVAL_ROUTER = PROJECT_ROOT / "routers" / "retrieval.py"
+
+    @classmethod
+    def _declared_default_retrieval_mode(cls, source: str | None = None) -> str:
+        """读 ``routers/retrieval.py`` 顶层 ``DEFAULT_RETRIEVAL_MODE`` 的字符串字面量。
+
+        与 ``_declared_default_chat_path`` 同一套判据：**只看模块顶层**，
+        函数内赋值不算；**读不到返回空串**，由调用方判成失败（不做"读不到就放行"的假绿）。
+        """
+
+        text = (
+            source
+            if source is not None
+            else cls._RETRIEVAL_ROUTER.read_text(encoding="utf-8")
+        )
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            return ""
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            if not any(
+                isinstance(target, ast.Name) and target.id == cls._MODE_CONST
+                for target in node.targets
+            ):
+                continue
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                return node.value.value
+        return ""
+
+    @classmethod
+    def _declared_readme_retrieval_mode(cls) -> str:
+        """读 README 里声明的默认检索模式（``dense`` / ``hybrid`` / ``sparse``）。"""
+
+        for line in cls._README.read_text(encoding="utf-8").splitlines():
+            if cls._MODE_MARKER in line:
+                value = line.split(cls._MODE_MARKER, 1)[1].strip().rstrip("-").strip()
+                return value.split()[0] if value else ""
+        return ""
+
+    def test_readme_marker_matches_the_default_retrieval_mode(self):
+        """README 的 ``b8-hybrid`` 锚点 == 代码里 ``DEFAULT_RETRIEVAL_MODE`` 的真实值。"""
+
+        actual = self._declared_default_retrieval_mode()
+        declared = self._declared_readme_retrieval_mode()
+
+        assert actual in ("dense", "hybrid", "sparse"), (
+            f"读不到 {self._RETRIEVAL_ROUTER.name} 里 {self._MODE_CONST} 的字符串字面量"
+            f"（读到 '{actual}'）。这道守卫的判据就是它，读不到即失败 —— "
+            "把它改成运行时才算出来的值（如 ``os.getenv(...)``）会让守卫静默失去判据。"
+        )
+        assert declared in ("dense", "hybrid", "sparse"), (
+            f"README 缺少（或写坏了）{self._MODE_MARKER.strip()} 锚点，读到 '{declared}'。"
+            "它不是装饰：切默认模式时同步改这一行，否则读者会按 README 误判线上能力。"
+        )
+        assert declared == actual, (
+            f"README 声明默认检索模式是 {declared}，代码实际是 {actual}。"
+            "切默认（dense → hybrid）的前提是**索引已重建且 sparse_available=true**，"
+            "否则线上会全线 503。要切请同时改："
+            "routers/retrieval.py 的常量 + README 锚点 + §0.1 的上线顺序说明 + §3.6 的现状表。"
+        )
+
+    def test_guard_can_actually_read_the_default_retrieval_mode(self):
+        """守卫自身的假绿防护（踩坑 D20：探针失效会伪装成通过）。"""
+
+        reader = self.__class__._declared_default_retrieval_mode
+
+        assert reader('DEFAULT_RETRIEVAL_MODE = "dense"\n') == "dense"
+        assert reader("DEFAULT_RETRIEVAL_MODE = 'hybrid'\n") == "hybrid"
+        # 改名 → 读不到
+        assert reader('RETRIEVAL_MODE = "dense"\n') == ""
+        # 改成运行时才算出来的值 → 读不到
+        assert reader('DEFAULT_RETRIEVAL_MODE = os.getenv("X", "dense")\n') == ""
+        # 只在函数内赋值 → 不是模块级默认值
+        assert reader('def f():\n    DEFAULT_RETRIEVAL_MODE = "dense"\n') == ""

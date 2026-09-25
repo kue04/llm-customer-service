@@ -237,8 +237,17 @@ class MarkdownParser(TemplateDocumentParser):
 
             if _BLOCKQUOTE_RE.match(line):
                 text, index = self._consume_blockquote(lines, index)
-                blocks.append(Block(type=BLOCK_QUOTE, text=text, heading_path=_current_path(heading_stack)))
-                stats["quote"] += 1
+                # 空引用块（原文里光秃秃的 ``>``）要**丢掉而不是产出空 block**：
+                # 契约要求 heading/paragraph/list/code/quote 都有文本，
+                # 产出一个空块会让整份文档在模板校验阶段被判坏掉 ——
+                # 而真实文档（技术文档的 note/提示块经抽取后）里这种空引用很常见，
+                # 让一份文档因为一个空块整体解析失败是不可接受的。
+                # 与下面的 paragraph 保持一致：空的一律不产出，也不计入 stats。
+                if text:
+                    blocks.append(Block(type=BLOCK_QUOTE, text=text, heading_path=_current_path(heading_stack)))
+                    stats["quote"] += 1
+                else:
+                    stats["dropped_empty"] = stats.get("dropped_empty", 0) + 1
                 continue
 
             image = _STANDALONE_IMAGE_RE.match(line.strip())

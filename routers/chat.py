@@ -29,7 +29,9 @@ async def generate_answer(
     from services.chat_service import get_answer_from_rag
 
     require_read_operation_role("chat_generate", auth)
-    response = get_answer_from_rag(request)
+    # auth 一路传到检索层：B 轨（chunk 索引）的租户 / document ACL 过滤必须由
+    # 服务端身份构造，传的是**已校验的 AuthContext**，不接受任何自报字段（D-2）。
+    response = get_answer_from_rag(request, auth)
     if not response:
         raise HTTPException(status_code=500, detail="Error while generating response.")
     return response

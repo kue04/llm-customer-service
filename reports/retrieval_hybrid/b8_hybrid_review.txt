@@ -1,0 +1,169 @@
+审查日期：2026-09-25
+
+任务级审查：B8-混合检索 —— B 轨稠密 + 稀疏双路召回 + 加权 RRF 融合
+================================================================================
+审查对象：验收规范 §1.0 第 1 条「混合检索：稠密 + 稀疏(BM25) + RRF 融合」
+          （此前记「未实现（纯稠密单路）」），以及第 13 条 M10 Recall@5
+          （此前记「未就绪：口径失真 + 无 gold 源 span」）
+
+本次改动：services/ingestion/sparse_index.py   新增：FTS5 稀疏索引构建/校验/元数据
+          utils/sparse_retriever.py            新增：稀疏查询（权限前置过滤）
+          utils/hybrid_retriever.py            新增：加权 RRF 融合 + 三模式入口
+          services/ingestion/index_builder.py  构建/回滚同批处理稀疏索引 + manifest 声明
+          routers/retrieval.py                 retrieval_mode 分支 + 默认值常量 + 错误映射
+          schemas/retrieval_schema.py          ChunkRetrievalMode / ChunkIndexInfo 稀疏字段
+          utils/vector_retriever.py            describe_chunk_index 报告稀疏可用性
+          services/chat_service.py             聊天链路召回模式开关（默认 dense）
+          scripts/build_retrieval_gold.py      新增：弱监督金标（span 判据）
+          scripts/build_colloquial_cases.py    新增：30 条人工口语化改写
+          scripts/rebuild_chunk_index.py       新增：只重建索引的运维入口
+          scripts/evaluate_hybrid_retrieval.py 新增：三模式对比评测（走生产代码）
+          tests/test_hybrid_retrieval.py       新增，53 条
+          tests/test_ingestion_pipeline.py     b8-hybrid README 锚点守卫 + 探针自证（2 条）
+          README.md                            §0.1 消歧 + b8-hybrid 锚点 + §3.6 实测
+          requirements-dev.txt / ci.yml        补 markdown 依赖 + 规范渲染门禁挂进 CI
+          docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md  §1.0 第 1/13 条 + §8.1 + §10.3/§10.5
+          docs/RAG_DEV_PITFALLS.md             B19 / B20 / B21 / D23 / D24 / D25 / D26 / E10 / F6
+          docs/RAG_EXECUTION_PROGRESS.md       §3 的 [B8-混合检索]（§4 暂停点覆盖更新）
+          docs/RAG_NEXT_WINDOW_PROMPT.md       交接文件：新增第五部分（覆盖前四部分状态）
+
+交付说明：docs/RAG_EXECUTION_PROGRESS.md §3 的 [B8-混合检索] 条目
+          reports/retrieval_hybrid/evaluation_20260925.{txt,json}
+          README.md §0.1 / §3.6
+          docs/RAG_NEXT_WINDOW_PROMPT.md 第五部分
+
+--------------------------------------------------------------------------------
+一、门禁结果（证据落 reports/retrieval_hybrid/）
+--------------------------------------------------------------------------------
+  pytest（JUnit XML）    PASS   final_junit_20260925.xml
+                                tests=1004  failures=0  errors=0  skipped=0
+                                基线：F1 收尾 949（junit_f1_track_final_20260925.xml）
+                                本批 +55（新增 53 + README 锚点守卫 2）
+  ruff check .（全仓）    PASS   All checks passed!
+  check_repo_data_size   PASS   通过，没有超标文件（--max-mb 1）
+  verify_acceptance_spec PASS   RESULT: OK —— 8 项校验全部通过（737 行）
+  warning 条数           N/A    全量 stdout 汇总行被环境安全删除守卫吞掉（踩坑 A6），
+                                不重跑、不估算（踩坑 D15 口径）
+  ⚠️ 本批全量跑了三次：① 1002/0F ② 1004/1F（D26 那条随机红，见第四节第 2 条）
+     ③ 1004/0F —— **权威是第 ③ 次**。前两次是因批次中途仍在补守卫与修测试，
+     不是"重跑刷绿"；第二/三次之间的差异有明确归因（第四节第 2 条）。
+
+--------------------------------------------------------------------------------
+二、逐条对照本批的验收判据
+--------------------------------------------------------------------------------
+【判据 1】真混合检索 = 两路**独立召回** + 融合（不是"召回后再加分"）
+  结论：达成。
+  证据：utils/hybrid_retriever.py:search_hybrid_chunks 分别调
+        search_chunk_index（稠密）与 search_sparse_index（稀疏），
+        再按 1/(k+rank) 加权融合；稀疏路能召回"向量分低"的文档
+        （评测里 title 集「仅稀疏命中 1 条」，dense 给不出的东西它给得出）。
+
+【判据 2】稀疏路必须复用同一套权限前置过滤，不得成为绕过 ACL 的第二条路
+  结论：达成。
+  证据：search_sparse_index 强制要求服务端构造的 ChunkAccessFilter，
+        缺失/类型不对一律抛 chunk_filter_required；授权范围内无候选时**直接返回空**
+        （fail closed，不退化成全库检索）；SQL 层用临时表 JOIN 把候选压到授权 row_id。
+  测试：tests/test_hybrid_retrieval.py::TestSparseIsolation（跨租户、空白名单、
+        白名单收窄、缺 filter 被拒、hybrid 模式同隔离）。
+
+【判据 3】索引版本必须绑定：加了稀疏路之后，回滚不能只回滚一半
+  结论：达成。
+  证据：稀疏索引建在**与稠密索引同一个版本目录**（v{n}/sparse.sqlite），
+        配置写进 manifest 的 extra["sparse"]，构建后由 verify_sparse_index 校验，
+        随 publish_build_directory / switch_pointer 一起生效；
+        rollback_index 走同一套指针，两路一起回滚。
+  测试：TestSparseIndexInBuildPipeline（同目录、manifest 声明、行数/row_id 集合不一致被抓）。
+
+【判据 4】必须给出**真实数字**，且走生产代码路径（不是另写一套评测）
+  结论：达成。
+  证据：scripts/evaluate_hybrid_retrieval.py 调 search_hybrid_chunks（与接口同一入口）；
+        数字与独立探针**逐项一致**（title dense R@1 0.7160、hybrid R@10 1.0000、
+        口语化 R@1 0.4000）—— 这是一次真正的交叉验证。
+
+【判据 5】评测口径本身必须可审计（不能把检索质量绑在格式差异上）
+  结论：达成，且这是本批最大的口径修正。
+  证据：命中判据 = normalize(span) in normalize(text)；报告里**同时保留**
+        "未压平的原始文本口径下 dense-only 是多少"（raw_text_match_baseline），
+        而不是把旧数字悄悄换掉。归因过程见踩坑 D23。
+
+【判据 6】默认值切换必须有安全的上线顺序（不能发版即 503）
+  结论：达成。
+  证据：默认 `dense`（routers/retrieval.py::DEFAULT_RETRIEVAL_MODE）；
+        稀疏索引缺失时**显式报错**，不静默降级；
+        README §0.1 写清"先重建索引 → 确认 sparse_available=true → 再切默认"；
+        `b8-hybrid` 锚点与代码常量由测试双向校验（变异测试一次抓到）。
+
+【判据 7】新增模块必须有**生产调用点**（本项目纪律：定义在、测试在、没人调用 = 未完成）
+  结论：达成。
+  证据：POST /retrieval/search 的 retrieval_mode 分支（routers/retrieval.py）；
+        聊天链路 RAG_CHAT_RETRIEVAL_MODE 开关（services/chat_service.py）；
+        scripts/rebuild_chunk_index.py（运维入口）。
+
+--------------------------------------------------------------------------------
+三、超出「最小改动」的部分（标注方向：更严 / 更宽）
+--------------------------------------------------------------------------------
+1. 【更严】非 dense 模式禁用 min_score：RRF 分与 -bm25 都不是余弦，
+   沿用 min_score 会得到"看起来能配、实际无意义"的阈值。改成显式 400。
+2. 【更严】写路径防护：Query 侧读取 FTS5 用只读连接；查询串经 build_match_query
+   对 FTS5 运算符加引号中性化（用户输入含 or/AND/NEAR 不会 500、也不能改变语义结构）。
+3. 【更严】稀疏索引额外存 row_id_checksum 与 schema_version，
+   加载时与 manifest 声明比对 —— 防止"稀疏索引与 manifest 错位"这类**静默错配**。
+4. 【更严】README 的默认模式做成机器可读锚点 + 双向守卫 + 探针自证（承 D20 的教训）。
+5. 【更严】把规范渲染门禁挂进 CI，并补 markdown 依赖 —— 原先这道门禁**跑不起来**。
+6. 【更宽】scripts/build_retrieval_gold.py 的抽样：为覆盖不同 heading 分布，
+   对 span 加入"跨文档数 ≤ 2"的约束与多候选排序，等价于放宽了单条样本的严格性，
+   但换来金标可回溯性（span 而非 chunk_id）。已在该脚本 docstring 说明。
+
+--------------------------------------------------------------------------------
+四、中途发现的问题与处置
+--------------------------------------------------------------------------------
+1. 【真 bug，被自家守卫抓到】load_sparse_index 手拼目录，漏了 chunk_index/ 一层：
+   索引建成功却加载不了。修法不是"把路径改对"，而是**别自己拼路径** ——
+   从指针返回的索引文件推目录。（踩坑 B19）
+2. 【测试假绿 → 随机红】授权白名单测试用 `ingested[...].chunk_ids[0]` 当靶子，
+   而 list_chunks 的排序键 created_at 是 tie、兜底键 chunk_id 含随机 version uuid
+   → "第一个 chunk 是谁"每进程不同；撞上纯 ASCII 的"附录块"（切词走整词路径、
+   不产 bigram，本来就检索不到中文查询）就必然为空。**6 次里红了 2 次**，
+   且前两次全量跑恰好"赢在掷骰子上"，所以一直被认为是绿的。
+   处置：靶子改从**真实命中**里取（先不带白名单跑一次）；断言随之变强为
+   "白名单把结果收窄到它自己"。连带把因此加出来的夹具第三元组退回二元组（踩坑 D26）。
+3. 【假守卫，自己复盘时发现】稀疏索引的 gram_algorithm 校验**左右两边同源**
+   （都来自 manifest），是一道永远为真的检查 —— 比没有更坏。
+   处置：改成读稀疏索引文件内的 sparse_meta 表与 manifest 声明的**真比对**。（踩坑 B20）
+4. 【字段撞车】`mode` 在 A 轨是「向量 vs 向量+关键词加分」，在 B 轨是「dense/sparse/hybrid」。
+   处置：B 轨字段改名 `retrieval_mode`；`ChunkRetrievalMode` 与 `RetrievalMode` 两个类型分开。
+   顺带撞红了一条既有用例（"未知字段被忽略"），那**是契约变更的正常结果**，已同步改判据。（踩坑 B21）
+5. 【评测口径】压平空白后 R@1 差 7 条（8 条 gold），全部集中在一处变量。归因过程见 D23。
+6. 【延迟归属】hybrid ≈ dense + sparse 之和 → 瓶颈是每次请求重读 19.0MB manifest
+   （load_active_manifest 无缓存）。**本批刻意不修**，登记为 F6 并写清"为什么当时不改"。
+
+--------------------------------------------------------------------------------
+五、测试盲区（显式列出，不许藏着）
+--------------------------------------------------------------------------------
+1. **没有并发/压测**：混合检索的 QPS、P95/P99 未实测，F6 的延迟数字是单请求串行测量。
+2. **没有 PostgreSQL 复验**：稀疏路依赖 SQLite FTS5，PG 形态下不可用（当前索引存储本身也不在 PG）。
+3. **口语化查询的绝对水平低**（R@1 0.4000 / R@10 0.5667），且 30 条里 7 条两路 top-50 全捞不到，
+   疑似金标假阴性，**未逐条复核** —— 所以"口语化场景已评测到可信"这句话**不成立**。
+4. **负样本只测了"稠密路贡献比例"**，没有按业务定义"该不该拒答"，也没有拒答阈值。
+5. **未验证前端/接口消费方对 `retrieval_mode` 的兼容**（新增字段是向后兼容的，
+   但前端是否会误用未验证）。
+6. **稀疏切词只验证了中文 bigram 与纯 ASCII 整词两条路径**，日韩、emoji、
+   超长数字串等形态没有样本（`data/corpus_samples/` 也没有覆盖）。
+7. **索引体积增长未评估运维影响**：加了 32.4MB 稀疏索引后，单版本目录 ~70MB，
+   多版本堆积的清理策略未定。
+8. **未做 A/B 线上的效果验证**：全部是离线检索指标，没有端到端回答质量的前后对比。
+
+--------------------------------------------------------------------------------
+六、结论
+--------------------------------------------------------------------------------
+**PASS（任务级）** —— 判据 1~7 全部达成，证据均在库、可复跑。
+
+**范围声明（引用本结论时必须一起带上）**：
+1. 本结论**只覆盖"B 轨混合检索的召回能力与隔离正确性"**，不覆盖：
+   生成质量、端到端回答质量、前端渲染、并发性能、PostgreSQL 形态；
+2. 本结论**不改变**发布门禁 PASS 的三条限制（判据范围只到计划第 7 节 /
+   roadmap 两条 P3 未做 / 检索质量口径未统一）—— 本批只是把**第三条部分更新**为：
+   「B 轨有一套管 span 金标的结论，但 A 轨 intent 口径（F2）仍未统一，两套数字不可互认」；
+3. **"混合检索的收益是有限的"是本批的正式结论**，不得对外表述为"指标全面上涨"；
+   可正当主张的收益是：标题式短查询 R@1 提升、R@10 达到融合上限、隔离与失败的显式性；
+4. 本批**没有**把线上默认切成 hybrid，也**没有**声称已经切了。
