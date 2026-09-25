@@ -55,7 +55,7 @@
 
 | # | 规范要求 | 当前状态 | 证据（实测） | 详见 |
 |---|---|---|---|---|
-| 1 | 混合检索：稠密 + 稀疏(BM25) + RRF 融合 | **已实现**（默认 `dense`，需显式启用） | `services/ingestion/sparse_index.py`（SQLite FTS5 + `bm25()` + 中文 bigram）、`utils/sparse_retriever.py`、`utils/hybrid_retriever.py`（加权 RRF，`w_dense=10 / w_sparse=1 / k=60`）；默认值 `routers/retrieval.py:71 DEFAULT_RETRIEVAL_MODE="dense"`；实测 `reports/retrieval_hybrid/evaluation_20260925.txt` | §8.1 |
+| 1 | 混合检索：稠密 + 稀疏(BM25) + RRF 融合 | **已实现**（默认 `hybrid`，dense 可显式选择） | `services/ingestion/sparse_index.py`（SQLite FTS5 + `bm25()` + 中文 bigram）、`utils/sparse_retriever.py`、`utils/hybrid_retriever.py`（加权 RRF，`w_dense=10 / w_sparse=1 / k=60`）；默认值 `routers/retrieval.py:71 DEFAULT_RETRIEVAL_MODE="hybrid"`；实测 `reports/retrieval_hybrid/evaluation_20260925.txt` | §8.1 |
 | 2 | 重排（reranker） | **已实现** | `utils/vector_retriever.py:88 get_reranker_model`、`:664 rerank_candidates`（CrossEncoder，权重 `model_rerank_weight`） | §8.1 |
 | 3 | 格式覆盖：OCR / XLSX·CSV / 图表视觉理解 | **部分实现**：5 种格式可跑；OCR 仅接口；无 XLSX·CSV、无视觉 | `services/ingestion/models.py:46`（pdf/docx/html/md/txt）；`parsers/ocr.py` 模块头明示「默认不安装 OCR 引擎」 | §6.2 |
 | 4 | 解析质量门禁 | **未实现** | `grep -ri quality services/ingestion` 零命中 | §6.3 / §7.3 |
@@ -406,7 +406,7 @@ Child 命中扩展 Parent 时必须重新检查父块权限；如果父块包含
 > |---|---|---|
 > | 稠密向量检索 | **已实现** | `services/ingestion/index_builder.py:348 faiss.IndexFlatIP`（内积）+ `utils/vector_retriever.py` |
 > | 精确匹配 / BM25（编号、错误码、型号） | **已实现** | `services/ingestion/sparse_index.py`（SQLite FTS5 + `bm25()`；中文 bigram 切词，纯 ASCII token 走整词）+ `utils/sparse_retriever.py` |
-> | 稠密 + 稀疏混合、RRF 融合 | **已实现** | `utils/hybrid_retriever.py`：**按 rank** 加权 RRF（`w_dense=10 / w_sparse=1 / k=60`，权重经扫描校准），两路复用同一个 `ChunkAccessFilter`；默认 `retrieval_mode=dense` |
+> | 稠密 + 稀疏混合、RRF 融合 | **已实现** | `utils/hybrid_retriever.py`：**按 rank** 加权 RRF（`w_dense=10 / w_sparse=1 / k=60`，权重经扫描校准），两路复用同一个 `ChunkAccessFilter`；默认 `retrieval_mode=hybrid` |
 > | 元数据硬过滤（ACL / 租户） | **已实现** | `routers/retrieval.py` 调 `build_chunk_access_filter` / `retrieve_chunk_items`；稀疏路经**临时表 JOIN** 在同一层做前置过滤（两路都有测试锁着） |
 > | 重排 | **已实现** | `utils/vector_retriever.py:88 get_reranker_model`、`:664 rerank_candidates`（CrossEncoder） |
 > | 分层覆盖 / 结构化查询 / 只读工具 | **未实现** | 无对应链路 |

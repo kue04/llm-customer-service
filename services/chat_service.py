@@ -26,6 +26,7 @@ from services.online_generation import (
 )
 from services.ops_metrics import record_chat_metrics, record_token_usage
 from services.order_tool_service import (
+    create_handoff_ticket,
     query_order_status,
     query_refund_status,
     should_call_refund_tool,
@@ -36,7 +37,8 @@ from services.redis_context_cache import get_redis_context_cache
 from services.reply_rules import apply_reply_rules_with_trace
 from services.safety_guard import validate_reply
 from utils.rag_context import build_prompt_context_items, prompt_context_items_to_dicts
-from utils.vector_retriever import detect_intent_hint, retrieve_rag_items
+from services.query_resolution import resolve_query
+from utils.vector_retriever import detect_intent_hint
 
 try:
     import torch
@@ -75,16 +77,15 @@ MODEL_DTYPE = torch.float16 if torch is not None and DEVICE == "cuda" else (torc
 #: （踩坑 D20：让探针先失效的改动会伪装成通过）。
 DEFAULT_CHAT_RETRIEVAL_PATH = "chunk"
 
-#: 合法轨道取值。非法值一律回落到默认值、不抛错 —— 让一个拼错的环境变量
-#: 把整条问答链路打挂，比"按默认轨道继续跑"更糟。
-CHAT_RETRIEVAL_PATHS = ("chunk", "seed")
+#: 正式聊天链路只有 chunk 轨道。seed FAQ 仅保留在显式 demo API，不允许通过环境变量
+#: 改变生产聊天数据源，避免无权限的兼容路径重新成为线上分支。
+CHAT_RETRIEVAL_PATHS = ("chunk",)
 
 
 def resolve_chat_retrieval_path() -> str:
-    """运行时解析聊天链路的检索轨道（环境变量优先，非法值回落默认）。"""
+    """返回正式聊天检索轨道；历史环境变量被忽略。"""
 
-    value = (os.getenv("RAG_CHAT_RETRIEVAL_PATH") or "").strip().lower()
-    return value if value in CHAT_RETRIEVAL_PATHS else DEFAULT_CHAT_RETRIEVAL_PATH
+    return DEFAULT_CHAT_RETRIEVAL_PATH
 
 
 #: 聊天链路在 B 轨内使用的**召回模式**（B8 新增）。
@@ -93,19 +94,15 @@ def resolve_chat_retrieval_path() -> str:
 #: - ``"hybrid"``：稠密 + 词法（FTS5）双路，加权 RRF 融合；
 #: - ``"sparse"``：纯词法单路（只用于消融对比，不建议线上用）。
 #:
-#: **默认保持 ``dense``，理由有两条，都不是"保守"**：
+#: **默认使用 ``hybrid``：正式聊天链路与检索 API 采用同一召回策略，避免线上入口和调试入口出现两套默认行为。**
 #:
-#: 1. **收益边界**：两套评测集上的实测（``reports/retrieval_hybrid/evaluation_*.txt``）
-#:    显示混合检索在**真实口语提问**上与纯稠密持平（R@1 0.4000 vs 0.4000），
-#:    收益集中在标题式短查询（R@1 +2 条，R@10 打到并集上限 1.0000）。
-#:    而聊天链路的输入正是口语提问 —— 拿它换 2 倍延迟不划算。
-#: 2. **延迟是聊天链路的硬约束**：混合模式实测单次检索约 350ms，纯稠密约 170ms
-#:    （且这个数主要来自"每次请求都重读 manifest + FAISS 索引"，见踩坑 **F6**）。
-#:    在索引缓存做好之前，默认开混合会让整条问答链路的 P50 直接翻倍。
+#: dense 仍可通过 ``RAG_CHAT_RETRIEVAL_MODE=dense`` 显式选择，用于故障隔离和评测对照。
 #:
-#: 想开的时候：`RAG_CHAT_RETRIEVAL_MODE=hybrid`（需要生效索引已构建稀疏路，
-#: 否则**显式报错**而不是静默退回稠密 —— 见 ``utils/sparse_retriever.py``）。
-DEFAULT_CHAT_RETRIEVAL_MODE = "dense"
+#:
+#: hybrid 的线上收益与代价以 B 轨评测和 F6 延迟报告为准；口语化查询仍需独立改写。
+#: 显式设置 ``RAG_CHAT_RETRIEVAL_MODE=dense`` 仅用于故障隔离和离线对照。
+#: 生效索引缺少稀疏路时显式报错，不静默退回 dense。
+DEFAULT_CHAT_RETRIEVAL_MODE = "hybrid"
 
 #: 合法召回模式。非法值同样回落默认值而不是抛错（与轨道开关同一理由）。
 CHAT_RETRIEVAL_MODES = ("dense", "hybrid", "sparse")
@@ -239,9 +236,6 @@ def retrieve_chat_items(query: str, auth=None, limit: int = 3) -> list[dict]:
     而不是改一条调用链。
     """
 
-    if resolve_chat_retrieval_path() == "seed":
-        return retrieve_rag_items(query)
-
     return adapt_chunk_items_for_prompt(retrieve_chunk_items_for_chat(query, auth, limit))
 SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 ANSWER_PLAN_SYSTEM_PROMPT = (
@@ -310,6 +304,80 @@ def normalize_chat_request(request) -> dict:
         "order_id": getattr(request, "order_id", None),
         "channel": getattr(request, "channel", "test") or "test",
     }
+
+
+def preprocess_retrieval_query(query: str, intent_analysis: dict, context: dict | None = None) -> dict:
+    """统一查询解析接缝，返回可序列化的 QueryResolutionPlan。"""
+
+    return resolve_query(query, context=context, intent_analysis=intent_analysis).to_dict()
+
+
+def retrieve_with_query_plan(plan: dict, auth=None, limit: int = 3) -> tuple[list[dict], list[dict]]:
+    """对每个查询/子问题独立召回，返回合并证据和覆盖诊断。"""
+
+    sub_queries = list(plan.get("sub_queries") or [])
+    if sub_queries:
+        work = [(str(item.get("sub_query_id") or f"q{i}"), str(item.get("query") or ""), bool(item.get("required", True))) for i, item in enumerate(sub_queries, 1)]
+    else:
+        queries = list(plan.get("retrieval_queries") or [plan.get("original_query", "")])
+        work = [("main", query, True) for query in queries[:4]]
+
+    merged: dict[str, dict] = {}
+    coverage: list[dict] = []
+    for subquery_id, query, required in work:
+        if not query:
+            continue
+        items = retrieve_chat_items(query, auth, limit)
+        evidence_ids: list[str] = []
+        for item in items:
+            key = str(item.get("chunk_id") or item.get("knowledge_id") or item.get("document_id") or item.get("answer", ""))
+            if not key:
+                continue
+            evidence_ids.append(key)
+            previous = merged.get(key)
+            if previous is None or float(item.get("score") or 0.0) > float(previous.get("score") or 0.0):
+                merged[key] = item
+        coverage.append({
+            "sub_query_id": subquery_id,
+            "query": query,
+            "status": "covered" if evidence_ids else "missing",
+            "evidence_ids": evidence_ids[:limit],
+            "evidence_count": len(evidence_ids),
+            "required": required,
+        })
+
+    results = list(merged.values())
+    results.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
+    for rank, item in enumerate(results[:limit], start=1):
+        item["rank"] = rank
+    return results[:limit], coverage
+
+def decide_evidence_gate(
+    subquery_coverage: list[dict],
+    *,
+    evidence_count: int,
+    risk_level: str = "low",
+) -> dict:
+    """把每跳覆盖转换成回答模式，禁止缺证据时生成完整确定性结论。"""
+
+    if not subquery_coverage:
+        if evidence_count:
+            return {"mode": "complete", "missing_subqueries": []}
+        return {"mode": "clarify", "missing_subqueries": ["main"]}
+    missing = [
+        str(item.get("sub_query_id"))
+        for item in subquery_coverage
+        if item.get("status") != "covered" and item.get("required", True)
+    ]
+    if not missing:
+        return {"mode": "complete", "missing_subqueries": []}
+    if risk_level in {"high", "critical"}:
+        mode = "human_review"
+    elif len(missing) == len(subquery_coverage):
+        mode = "clarify"
+    else:
+        mode = "partial"
+    return {"mode": mode, "missing_subqueries": missing}
 
 
 def build_query_with_intent_hint(query: str, intent_analysis: dict) -> str:
@@ -880,11 +948,12 @@ def attach_enhanced_fields(
     result["request_id"] = request_id
     result["risk_level"] = risk_level
     result["confidence_level"] = build_confidence_level(confidence_score)
-    result["need_human_review"] = True
-    result["needs_manual_review"] = True
+    manual_review = bool(result.get("needs_manual_review", True))
+    result["need_human_review"] = manual_review
+    result["needs_manual_review"] = manual_review
     result["human_review_reason"] = human_review_reason
     result["citations"] = build_prd_citations(evidence_citations)
-    result["conversation_status"] = "pending_agent_review"
+    result.setdefault("conversation_status", "pending_agent_review")
     result["tool_results"] = tool_results
     result["memory_snapshot"] = build_memory_snapshot(context, user_memory, updated_user_memory)
     result["answer_basis"] = build_answer_basis(evidence_citations, tool_results, safety_status)
@@ -934,23 +1003,38 @@ def complete_chat_response(
         safety_status=safety_status,
         diagnostics_needs_review=bool(result.get("needs_manual_review")),
     )
-    if handoff_needed:
-        handoff_started_at = time.perf_counter()
+    answer_mode = str(result.get("answer_mode") or "complete")
+    handoff_ticket = None
+    if answer_mode == "clarify":
+        missing = result.get("decision_trace", {}).get("missing_subqueries") or result.get("missing_subqueries") or []
+        missing_text = "、".join(str(item) for item in missing if item) or "主要问题"
+        result["reply"] = f"为了准确处理你的请求，还需要你补充或确认：{missing_text}。请提供相关订单号、时间或具体问题。"
+        result["conversation_status"] = "awaiting_clarification"
+        result["human_review_reason"] = "信息不足，等待用户澄清"
+        result["needs_manual_review"] = False
+        full_trace.append(trace_step("clarification_requested", output_summary="user_clarification_required", started_at=grounding_started_at, metadata={"missing_subqueries": missing}))
+    elif answer_mode == "human_review" or handoff_needed:
+        handoff_reason = handoff_reason or "当前请求需要人工处理"
+        ticket_result = create_handoff_ticket(
+            handoff_reason,
+            {
+                "user_id": context.get("user_id", "demo_user"),
+                "session_id": context.get("session_id", ""),
+                "order_id": context.get("order_id"),
+                "summary": context.get("summary", ""),
+                "facts": context.get("facts", {}),
+            },
+        )
+        handoff_ticket = ticket_result.get("output") or {}
+        result["reply"] = f"你的问题已转交人工客服处理。工单号：{handoff_ticket.get('ticket_id', '处理中')}。人工客服会根据会话记录继续跟进。"
+        result["conversation_status"] = "human_handoff"
         result["needs_manual_review"] = True
         result["handoff_recommendation"] = {
             "recommended": True,
             "reason": handoff_reason,
             "priority": "high" if intent_analysis.get("risk_level") in {"high", "critical"} else "normal",
         }
-        full_trace.append(
-            trace_step(
-                "handoff_recommended",
-                input_summary=handoff_reason,
-                output_summary="waiting_agent_confirmation",
-                started_at=handoff_started_at,
-                metadata={"write_tool_deferred": True},
-            )
-        )
+        full_trace.append(trace_step("human_handoff_created", input_summary=handoff_reason, output_summary=handoff_ticket.get("ticket_id", "created"), started_at=grounding_started_at, metadata={"write_tool_deferred": False}))
 
     memory_update_started_at = time.perf_counter()
     updated_user_memory = update_user_memory_from_turn(
@@ -977,7 +1061,7 @@ def complete_chat_response(
         tool_results=tool_results,
         safety_status=safety_status,
         full_trace=full_trace,
-        handoff_ticket=None,
+        handoff_ticket=handoff_ticket,
     )
     conversation_store.save_turn_response(
         request_id=request_id,
@@ -1216,7 +1300,8 @@ def get_answer_from_rag(request, auth=None):
         )
     )
     context_used = build_context_used(context)
-    retrieval_query = build_query_with_intent_hint(query, intent_analysis)
+    query_plan = preprocess_retrieval_query(query, intent_analysis, context)
+    retrieval_query = query_plan["resolved_query"]
 
     retrieval_started_at = time.perf_counter()
     retrieval_path = resolve_chat_retrieval_path()
@@ -1226,13 +1311,37 @@ def get_answer_from_rag(request, auth=None):
             input_summary=mask_sensitive_text(retrieval_query)[:160],
             started_at=retrieval_started_at,
             # 走过的轨道要留痕：切轨后"怎么一条都没命中"的第一个排查点就是它
-            metadata={"retrieval_path": retrieval_path},
+            metadata={
+                "retrieval_path": retrieval_path,
+                "retrieval_mode": resolve_chat_retrieval_mode(),
+                "original_query": mask_sensitive_text(query_plan["original_query"])[:160],
+                "resolved_query": mask_sensitive_text(query_plan["resolved_query"])[:160],
+                "rewrite_applied": int(query_plan["rewrite_applied"]),
+                "rewrite_strategy": query_plan["rewrite_strategy"],
+                "rewrite_confidence": query_plan.get("confidence", 0.0),
+                "ambiguity_type": query_plan.get("ambiguity_type", ""),
+                "unresolved_slots": list(query_plan.get("unresolved_slots") or []),
+                "conversation_dependencies": list(query_plan.get("conversation_dependencies") or []),
+                "sub_queries": list(query_plan.get("sub_queries") or []),
+                "rewrite_fallback_reason": query_plan.get("fallback_reason", ""),
+            },
         )
     )
     try:
-        retrieved_items = retrieve_chat_items(retrieval_query, auth)
+        retrieved_items, subquery_coverage = retrieve_with_query_plan(query_plan, auth)
         evidence_started_at = time.perf_counter()
         prompt_context_items = build_prompt_context_items(retrieved_items)
+        covered = sum(1 for item in subquery_coverage if item["status"] == "covered")
+        total_subqueries = len(subquery_coverage)
+        if total_subqueries > 1 and covered < total_subqueries:
+            evidence_status = "partial" if covered else "insufficient"
+        else:
+            evidence_status = "sufficient" if prompt_context_items else "insufficient"
+        evidence_decision = decide_evidence_gate(
+            subquery_coverage,
+            evidence_count=len(prompt_context_items),
+            risk_level=intent_analysis.get("risk_level", "low"),
+        )
         full_trace.append(
             trace_step(
                 "rerank_completed",
@@ -1245,7 +1354,12 @@ def get_answer_from_rag(request, auth=None):
                 "evidence_selected",
                 output_summary=f"selected={len(prompt_context_items)}",
                 started_at=evidence_started_at,
-                metadata={"primary_intent": prompt_context_items[0].intent if prompt_context_items else ""},
+                metadata={
+                    "primary_intent": prompt_context_items[0].intent if prompt_context_items else "",
+                    "evidence_status": evidence_status,
+                    "evidence_count": len(prompt_context_items),
+                    "subquery_coverage": subquery_coverage,
+                },
             )
         )
         if prompt_context_items:
@@ -1266,6 +1380,9 @@ def get_answer_from_rag(request, auth=None):
         fallback_reason = f"retrieval_failed: {error}"
         retrieved_items = []
         prompt_context_items = []
+        subquery_coverage = []
+        evidence_status = "retrieval_error"
+        evidence_decision = {"mode": "complete", "missing_subqueries": []}
         full_trace.append(
             trace_step(
                 "rerank_completed",
@@ -1275,6 +1392,23 @@ def get_answer_from_rag(request, auth=None):
             )
         )
         full_trace.append(trace_step("evidence_selected", status="degraded", output_summary="selected=0", started_at=retrieval_started_at))
+
+    full_trace.append(
+        trace_step(
+            "evidence_gate",
+            status="pass" if prompt_context_items else "clarify",
+            output_summary=evidence_status,
+            started_at=evidence_started_at if "evidence_started_at" in locals() else retrieval_started_at,
+            metadata={
+                "evidence_count": len(prompt_context_items),
+                "subquery_coverage": subquery_coverage,
+                "covered_subqueries": sum(1 for item in subquery_coverage if item["status"] == "covered"),
+                "total_subqueries": len(subquery_coverage),
+                "answer_mode": evidence_decision["mode"],
+                "missing_subqueries": evidence_decision["missing_subqueries"],
+            },
+        )
+    )
 
     prompt_started_at = time.perf_counter()
     if prompt_context_items:
@@ -1286,15 +1420,24 @@ def get_answer_from_rag(request, auth=None):
             order_context=order_context,
             user_memory=user_memory,
         )
-        confidence_score = 0.95
-        answer_source = "rag"
+        if evidence_decision["mode"] == "complete":
+            confidence_score = 0.95
+            answer_source = "rag"
+        elif evidence_decision["mode"] == "partial":
+            confidence_score = 0.65
+            answer_source = "rag_partial"
+            fallback_reason = "partial_evidence"
+        else:
+            confidence_score = 0.2
+            answer_source = evidence_decision["mode"]
+            fallback_reason = f"evidence_gate:{evidence_decision['mode']}"
     else:
         used_fallback_prompt = True
         prompt = build_fallback_prompt(query, order_context=order_context, user_memory=user_memory)
-        confidence_score = 0.5
-        answer_source = "fallback"
+        confidence_score = 0.2 if evidence_decision["mode"] in {"clarify", "human_review"} else 0.5
+        answer_source = "fallback" if failure_stage == "retrieval" else (evidence_decision["mode"] if evidence_decision["mode"] != "complete" else "fallback")
         if failure_stage == "none":
-            fallback_reason = "no_retrieved_documents"
+            fallback_reason = f"evidence_gate:{evidence_decision['mode']}" if evidence_decision["mode"] != "complete" else "no_retrieved_documents"
     prompt_config = get_active_prompt_config()
     full_trace.append(
         trace_step(
@@ -1336,6 +1479,8 @@ def get_answer_from_rag(request, auth=None):
         )
         result = attach_runtime_fields({
             "reply": reply,
+            "answer_mode": evidence_decision.get("mode", "complete"),
+            "missing_subqueries": evidence_decision.get("missing_subqueries", []),
             "confidence_score": 0.2,
             "final_prompt": prompt,
             "prompt_version": prompt_config.get("version", ""),
@@ -1437,6 +1582,8 @@ def get_answer_from_rag(request, auth=None):
 
     result = attach_runtime_fields({
         "reply": reply,
+        "answer_mode": evidence_decision.get("mode", "complete"),
+        "missing_subqueries": evidence_decision.get("missing_subqueries", []),
         "confidence_score": confidence_score,
         "final_prompt": prompt,
         "prompt_version": prompt_config.get("version", ""),

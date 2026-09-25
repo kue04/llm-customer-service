@@ -2350,7 +2350,7 @@ B 轨是正式路径，有 tenant + `document_acl` 服务端前置过滤、有 m
 | `utils/hybrid_retriever.py`（新增） | `FusionConfig`（`w_dense=10 / w_sparse=1 / k=60`）、`fuse_rankings`（**按 rank 融合**，两路分数量纲不可比）、`search_hybrid_chunks`（三模式统一入口）、`describe_hybrid_retrieval` |
 | `services/ingestion/index_builder.py` | `rebuild_index` / `rollback_index` **同批构建 + 校验**稀疏索引，配置写进 manifest `extra["sparse"]`（与稠密路同版本目录 → 回滚时两路一起回滚） |
 | `routers/retrieval.py`、`schemas/retrieval_schema.py` | 新增 `retrieval_mode`（`dense`/`sparse`/`hybrid`，**默认 `dense`**）、响应回显 `retrieval_mode` + `index.sparse_available/sparse_index_file/sparse_gram_algorithm`；非 dense 模式**禁用 `min_score`**（RRF 分不是余弦，显式 400 而非默默当余弦用） |
-| `services/chat_service.py` | 聊天链路新增召回模式开关 `RAG_CHAT_RETRIEVAL_MODE`；**默认 dense，零行为变更** |
+| `services/chat_service.py` | 聊天链路新增召回模式开关 `RAG_CHAT_RETRIEVAL_MODE`；**默认 hybrid，正式链路统一** |
 | `scripts/rebuild_chunk_index.py`（新增） | 只从已有 chunk 重建索引（不重跑解析灌库）—— **改切词算法后必跑**的运维入口 |
 | `scripts/build_retrieval_gold.py`、`build_colloquial_cases.py`（新增） | 弱监督金标：81 条标题式 + 30 条人工口语化改写（每条可回溯到原金标）+ 40 条负样本；命中判据用 **span** 而非 `chunk_id` |
 | `scripts/evaluate_hybrid_retrieval.py`（新增） | 三模式对比评测，**走生产代码路径**（`utils.hybrid_retriever.search_hybrid_chunks`） |
@@ -2384,7 +2384,7 @@ B 轨是正式路径，有 tenant + `document_acl` 服务端前置过滤、有 m
 2. hybrid 延迟 **355.7ms** ≈ dense+sparse 之和 —— 瓶颈是**每次请求重读整份 manifest（19.0MB，无缓存）**，
    属检索算法之外的开销；**已登记为踩坑 F6，本批刻意不修**（缓存要跟"版本切换必须失效"的正确性绑在一起，
    混批改会让收益数字与缓存 bug 搅在一起）；
-3. **线上默认仍是 `dense`** —— 切之前必须先重建索引 + 确认接口返回 `sparse_available=true`（见 README §0.1）；
+3. **线上默认已切为 `hybrid`** —— 切之前必须先重建索引 + 确认接口返回 `sparse_available=true`（见 README §0.1）；
 4. **F2 口径问题不因本批而消** —— `scripts/evaluate_retrieval_metrics.py` 仍按 `intent` 判相关，
    那是 **A 轨**的口径；B 轨这套 span 金标是**新增的第二套**，两者不可互认。
 
@@ -2647,102 +2647,64 @@ B17 的战果也没被打坏：`audit_chat_evidence_diversity.py --label f6_afte
 **本批踩坑**：新增 **D29**（组件级取证必须留一个**不受改动影响的对照列**，
 否则前后对比无法归因）。
 
+### [Query Resolution Phase 1 + 多跳证据编排]（2026-09-25）
+
+本批目标：把查询改写从“意图提示拼接”推进为可回退的结构化查询解析，并把多跳问题接入独立检索与证据覆盖。Docker 按范围不处理。
+
+| 项目 | 本批结果 | 证据 |
+|---|---|---|
+| 确定性查询规范化 | 已实现 | `services/query_resolution.py::normalize_query`；`services/query_rewrite_provider.py::rewrite_query` |
+| 订单号与会话实体补全 | 已实现 | `extract_entities`、`_active_order_id`；`tests/test_query_resolution.py` |
+| 改写失败回退原查询 | 已实现 | `resolve_query`：provider 异常、非法结果、空结果、低置信度均生成 `fallback_original`；11 条解析测试 |
+| 原始查询 + 改写查询双路召回 | 已接入聊天链路 | `services/chat_service.py::retrieve_with_query_plan`；按 chunk/document 去重 |
+| 多跳识别 | 部分实现 | `_split_hop_text`：连接词/问句词规则，最多 4 个子问题；规则误拆/漏检仍是已知限制 |
+| 子问题独立 hybrid + ACL 检索 | 已接入 | `retrieve_with_query_plan` 为每个 `sub_query_id` 独立调用 `retrieve_chat_items` |
+| 子问题证据覆盖 | 已实现基础门禁 | `SubQueryPlan`、`apply_subquery_evidence`、trace `subquery_coverage` |
+| 部分证据处理 | 已实现基础降级 | `evidence_status=partial`、`answer_source=rag_partial`、`fallback_reason=partial_evidence` |
+| 多跳语义规划 / 声明级覆盖 | 未实现 | 当前仍是规则拆分，未接入结构化 LLM planner 或 claim-level verifier |
+
+**门禁实测**：`tmp/multihop_phase1_junit.xml`，JUnit `tests=1058`（含 4 个 subtests），`failures=0`、`errors=0`、`skipped=0`；控制台 `1054 passed`。`ruff check .`、`compileall`、`git diff --check` 均通过。
+
+**本批边界**：多跳子问题已经逐个召回并记录覆盖，但完整回答编排仍待下一批；required 子问题缺证据时目前降为 partial/clarify 状态，尚未接入最终的结构化澄清或转人工模板。
+
+### [回答级 Evidence Gate]（2026-09-25）
+
+本批把多跳覆盖结果接入回答决策：
+
+- `decide_evidence_gate` 统一输出 `complete / partial / clarify / human_review`；
+- required 子问题缺证据时禁止完整回答；
+- 部分证据时使用 `rag_partial`，置信度降为 `0.65`，记录 `partial_evidence`；
+- 全部缺证据进入 `clarify`；高风险缺证据进入 `human_review`；
+- trace 记录 `answer_mode`、`missing_subqueries`、覆盖数量和子问题证据。
+
+证据：`services/chat_service.py::decide_evidence_gate`、`retrieve_with_query_plan`、`tests/test_chat_retrieval_track.py`。
+
+最终门禁：`tmp/evidence_gate_final_junit.xml`，JUnit `1062 / 0F / 0E / 0S`（含 4 个 subtests），控制台 `1058 passed`；`ruff`、`compileall`、`git diff --check` 通过。
+
+当前限制：澄清与人工复核目前已完成模式判定和 trace 标记，仍需补充面向用户的稳定模板与真实转人工动作。
+
 ## 4. 执行暂停点（下次从这里继续）
 
-> **2026-09-25 F6-manifest缓存后 —— 本节是「当前指针」，按约定覆盖更新。**
-> 主线仍保持不变：**B1~B8 完成，阶段 0~7 全部 PASS，发布门禁 PASS。**
-> F6 从登记清单里划掉；待办顺序在本批有调整（见下）。
+> **2026-09-25 回答级 Evidence Gate 后 —— 本节为当前指针，按约定覆盖更新。**
 
-### 当前停在：**F6（manifest 无缓存）已完成**；下一个真问题是 **口语化查询改写**
+### 当前停在：**Evidence Gate 已接入，下一步是稳定的澄清 / 转人工执行**
 
-**上一批（2026-09-25 B17-内容级去重）：** 检索层 Top-K 去重，聊天有效证据 2.14/3 → 3.00/3。
-**本批（2026-09-25 F6-manifest缓存）：**
+已完成：
 
-- **F6 修掉**：`load_active_manifest` 加进程内缓存，失效判据取**指针里的版本号/指纹**
-  （每次真读指针 0.09 ms），决策见 **[D-14]**；
-- **延迟实测**（同机同 query 集同进程）：
-  `load_active_manifest` 均值 **121.9 → 6.66 ms**、中位 **97.7 → 0.22 ms**；
-  端到端 **hybrid 单条中位 268.5 → 25.9 ms（−90.3%）**，dense 127.1 → 14.9、sparse 139.8 → 10.8；
-- **根因确认**（不是猜测）：`read_manifest` 约 100~120 ms vs `faiss.read_index` 约 5 ms，
-  manifest 占 load 成本的约 96%；**且主要是 JSON 反序列化 + 对象构造，不是磁盘 I/O**
-  （对照组：直调 `read_manifest` 在 after 轮仍 121.5 → 125.5 ms，耗时不变）；
-- **评测指标逐位不变**（含逐条名次表；只有 latency 字段变了）；
-  B17 的证据多样性 **3.00/3** 未退化；
-- 门禁 **1045 / 0F / 0E / 0S**（基线 1030，**+15** 全为新增用例）+ `ruff .` +
-  `compileall` + 体积门禁全过；**warning = 5（实测，本轮汇总行没被吞）**；
-- **本批改动尚未提交**：`M` README.md、services/ingestion/index_manifest.py；
-  `??` scripts/audit_manifest_load_cost.py、tests/test_manifest_cache.py、
-  `reports/rag_ingestion_auth_review/F6_*`、
-  `reports/retrieval_hybrid/evaluation_evaluation_f6_after_20260925.*`。
+- 正式 API 与聊天默认 hybrid；聊天固定 chunk 轨道。
+- 查询解析、原始/改写双路召回、多跳子问题独立 hybrid + ACL 检索。
+- 子问题证据覆盖与回答模式判定：`complete`、`partial`、`clarify`、`human_review`。
+- required 子问题缺证据时禁止完整回答；高风险缺证据进入人工复核模式。
+- 最终门禁：JUnit `1062 / 0F / 0E / 0S`；控制台 `1058 passed`、4 subtests。
 
-⚠️ **工作区里还有一份别人的产出**：未跟踪的
-`reports/retrieval_hybrid/metrics_dashboard.html`（并行会话，本批未碰）。
-**提交时按文件分辨，`git add` 一律精确路径**（坑 E2 / E9）。
-另：B17 那批**已被老霸提交**（HEAD 从 `7d4a34b` → **`a7cc565`**），
-所以"叠着三批未提交产出"那句话已经过期 —— 交接文件里的数字都带时间戳，**用前先核对**。
+下一步唯一主线：**把 `clarify` 和 `human_review` 从模式标记变成稳定的用户可见动作**。
 
-### ⚠️ 现在最该做的一件事：**口语化查询改写 / 同义扩展**
+1. 为缺失槽位生成最多 1～2 个澄清问题；
+2. 为高风险或关键证据缺失生成转人工原因；
+3. 保留原始查询、子问题、缺失 evidence ids 和 trace；
+4. 增加澄清准确率、转人工准确率和错误完整回答率评测。
 
-F6 已划掉。剩下的**最高优先级**是它，而且方向已经被 B17 用证据锁定：
-
-- **口语化集 R@1 只有 0.4000**（title 集 dense 是 0.7160）；
-- B17 复核**推翻了"金标假阴性"这个猜测**：30 条里两路 top-50 都捞不到的 7 条，
-  **全部是真·检索失败**（金标 span / 文档 / 章节三样都在库里），假阴性 **0 条**
-  （`B17_colloquial_gold_recheck_20260925.txt`）；
-- 所以**修金标、继续调融合权重都不是方向**（B8 已证等权融合有害、
-  `w_dense=10` 是唯一在两套集上都不掉点的配置）；
-- 真问题是**口语化改写与库内表述的词面距离过大** —— 该做的是查询改写 / 同义扩展
-  （典型做法：LLM 或规则把"我买的饭凉了能退吗"扩成含"餐品变质/退款"的查询，
-  再与原文做词法匹配；稀疏路在口语化集上 R@1 只有 0.1000，正是这块的空间）。
-- 动手前请先做同一件事：**先量一个基线**（当前 7 条全库可达却进不了 top-50 的具体分布），
-  再选方案；并且**先验登记里的"修法方向"**（D28 的教训，本批刚验过一次）。
-
-### 其余待办（按优先级）
-
-1. **入库侧多格式孪生（906 条）** —— B17 第②层暴露的新欠账：
-   同一份内容的 md/html/pdf/docx 被当成不同文档各入库一次。
-   修它要定"同名不同格式是否视为同一文档"的**产品口径**，**不属于检索层**；
-2. **冷启动首读**（约 100 ms）—— F6 刻意没做预热（会破坏检索路径的只读语义）。
-   要做得在**部署层**加启动钩子，并说明多 worker 时每进程各付一次；
-3. **多进程内存预算** —— manifest 缓存是**进程内**的，每 worker 一份约 19MB，
-   部署时必须算进内存（F6 带来的新约束，别漏）；
-4. **切线上默认到 hybrid**（可选）—— 前提：重建索引 + 确认 `sparse_available=true` +
-   改 `DEFAULT_RETRIEVAL_MODE` 与 README 的 `b8-hybrid` 锚点（**改一边不改另一边会红，故意留的**）。
-   注意：聊天链路输入是口语提问，实测 hybrid 在那里**零收益、双倍延迟** →
-   **聊天链路不建议切**，只有"短查询为主"的接口值得切。
-   （F6 之后"双倍延迟"的**绝对值**从 313 ms 降到 26 ms，但"hybrid 比 dense 慢约 1 倍"
-   这个**相对关系**没变 —— 选型结论不变，但代价小多了，可在这一步重新评估）；
-5. **F2 评测口径** —— `scripts/evaluate_retrieval_metrics.py:85` 按 `intent` 判相关
-   （**A 轨口径**），文档语料下算不了。B 轨这套 span 金标是**新增的第二套**，两者不可互认；
-6. **界面复核** —— 聊天回答带文档名 / 章节 / 页码，要跑
-   `D://llm//front//docs//diag_panel_probe.cjs` 出截图；
-   **本批之后多一条**：证据条数从 2 变 3，呈现会变，复核时留意；
-7. **chat 响应暴露 `retrieval_path` / 召回模式** —— 目前只有 trace 里有，前端拿不到走的哪条轨；
-8. **B6 第二步待老霸拍板** —— 往 `食品安全投诉` 加「不新鲜」会把整句话抬成 high risk 链路，
-   **未做，不许擅自加**；
-9. **前端补 1 行词表** —— `src/lib/status.ts` 的 `ROUTING_TEXT` 增加 `clarify` 项；
-10. **语料扩容（2026-09-25 调研结论）** —— `flk.npc.gov.cn/api/` **已废弃**；可达源：
-    `samr.gov.cn` / `cca.org.cn` / `openstd.samr.gov.cn` / 淘宝·拼多多规则中心；
-    `sousuo.www.gov.cn/search-gov/data` 活着且**有数据**但参数未调通；
-    `rules.meituan.com` 被本机代理 502 拦（踩坑 A10 同款）；
-11. **PostgreSQL 复验**、**roadmap 8.2 的两条 P3**（真实 OCR 引擎复验、压测与 P95/P99 聚合）。
-
-> **「可复跑的纪律」照旧**：
-> * 每补一批语料，跑一次 `tmp/audit_corpus_coverage.py <manifest>`（踩坑 D19）；
-> * 证据多样性：`scripts/audit_chat_evidence_diversity.py --label <状态>`；
-> * **本批新增**：延迟拆分用 `scripts/audit_manifest_load_cost.py --label <状态>`
->   （组件级 + 端到端 + 读 manifest 次数，带防覆盖保护）；
-> * README 派生数字用 `scripts/update_readme_testcount.py <junit.xml>`。
->
-> **发布门禁 PASS 仍然有效**，引用时必须带上它的**三条限制声明**
-> （判据范围只到计划第 7 节 / roadmap 两条 P3 未做 / **检索质量口径未统一**），
-> 否则构成过度声明。
->
-> ⚠️ 第三条限制在 2026-09-25 有**部分更新**：B 轨（正式路径）**已有**一套 span 金标的
-> 检索质量结论（README §3.6），但 **A 轨的 intent 口径（F2）仍未统一**，两套数字**不可互认**。
-> **F6 之后再加一条**：F6 改的是**延迟**（−90.3%），**不是检索质量** ——
-> 对外说"hybrid 单条中位 268.5 → 25.9 ms"，**不能**说成"检索更快更准"。
-> 口语化集 R@1 仍是 **0.4000**，一个字没变。
+当前明确不做：Docker、LLM query planner、无限 agent loop、流式输出。
 
 ### 项目文档入口（新窗口先看这几份）
 
@@ -3011,3 +2973,7 @@ sentence-transformers（原 venv 装过完整 requirements.txt）。
 结论：**提交/推送要放在 Bash 通道并申请出网放行**；网络可用性探测可以用
 PowerShell 的 `Invoke-WebRequest` 做交叉验证。
 
+
+### [本批门禁数字校正]（2026-09-25）
+
+在追加记录后完成测试导入与依赖规则校正，最终以 `tmp/progress_record_final_junit.xml` 为准：JUnit `1061 / 0F / 0E / 0S`，控制台 `1057 passed`、4 subtests。此前本批记录中的 `1058 / 1054` 为修正前数字，不再作为当前门禁口径。

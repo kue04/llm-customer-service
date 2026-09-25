@@ -44,7 +44,7 @@
 
 ```
 【B 轨 · 正式路径】
-  POST /retrieval/search      retrieval_mode = dense | sparse | hybrid（默认 dense）
+  POST /retrieval/search      retrieval_mode = dense | sparse | hybrid（默认 hybrid）
     → require_read_operation_role
     → build_chunk_access_filter(session, auth)         ← services/retrieval_access.py（唯一构造点）
     → search_hybrid_chunks(...)                        ← utils/hybrid_retriever.py（底层召回）
@@ -59,7 +59,7 @@
   POST /chat/prompt
     → require_read_operation_role（chat_generate）
     → get_answer_from_rag(request, auth)
-    → resolve_chat_retrieval_path()                    ← 默认 "chunk"；RAG_CHAT_RETRIEVAL_PATH=seed 回退
+    → resolve_chat_retrieval_path()                    ← 默认 "chunk"；正式聊天固定 chunk；seed 仅用于显式 demo
     → retrieve_chunk_items_for_chat()                  ← ★ B17 已在这一层去重
     → adapt_chunk_items_for_prompt()                   ← chunk 的 text 映射成下游认的 answer
     → build_prompt_context_items()                     ← 下游还会按文本去重（口径见下）
@@ -86,7 +86,7 @@
 | --- | --- | --- |
 | `test_wiring_guards.py`（18 条） | tests/ | `routers/retrieval.py` 必须**引用并调用**检索与鉴权函数；`search_chunk_index` 的 `access` **无默认值且注解非 Optional**；`routers/*.py` **不得 import jwt** |
 | `TestReadmeTrackConsistency` | `tests/test_ingestion_pipeline.py` | README 锚点 `<!-- f1-track: chat-service-retrieval=... -->` 与 `DEFAULT_CHAT_RETRIEVAL_PATH` **双向一致**；`<!-- b8-hybrid: default-retrieval-mode=... -->` 与 `DEFAULT_RETRIEVAL_MODE` **双向一致**；另有守卫自测（读不到 → 空串 → 判失败） |
-| `TestHybridDecisionTrace` | `tests/test_hybrid_retrieval.py` | 把关键取舍做成可断言事实：`w_dense=10/w_sparse=1/k=60`、`DEFAULT_RETRIEVAL_MODE == "dense"`。**改权重必须重跑评测** |
+| `TestHybridDecisionTrace` | `tests/test_hybrid_retrieval.py` | 把关键取舍做成可断言事实：`w_dense=10/w_sparse=1/k=60`、`DEFAULT_RETRIEVAL_MODE == "hybrid"`。**改权重必须重跑评测** |
 | `TestDeploymentGuards` | `tests/test_ingestion_pipeline.py` | compose 真的起了 worker、共享卷、同元数据库与队列地址 |
 | `tests/test_retrieval_dedup.py`（26 条，B17） | tests/ | 截断前先去重；`top_k == 20`（召回量不许偷偷变大）；`access` 对象原样透传；真实索引上收窄白名单后不越界且非空；混合路用 `fused_score`；判据与下游口径一致 |
 | **`tests/test_manifest_cache.py`（15 条，F6）** | tests/ | 命中缓存不重读文件（**计数包装器**实测）；**切版本/回滚/指纹变必须失效**；`index_name` / `root` 不串味；命中缓存**不动磁盘**；缓存条数有上限；8 线程并发一致；**真实索引上"切版本后第一次检索就读到新索引"** |
@@ -530,3 +530,37 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./venv/Scripts/python.exe scripts/bulk_i
 | **F6-manifest缓存** | **生效 manifest 加进程内缓存，hybrid 单条中位 −90.3%** | 台账 §3 `[F6-manifest缓存]` + `[D-14]`、`F6_task_level_review.txt`、`F6_manifest_load_cost_{before,after}_20260925.txt` |
 
 **踩坑 87 条**（A11 / B22 / C8 / D29 / E11 / F6），全文 `docs/RAG_DEV_PITFALLS.md`。
+
+
+---
+
+## 2026-09-25 当前进度追加：Query Resolution Phase 1 + 多跳证据编排
+
+本批已完成：
+
+- 默认检索模式为 `hybrid`；聊天固定正式 chunk 路径。
+- `services/query_resolution.py` 提供确定性规范化、订单实体补全、指代不明识别、原查询回退和基础多跳拆解。
+- `services/chat_service.py::retrieve_with_query_plan` 对原始/改写查询及多跳子问题执行独立 hybrid + ACL 检索。
+- trace 已记录 rewrite 策略、置信度、歧义类型、子问题和覆盖结果。
+- 全量门禁：JUnit `1058 / 0F / 0E / 0S`；控制台 `1054 passed`。
+
+下一步只做：**回答级证据门禁与多跳回答编排**。
+
+- required 子问题全部有证据才允许完整结论；
+- 部分覆盖只能部分回答并明确缺口；
+- 关键子问题无证据时澄清或转人工；
+- 暂不接 Docker、LLM planner、无限 agent loop。
+
+注意：规则拆分只是候选识别，不能称为完整语义多跳规划；详见踩坑 D30。
+
+
+### 2026-09-25 门禁数字校正追加
+
+本批最终门禁以 `tmp/progress_record_final_junit.xml` 为准：JUnit `1061 / 0F / 0E / 0S`，控制台 `1057 passed`、4 subtests。此前追加段中的 `1058 / 1054` 是中间数字，已被最终结果取代。
+
+
+## 2026-09-25 当前进度追加：回答级 Evidence Gate
+
+已完成：`complete / partial / clarify / human_review` 判定；required 子问题缺证据时禁止完整回答；高风险缺证据进入 `human_review`；最终 JUnit `1062 / 0F / 0E / 0S`，控制台 `1058 passed`。
+
+下一步：把 `clarify` 和 `human_review` 变成稳定的用户可见回复与转人工动作，保留缺失子问题和 evidence ids。

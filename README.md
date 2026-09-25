@@ -31,7 +31,7 @@
 > **✅ 双轨已合（F1 关闭，2026-09-25）**：`services/chat_service.py` 的问答检索默认走
 > **chunk 级正式路径**（`retrieve_chunk_items_for_chat()`，带 tenant + `document_acl` 服务端前置过滤），
 > 文档语料的 209 份文档 / 9229 个 chunk **在聊天接口里可检索**。
-> 种子 FAQ 路径保留为**可回退开关**：`RAG_CHAT_RETRIEVAL_PATH=seed`（默认值为 `chunk`）。
+> 种子 FAQ 路径仅保留给显式 demo 接口；正式聊天链路固定使用 chunk 索引。
 > 判定口径：读 `services/chat_service.py` 的 `DEFAULT_CHAT_RETRIEVAL_PATH` 常量 ——
 > 它与上面这行锚点由 `tests/test_ingestion_pipeline.py::TestReadmeTrackConsistency` **双向校验**，
 > 改一边不改另一边会让测试变红。守卫是故意留的：**切轨是里程碑事件，不该被静默忘记。**
@@ -40,8 +40,8 @@
 
 ### 0.1 「混合」在本仓库有两个含义 —— 只有第二套是真混合检索（2026-09-25）
 
-<!-- b8-hybrid: default-retrieval-mode=dense -->
-> 上面这行是**机器可读锚点**（不渲染）：现役默认模式 = `dense`。它与
+<!-- b8-hybrid: default-retrieval-mode=hybrid -->
+> 上面这行是**机器可读锚点**（不渲染）：现役默认模式 = `hybrid`。它与
 > `routers/retrieval.py::DEFAULT_RETRIEVAL_MODE` 由
 > `tests/test_ingestion_pipeline.py::TestReadmeTrackConsistency` **双向校验**，
 > 改一边不改另一边会红。切默认之前先读下面第三条的**上线顺序**。
@@ -60,10 +60,8 @@
 
 **B 轨三种模式**（请求体字段 `retrieval_mode`，取值 `dense` / `sparse` / `hybrid`）：
 
-* **`dense` 是默认** —— 因为已部署的生效索引可能是不含稀疏路的**旧构建**，
-  把默认切成 `hybrid` 会让所有检索请求在发版瞬间 503（稀疏索引不可用是**显式失败，不降级**）。
-  上线顺序：`python scripts/rebuild_chunk_index.py` 重建 → 确认接口返回 `index.sparse_available=true`
-  → 再切默认（**唯一一处**常量：`routers/retrieval.py::DEFAULT_RETRIEVAL_MODE`）；
+* **`hybrid` 是默认** —— 正式路径统一使用稠密 + 稀疏两路召回；生效索引缺少稀疏路时明确返回 503，不静默退回 dense。
+  发布前确认接口返回 `index.sparse_available=true`；dense 仅用于显式诊断和离线对照。
 * 字段名刻意叫 `retrieval_mode` 而不是 `mode` —— A 轨已经占了 `mode`，同名不同义是最难查的兼容性事故
   （踩坑 B21）。响应里回显实际生效值；
 * 三种模式的**实测数字见 §3.6**。注意：**混合检索的收益不是"指标全面上涨"**，结论见该节。
@@ -398,7 +396,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv/Scripts/python.exe scripts/evaluat
 | 口语化查询绝对水平 | R@1 只有 0.4000、R@10 0.5667 —— **低**。30 条里有 7 条两路 top-50 全捞不到；**已逐条复核（2026-09-25）**：7 条**全部是真·检索失败**（金标 span / 文档 / 章节三样都在库里），金标假阴性 **0 条**。真因是口语化改写与库内表述的**词面距离过大** → 该做查询改写 / 同义扩展，不是修金标、也不是继续调融合权重 |
 | 检索延迟 | **F6 已修（2026-09-25）**：瓶颈实测确认在「每次检索重读 19.0MB manifest」（`read_manifest` 约 100–120 ms，同一份索引的 `faiss.read_index` 只要约 5 ms；hybrid 一次请求读**两遍**）。加进程内缓存后 hybrid 单条**中位 268.5 → 25.9 ms（−90.3%）**，dense 127.1 → 14.9、sparse 139.8 → 10.8；**评测指标逐位不变**（缓存只该改速度）。冷启动首读仍付一次约 100 ms。证据：`reports/rag_ingestion_auth_review/F6_manifest_load_cost_before_20260925.txt` / `..._after_...` |
 | §3.1/3.2 的数字 | **仍是演示路径口径**，B 轨这节的 0.7160 / 0.4000 才是正式路径。**两套数字不能混用** |
-| 线上默认 | 仍是 `dense`。`hybrid` 要等"重建索引 + 确认 `sparse_available=true`"之后才切（见 §0.1） |
+| 线上默认 | `hybrid`。生效索引必须包含 sparse；缺失时显式返回 503（见 §0.1） |
 
 ---
 

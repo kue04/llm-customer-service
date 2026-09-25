@@ -73,15 +73,13 @@ class ChatRetrievalPathTest(unittest.TestCase):
             os.environ.pop("RAG_CHAT_RETRIEVAL_PATH", None)
             self.assertEqual(chat_service.resolve_chat_retrieval_path(), "chunk")
 
-    def test_env_var_can_roll_back_to_seed(self) -> None:
-        """回退开关必须真的可用：切轨出问题时要有退路，不能只靠改代码。"""
-
+    def test_legacy_seed_env_is_ignored(self) -> None:
         with patch.dict(os.environ, {"RAG_CHAT_RETRIEVAL_PATH": "seed"}):
-            self.assertEqual(chat_service.resolve_chat_retrieval_path(), "seed")
+            self.assertEqual(chat_service.resolve_chat_retrieval_path(), "chunk")
 
     def test_uppercase_and_padding_are_accepted(self) -> None:
         with patch.dict(os.environ, {"RAG_CHAT_RETRIEVAL_PATH": "  SEED  "}):
-            self.assertEqual(chat_service.resolve_chat_retrieval_path(), "seed")
+            self.assertEqual(chat_service.resolve_chat_retrieval_path(), "chunk")
 
     def test_invalid_value_falls_back_instead_of_crashing(self) -> None:
         """拼错的环境变量不该把整条问答链路打挂。"""
@@ -145,45 +143,65 @@ class ChunkItemAdaptationTest(unittest.TestCase):
 
 
 class ChatRetrievalDispatchTest(unittest.TestCase):
-    """分发：两条轨道互不串门，且缺身份时 fail closed。"""
+    """正式聊天只走 chunk 检索；seed 仅保留在显式 demo API。"""
 
-    def test_seed_track_never_touches_the_chunk_index(self) -> None:
-        with patch.dict(os.environ, {"RAG_CHAT_RETRIEVAL_PATH": "seed"}):
-            with patch.object(
-                chat_service, "retrieve_rag_items", return_value=[{"answer": "seed-faq"}]
-            ) as seed_mock, patch.object(chat_service, "retrieve_chunk_items_for_chat") as chunk_mock:
-                items = chat_service.retrieve_chat_items("query", auth=object())
-
-        self.assertEqual(items, [{"answer": "seed-faq"}])
-        seed_mock.assert_called_once()
-        chunk_mock.assert_not_called()
-
-    def test_chunk_track_never_touches_the_seed_faq(self) -> None:
-        with patch.dict(os.environ, {"RAG_CHAT_RETRIEVAL_PATH": "chunk"}):
-            with patch.object(chat_service, "retrieve_rag_items") as seed_mock, patch.object(
-                chat_service, "retrieve_chunk_items_for_chat", return_value=[sample_chunk_hit()]
-            ) as chunk_mock:
+    def test_chat_never_touches_seed_faq(self) -> None:
+        with patch.object(chat_service, "retrieve_chunk_items_for_chat", return_value=[sample_chunk_hit()]) as chunk_mock:
+            with patch.object(chat_service, "retrieve_rag_items", create=True) as seed_mock:
                 items = chat_service.retrieve_chat_items("query", auth=object())
 
         seed_mock.assert_not_called()
         chunk_mock.assert_called_once()
         self.assertEqual(items[0]["answer"], sample_chunk_hit()["text"])
 
-    def test_chunk_track_without_identity_is_fail_closed(self) -> None:
-        """拿不到身份 → 零命中，且**不回退**到没有权限过滤的种子 FAQ。
-
-        一旦有人把 ``auth is None`` 改成"那就走 seed 吧"，无身份的请求
-        就会拿到本不该看到的答案。这条是 fail closed 的锁。
-        """
-
-        with patch.dict(os.environ, {"RAG_CHAT_RETRIEVAL_PATH": "chunk"}):
-            with patch.object(
-                chat_service, "retrieve_rag_items", return_value=[{"answer": "must-not-be-used"}]
-            ) as seed_mock:
-                items = chat_service.retrieve_chat_items("query", auth=None)
-
+    def test_chat_without_identity_is_fail_closed(self) -> None:
+        items = chat_service.retrieve_chat_items("query", auth=None)
         self.assertEqual(items, [])
-        seed_mock.assert_not_called()
+
+    def test_query_preprocessing_has_one_traceable_contract(self) -> None:
+        plan = chat_service.preprocess_retrieval_query(
+            "refund status",
+            {"primary_intent": "refund_progress", "secondary_intents": ["refund_amount"]},
+            {"facts": {"entities": {"order_id": "o-1"}}},
+        )
+        self.assertEqual(plan["original_query"], "refund status")
+        self.assertIn("refund_progress", plan["resolved_query"])
+        self.assertTrue(plan["rewrite_applied"])
+        self.assertIn("intent_hint", plan["rewrite_strategy"])
+        self.assertEqual(plan["entities"]["order_id"], "o-1")
+
+    def test_multi_hop_retrieval_returns_coverage_per_subquery(self) -> None:
+        plan = {
+            "sub_queries": [
+                {"sub_query_id": "q1", "query": "refund rule"},
+                {"sub_query_id": "q2", "query": "delivery delay compensation"},
+            ],
+            "original_query": "refund and delay",
+        }
+        with patch.object(chat_service, "retrieve_chat_items", side_effect=[[sample_chunk_hit(chunk_id="c1", score=0.9)], []]):
+            items, coverage = chat_service.retrieve_with_query_plan(plan, auth=object())
+        self.assertEqual(len(items), 1)
+        self.assertEqual([item["status"] for item in coverage], ["covered", "missing"])
+        self.assertEqual(coverage[0]["evidence_ids"], ["c1"])
+
+    def test_evidence_gate_modes(self) -> None:
+        self.assertEqual(chat_service.decide_evidence_gate([], evidence_count=1)["mode"], "complete")
+        self.assertEqual(chat_service.decide_evidence_gate([], evidence_count=0)["mode"], "clarify")
+        coverage = [
+            {"sub_query_id": "q1", "status": "covered"},
+            {"sub_query_id": "q2", "status": "missing"},
+        ]
+        self.assertEqual(chat_service.decide_evidence_gate(coverage, evidence_count=1)["mode"], "partial")
+        self.assertEqual(
+            chat_service.decide_evidence_gate(coverage, evidence_count=1, risk_level="high")["mode"],
+            "human_review",
+        )
+
+    def test_query_preprocessing_is_identity_without_intent(self) -> None:
+        plan = chat_service.preprocess_retrieval_query("随便问问", {}, {})
+        self.assertEqual(plan["resolved_query"], plan["original_query"])
+        self.assertFalse(plan["rewrite_applied"])
+
 
 
 # ================================================================ 端到端（真实索引）

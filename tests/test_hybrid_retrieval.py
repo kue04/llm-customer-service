@@ -675,7 +675,7 @@ class TestSparseFailureModes:
 
         from routers.retrieval import DEFAULT_RETRIEVAL_MODE
 
-        assert DEFAULT_RETRIEVAL_MODE == "dense", (
+        assert DEFAULT_RETRIEVAL_MODE == "hybrid", (
             "默认模式改成 hybrid 之前，必须先确认索引已重建且 sparse_available=true；"
             "否则现有部署会在发版瞬间 503"
         )
@@ -693,12 +693,12 @@ class TestChatRetrievalModeWiring:
     这里用替身锁住"选中的是哪个实现"，不需要真索引与真库。
     """
 
-    def test_default_mode_is_dense(self, monkeypatch) -> None:
+    def test_default_mode_is_hybrid(self, monkeypatch) -> None:
         from services import chat_service
 
         monkeypatch.delenv("RAG_CHAT_RETRIEVAL_MODE", raising=False)
-        assert chat_service.resolve_chat_retrieval_mode() == "dense"
-        assert chat_service.DEFAULT_CHAT_RETRIEVAL_MODE == "dense"
+        assert chat_service.resolve_chat_retrieval_mode() == "hybrid"
+        assert chat_service.DEFAULT_CHAT_RETRIEVAL_MODE == "hybrid"
 
     @pytest.mark.parametrize("value", ["hybrid", "HYBRID", " hybrid ", "sparse"])
     def test_valid_values_are_honoured(self, monkeypatch, value) -> None:
@@ -714,7 +714,7 @@ class TestChatRetrievalModeWiring:
         from services import chat_service
 
         monkeypatch.setenv("RAG_CHAT_RETRIEVAL_MODE", value)
-        assert chat_service.resolve_chat_retrieval_mode() == "dense"
+        assert chat_service.resolve_chat_retrieval_mode() == "hybrid"
 
     def _run_chat_retrieval(self, monkeypatch, mode: str) -> list[tuple[str, dict]]:
         """在无真库条件下跑一次 ``retrieve_chunk_items_for_chat``，记录它调了谁。"""

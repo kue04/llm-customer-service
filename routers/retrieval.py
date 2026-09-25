@@ -61,20 +61,15 @@ from utils.vector_retriever import (
 router = APIRouter()
 
 #: B 轨检索的**默认模式**。
+#: 默认使用 ``hybrid``：正式索引必须同时具备 dense 与 sparse 两路；旧索引不可用时显式失败，避免静默退回导致质量口径漂移。
 #:
-#: 刻意保持 ``dense``：把默认切成 ``hybrid`` 会让"生效索引是纯稠密构建"的部署
-#: 在发版瞬间全部返回 503（稀疏索引不可用是显式失败，不降级）。
-#: 切换顺序：① 用默认参数重建索引（会同时产出 ``sparse.sqlite``）；
-#: ② 调 ``POST /retrieval/search`` 确认响应里 ``index.sparse_available == true``；
-#: ③ 把这里改成 ``"hybrid"``（一行改动 + 重跑门禁）。
-#: **不要**在索引还没重建时先改这个常量 —— 那正是"改了配置没改数据"的经典事故。
-DEFAULT_RETRIEVAL_MODE = "dense"
+#: 生效索引缺少稀疏路时明确返回 503，不静默退回 dense；dense 可显式选择用于诊断。
+DEFAULT_RETRIEVAL_MODE = "hybrid"
 
 #: 正式检索路径读的 operation 名（权限表里的 ``retrieval_read``）
 READ_OPERATION = "retrieval_read"
 
 #: 稳定 error_code → HTTP 状态码。
-#:
 #: 刻意**不**把任何检索错误一律映射成 500：
 #: * ``chunk_index_unavailable`` —— 索引还没建 / 指针缺失，是**服务可用性**问题 → 503，
 #:   调用方可以稍后重试，也不该被当成"服务器 bug"报给用户；
