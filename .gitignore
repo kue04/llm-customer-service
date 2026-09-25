@@ -1,26 +1,70 @@
+# ---- Python ----
 venv/
-local_models/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# ---- 环境变量与密钥 ----
 .env
-.venv/
+.env.local
+
+# ---- 工具缓存 ----
 .cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- 本地下载的依赖/模型（不入库，用下载脚本获取）----
+local_models/
+models/takeout-qwen-lora-*/
 .codex_deps/
 .codebase-memory/
+
+# ---- 运行时产物 ----
+# reports/ 整体是运行产物；但执行计划（docs/RAG_EXECUTION_PLAN_*.md）明确要求
+# 阶段评审材料落盘到 reports/execution_baseline 与 reports/rag_ingestion_auth_review，
+# 属于交付证据，因此这两个目录例外入库（内容均为小体积文本）。
+# reports/retrieval_hybrid/ 同理：B 轨混合检索的评测基线与对比结论是面试可讲证据，
+# 也必须入库；其中放的是 JUnit XML / 评测 JSON / 文本结论，不含大二进制。
+reports/*
+!reports/execution_baseline/
+!reports/rag_ingestion_auth_review/
+!reports/retrieval_hybrid/
 eval_outputs/
-reports/
-models/takeout-qwen-lora-*/
-data/faiss_store/
-output/pdf/
 tmp/
+output/pdf/
+data/faiss_store/
 data/knowledge_backups/
-README - 副本.md
+# 以下两个都是**生成物**，不进仓：
+# - data/corpus/      ：scripts/build_corpus_documents.py 产出（6MB+，含爬取的法规原文）
+# - data/object_store/：文档上传后的原始对象存储（7MB+，可从 corpus 重新灌入）
+# 仓库只收生成脚本 + 清单结构说明，不收产物本身，避免撞仓库体积门禁（踩坑 E6）。
+data/corpus/
+data/corpus_samples/
+data/object_store/
+*.db
+*.sqlite3
 *.safetensors
 *.bin
 *.pt
 *.pth
 *.gguf
-*.sqlite3
-*.db
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# ---- 历史遗留副本 ----
+README - 副本.md
+
+# 说明：reports/ 下的评测报告是运行产物，不入库。
+# 需要复现数字时用 scripts/ 下的评测脚本重新生成；
+# 单文件体积上限由 scripts/check_repo_data_size.py 在 CI 中守护（默认 1MB）。
+
+# ---- 本地工作记忆（不入库）----
+.workbuddy/

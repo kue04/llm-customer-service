@@ -1,0 +1,91 @@
+{
+  "generated_by": "tmp/probe_b17_strategy.py",
+  "limit": 3,
+  "pool": 20,
+  "totals": {
+    "S0 不去重（现状）": 15,
+    "S1 content_hash": 19,
+    "S2 归一化文本": 21,
+    "S3 content_hash + 包含": 19,
+    "S4 归一化文本 + 包含": 21
+  },
+  "rows": [
+    {
+      "query": "外卖配送超时怎么赔偿",
+      "pool": 20,
+      "effective": {
+        "S0 不去重（现状）": 2,
+        "S1 content_hash": 3,
+        "S2 归一化文本": 3,
+        "S3 content_hash + 包含": 3,
+        "S4 归一化文本 + 包含": 3
+      }
+    },
+    {
+      "query": "消费者七天无理由退货的规定",
+      "pool": 20,
+      "effective": {
+        "S0 不去重（现状）": 1,
+        "S1 content_hash": 2,
+        "S2 归一化文本": 3,
+        "S3 content_hash + 包含": 2,
+        "S4 归一化文本 + 包含": 3
+      }
+    },
+    {
+      "query": "电子商务经营者应当履行的义务",
+      "pool": 20,
+      "effective": {
+        "S0 不去重（现状）": 2,
+        "S1 content_hash": 3,
+        "S2 归一化文本": 3,
+        "S3 content_hash + 包含": 3,
+        "S4 归一化文本 + 包含": 3
+      }
+    },
+    {
+      "query": "食品经营许可证怎么办",
+      "pool": 20,
+      "effective": {
+        "S0 不去重（现状）": 2,
+        "S1 content_hash": 3,
+        "S2 归一化文本": 3,
+        "S3 content_hash + 包含": 3,
+        "S4 归一化文本 + 包含": 3
+      }
+    },
+    {
+      "query": "广告不得含有哪些内容",
+      "pool": 20,
+      "effective": {
+        "S0 不去重（现状）": 3,
+        "S1 content_hash": 3,
+        "S2 归一化文本": 3,
+        "S3 content_hash + 包含": 3,
+        "S4 归一化文本 + 包含": 3
+      }
+    },
+    {
+      "query": "个人信息处理者收集个人信息需要遵守什么原则",
+      "pool": 20,
+      "effective": {
+        "S0 不去重（现状）": 2,
+        "S1 content_hash": 2,
+        "S2 归一化文本": 3,
+        "S3 content_hash + 包含": 2,
+        "S4 归一化文本 + 包含": 3
+      }
+    },
+    {
+      "query": "网络交易平台经营者对平台内经营者的管理义务",
+      "pool": 20,
+      "effective": {
+        "S0 不去重（现状）": 3,
+        "S1 content_hash": 3,
+        "S2 归一化文本": 3,
+        "S3 content_hash + 包含": 3,
+        "S4 归一化文本 + 包含": 3
+      }
+    }
+  ]
+}

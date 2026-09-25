@@ -1,0 +1,14 @@
+## ruff
+All checks passed!
+## compileall
+OK
+## alembic upgrade head (repeat x2)
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_ingestion_auth, 建立数据接入、文档版本、ACL、处理任务、索引与审计相关的 13 张表
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+## data size
+检查目录：D:\llm\llm-customer-service
+单文件上限：1.0 MB
+结果：通过，没有超标文件。

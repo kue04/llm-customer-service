@@ -34,6 +34,7 @@ class AnswerComposerTest(unittest.TestCase):
                     "answer": "优惠券不能使用通常与使用门槛、有效期、适用品类、适用商家或支付方式限制有关。请您点开优惠券详情或结算页查看不可用原因；如果确认满足条件仍不可用，可以截图后通过订单页或官方客服反馈核实。",
                 }
             ],
+            mode="on",
         )
 
         self.assertIn("使用门槛", reply)
@@ -181,6 +182,7 @@ class AnswerComposerTest(unittest.TestCase):
                     "answer": "商家电话或联系商家入口一般可以在订单详情页查看，也可以进入商家主页查找“联系商家”入口。建议优先使用平台内电话或在线联系功能；如果页面没有展示电话，说明该商家可能未开放电话联系或使用平台虚拟号。",
                 }
             ],
+            mode="on",
         )
 
         self.assertTrue(reply.startswith("商家电话一般在订单详情页"))
@@ -597,6 +599,87 @@ class AnswerComposerTest(unittest.TestCase):
         self.assertEqual(reply, "请在订单详情页查看退款进度。")
         self.assertFalse(trace["applied"])
         self.assertEqual(trace["reason"], "no_primary_item")
+
+
+class ComposerModeTest(unittest.TestCase):
+    GOOD_REPLY = (
+        "优惠券不能使用通常与使用门槛、有效期、适用品类、适用商家或支付方式限制有关。"
+        "请您点开优惠券详情或结算页查看不可用原因。"
+    )
+    PRIMARY_ITEM = {
+        "category": "优惠券和促销类问题",
+        "intent": "优惠券不可用",
+        "answer": (
+            "优惠券不能使用通常与使用门槛、有效期、适用品类、适用商家或支付方式限制有关。"
+            "请您点开优惠券详情或结算页查看不可用原因；如果确认满足条件仍不可用，"
+            "可以截图后通过订单页或官方客服反馈核实。"
+        ),
+    }
+
+    def test_on_mode_always_recomposes_from_primary_evidence(self) -> None:
+        reply, trace = compose_answer_if_needed(
+            query="优惠券为什么不能用",
+            reply=self.GOOD_REPLY,
+            retrieved_items=[self.PRIMARY_ITEM],
+            mode="on",
+        )
+
+        self.assertTrue(trace["applied"])
+        self.assertEqual(trace["mode"], "on")
+        self.assertEqual(trace["reason"], "structured_from_primary_evidence")
+        self.assertIn("answer_parts", trace)
+
+    def test_auto_mode_keeps_a_good_model_reply(self) -> None:
+        reply, trace = compose_answer_if_needed(
+            query="优惠券为什么不能用",
+            reply=self.GOOD_REPLY,
+            retrieved_items=[self.PRIMARY_ITEM],
+            mode="auto",
+        )
+
+        self.assertEqual(reply, self.GOOD_REPLY)
+        self.assertFalse(trace["applied"])
+        self.assertEqual(trace["mode"], "auto")
+        self.assertEqual(trace["reason"], "model_reply_kept")
+
+    def test_auto_mode_intervenes_when_reply_is_too_short(self) -> None:
+        reply, trace = compose_answer_if_needed(
+            query="优惠券为什么不能用",
+            reply="建议提交售后。",
+            retrieved_items=[self.PRIMARY_ITEM],
+            mode="auto",
+        )
+
+        self.assertNotEqual(reply, "建议提交售后。")
+        self.assertTrue(trace["applied"])
+        self.assertEqual(trace["reason"], "low_quality_model_reply")
+        self.assertIn("answer_parts", trace)
+
+    def test_off_mode_never_touches_the_model_reply(self) -> None:
+        short_reply = "建议提交售后。"
+
+        reply, trace = compose_answer_if_needed(
+            query="优惠券为什么不能用",
+            reply=short_reply,
+            retrieved_items=[self.PRIMARY_ITEM],
+            mode="off",
+        )
+
+        self.assertEqual(reply, short_reply)
+        self.assertFalse(trace["applied"])
+        self.assertEqual(trace["mode"], "off")
+        self.assertEqual(trace["reason"], "composer_disabled")
+
+    def test_unknown_mode_falls_back_to_auto(self) -> None:
+        reply, trace = compose_answer_if_needed(
+            query="优惠券为什么不能用",
+            reply=self.GOOD_REPLY,
+            retrieved_items=[self.PRIMARY_ITEM],
+            mode="typo",
+        )
+
+        self.assertEqual(trace["mode"], "auto")
+        self.assertEqual(reply, self.GOOD_REPLY)
 
 
 if __name__ == "__main__":

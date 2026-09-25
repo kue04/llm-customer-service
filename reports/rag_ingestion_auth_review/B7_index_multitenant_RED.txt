@@ -1,0 +1,11 @@
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_ingestion_auth, 建立数据接入、文档版本、ACL、处理任务、索引与审计相关的 13 张表
+[tenant-alpha] outcome=succeeded stage=published error=
+    生效索引 v1 条目=6 按租户分布={'tenant-alpha': 6} 文件=vectors.faiss
+    该租户库里实际 chunk 数=6
+[tenant-beta] outcome=succeeded stage=published error=
+    生效索引 v1 条目=6 按租户分布={'tenant-beta': 6} 文件=vectors.faiss
+    该租户库里实际 chunk 数=6
+
+工作目录：C:\Users\kk\AppData\Local\Temp\b7-probe-d86tqqjk

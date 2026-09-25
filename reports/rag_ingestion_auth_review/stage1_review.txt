@@ -1,0 +1,137 @@
+阶段编号：1
+阶段目标：建立数据库模型与迁移（1.1），并把身份来源从可伪造的请求头换成 JWT（1.2）
+
+═══ 一、已完成任务 ═══
+
+1.1 建立数据模型和迁移
+  - alembic.ini / alembic/env.py / alembic/versions/0001_ingestion_auth.py
+  - services/ingestion/{__init__,db,models,repository}.py
+  - tests/test_ingestion_models.py（20 个测试）
+  - 13 张表 + 全部索引/唯一约束/CHECK/复合外键；迁移幂等；含 downgrade
+
+1.2 定义身份上下文并替换信任 Header
+  - services/auth_context.py（新增）：不可变 AuthContext、JWT 校验、角色→scope 策略表
+  - services/auth_service.py（重写）：FastAPI 依赖层，401/403/500 翻译，RequestMeta
+  - main.py：lifespan 启动自检 + OpenAPI 声明 bearerAuth
+  - 11 个受保护 router 全部改为显式接收 AuthContext（audit/chat/example/feedback/info/
+    knowledge/ops/order/prompt/release/retrieval）
+  - tests/conftest.py（新增）：固定鉴权环境变量，保证测试自洽可复现
+  - tests/auth_helpers.py（新增）：测试自签 JWT / 构造 AuthContext
+  - tests/test_auth_context.py（新增，45 个测试）
+  - tests/test_tenant_isolation.py（新增，14 个测试）
+  - 8 个既有测试文件从 X-User-Role 迁移到 JWT（语义与断言强度不变）
+
+═══ 二、自动检查结果（证据见同目录） ═══
+
+证据文件：
+  B2_stage1-check.txt     —— 计划要求的阶段任务检查
+  B2_full_test-output.txt —— 全量回归
+  B2_task1_2_test-output.txt —— 1.2 新增两个测试文件
+
+1) python -m pytest tests/test_ingestion_models.py tests/test_auth_context.py tests/test_tenant_isolation.py -q
+   → 79 passed in 3.45s                                          [通过]
+2) python -m ruff check . → All checks passed!                   [通过]
+3) python -m compileall services routers schemas models alembic main.py → OK   [通过]
+4) python scripts/check_repo_data_size.py → 通过，没有超标文件    [通过]
+5) python -m pytest -q（全量）→ 332 passed, 3 warnings, 4 subtests passed  [通过]
+   基线为 252 passed（见 reports/execution_baseline/test-output.txt），
+   本阶段新增 80 个测试，**零回归、零既有失败**。
+   3 条 warning 与基线完全相同（faiss SWIG 绑定的 DeprecationWarning），非新增噪声。
+
+真实应用端到端冒烟（对 main.app 直打，非探针应用）：
+  /health                     → 200
+  /model/info 无令牌          → 401
+  /model/info 仅伪造旧头      → 401   （同时日志出现 legacy identity headers 告警）
+  /model/info admin 令牌      → 200
+  /model/info agent 令牌      → 403   （model_info_read 只给 supervisor/qa/admin）
+  /model/info 过期令牌        → 401
+  /audit/logs supervisor 令牌 → 200
+
+═══ 三、人工审查结果 ═══
+
+逐条核对计划 1.2 的五项实现要求：
+
+[√] 1. 从 Authorization: Bearer <JWT> 读取身份
+       auth_service._extract_bearer_token 只接受 Bearer 方案；
+       Basic / Token / 空令牌 / 缺头一律 401。测试覆盖 6 种畸形头。
+
+[√] 2. 校验签名、发行方、受众、过期时间和 tenant_id claim
+       decode_access_token 显式传 algorithms=[config.algorithm]（白名单，含 none 拦截）、
+       issuer、audience、leeway、options={"require": ["exp","iss","aud","sub"]}；
+       tenant_id 由 build_auth_context 单独校验，缺失即 401。
+       参数化测试覆盖 9 种非法令牌：过期 / iss 错 / aud 错 / 签名错 / 缺 exp /
+       缺 aud / alg=none / 空串 / 非 JWT。
+
+[√] 3. 测试环境使用专用测试密钥；生产密钥只从环境变量读取
+       load_auth_config 只读 RAG_JWT_SECRET；缺失且未显式打开
+       RAG_ALLOW_TEST_JWT_SECRET 时抛 AuthConfigError（fail closed，非降级放行）。
+       测试更进一步：conftest.py 强制写入本进程随机密钥，**产品代码里不存在
+       任何可用于签发的密钥**；另有测试断言生效密钥来自环境变量且不等于内置常量。
+
+[√] 4. X-User-Role 不参与鉴权；兼容期仅可记录，不可授权
+       auth_service._warn_on_legacy_headers 只记日志（实测日志已确认输出），
+       返回值完全不进入 AuthContext —— AuthContext 只装已验证的 claims。
+       负向测试：
+         · 只发 X-User-Role: admin 不发令牌           → 401
+         · agent 令牌 + X-User-Role: admin 打管理接口 → 403（且 whoami 仍返回 agent_1）
+         · 令牌自报 scopes/permissions（伪造提权）    → 403，且 scopes 被忽略
+       另外补了一条计划没写但同类的问题：token 里的 scopes / permissions claim
+       一律忽略，权限只能由服务端按 roles 推导。否则持有合法令牌的人可自报权限提权。
+
+[√] 5. 缺失/过期 token 返回 401，租户或资源不匹配返回 403 或不泄漏存在性的 404
+       401：缺头/空头/非 Bearer/畸形/过期/签名错/iss 错/aud 错/缺 claim
+       403：认证通过但 scope 不足；未登记的 operation 对所有人 403（fail closed）
+       404：跨租户资源 —— 与「资源不存在」返回**完全相同的状态码与响应体**，
+            并有专门断言证明两者不可区分，且响应里不含其他租户的标题与 id
+       500：服务端未配密钥（服务端故障不判成用户 401），测试已覆盖
+
+阶段 1 额外加固（计划未显式要求，但属于同类风险且已有测试）：
+  · ROLE_SCOPES 由授权表 inversion 推导，并有测试断言两者严格同构，
+    防止「改了表忘了改推导」导致权限静默漂移
+  · AuthContext 不可变（dataclass frozen）+ 空 user_id/tenant_id 构造即拒
+  · primary_role 取字典序最小，保证审计角色记录不抖动
+  · 审计 request_id 改为使用 HTTP 请求追踪号（X-Request-Id 或新生成 uuid），
+    业务对象 id 仍走 object_id 字段，信息量只增不减
+  · 客户端在请求体里自报的 operator_id / operator_role 会被 JWT 身份覆盖，
+    旧实现会原样采信（属于同类信任边界问题，一并收紧）
+
+═══ 四、风险与回滚点 ═══
+
+风险 1（已存在，未消除）：本机无 Docker / 无 PostgreSQL，迁移只在 SQLite 上实测。
+  缓解：迁移按方言无关写法；docker-compose 已补 postgres:16 + redis:7；
+        连接串只走 RAG_DATABASE_URL。仍需在真实 PostgreSQL 上复验一次。
+风险 2（新增，需注意）：这是一次**破坏性接口变更**。
+  仍按 X-User-Role / X-Operator-Id 调用的旧客户端会全部收到 401。
+  缓解：现有前端/脚本需换成 Bearer 令牌；兼容期日志会打印告警便于排查。
+        /docs 已声明 bearerAuth，联调方可以直接在 Swagger 里贴令牌。
+风险 3（新增）：令牌签发方尚未实现（本期只做校验）。
+  当前依赖外部签发 JWT（claims 需含 sub / tenant_id / roles / iss / aud / exp）。
+  阶段 4 接 OIDC 时不需要改动校验逻辑。
+
+回滚点：本阶段改动集中在
+  services/auth_context.py（新增，可删）
+  services/auth_service.py（重写，可从 git 恢复）
+  main.py、11 个 routers、8 个测试文件、tests/conftest.py、tests/auth_helpers.py
+数据库侧只有 alembic/versions/0001 与 services/ingestion/*，与鉴权改动互不耦合，
+可分别回滚。回滚命令（需用户确认后执行）：
+  git checkout -- services/auth_service.py main.py routers/ tests/
+  rm -f services/auth_context.py tests/conftest.py tests/auth_helpers.py
+
+═══ 五、遗留问题（不阻塞本阶段结论） ═══
+
+1. PostgreSQL 上的迁移与鉴权复验（见风险 1），归入阶段 7 发布门禁。
+2. scope 词汇表沿用既有 operation 名（read:/write:/review: 前缀）。
+   阶段 4.1 引入 knowledge_base:read / document:upload / index:rebuild 等
+   资源级权限枚举时在 auth_context.py 扩展，调用方无需改动。
+3. 令牌签发（登录/换票）接口不在本期计划内，需要时由 OIDC Provider 提供。
+
+═══ 阶段结论 ═══
+
+PASS
+
+依据：计划 1.2 的五项实现要求逐条满足且有测试覆盖；计划指定的阶段检查
+（pytest 三文件 + ruff）全部通过；全量 332 passed 相对基线 252 passed 零回归；
+跨租户不泄漏存在性、伪造头无法提权两条核心安全断言均有负向测试证明；
+阶段 0 基线完整保留，既有失败记录未被混淆。
+
+允许进入阶段 2（文件接入与文档解析）。

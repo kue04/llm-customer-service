@@ -1,6 +1,8 @@
 import argparse
 from datetime import datetime
+import importlib
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -9,6 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "reports" / "chat_grounding"
 
+import config.rag_config
 from config.rag_config import get_rag_config_dict
 
 RISKY_PROMISE_TERMS = [
@@ -1268,10 +1271,11 @@ def summarize_grounding_reports(reports: list[dict]) -> dict:
     }
 
 
-def build_report_run_config(use_local_judge: bool) -> dict:
+def build_report_run_config(use_local_judge: bool, composer_mode: str = "") -> dict:
     return {
         "rag_config": get_rag_config_dict(),
         "use_local_judge": use_local_judge,
+        "composer_mode": composer_mode,
     }
 
 
@@ -1279,6 +1283,7 @@ def save_reports_to_file(
     reports: list[dict],
     output_dir: str | Path = DEFAULT_REPORT_DIR,
     use_local_judge: bool = False,
+    composer_mode: str = "",
 ) -> Path:
     created_at = datetime.now().astimezone()
     run_id = created_at.strftime("%Y-%m-%d_%H-%M-%S")
@@ -1307,8 +1312,9 @@ def save_reports_to_file(
         "run_id": run_id,
         "created_at": created_at.isoformat(timespec="seconds"),
         "script": "scripts/evaluate_chat_grounding.py",
-        "run_config": build_report_run_config(use_local_judge),
+        "run_config": build_report_run_config(use_local_judge, composer_mode),
         "use_local_judge": use_local_judge,
+        "composer_mode": composer_mode,
         "report_count": len(complete_reports),
         "summary": summarize_grounding_reports(complete_reports),
         "reports": complete_reports,
@@ -1354,6 +1360,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=EVALUATION_CASES_PATH,
         help="Path to a JSONL grounding case file.",
+    )
+    parser.add_argument(
+        "--composer-mode",
+        choices=("on", "off", "auto"),
+        default=None,
+        help=(
+            "answer_composer 介入方式。on=总是用主证据重组回复；"
+            "off=完全不介入，只看模型原始输出；auto=只在模型输出低质量时介入。"
+            "不传则使用 RAG_ANSWER_COMPOSER_MODE 环境变量。"
+        ),
     )
     parser.add_argument(
         "--blind",
@@ -1420,7 +1436,17 @@ def print_summary(summary: dict) -> None:
 
 
 def main() -> None:
+    global get_rag_config_dict
+
     args = parse_args()
+
+    # RagConfig 在 import 时就从环境变量固化为 frozen dataclass，
+    # 所以要改 composer mode 必须重设环境变量并重载 config 模块。
+    composer_mode = args.composer_mode or os.getenv("RAG_ANSWER_COMPOSER_MODE", "auto")
+    os.environ["RAG_ANSWER_COMPOSER_MODE"] = composer_mode
+    importlib.reload(config.rag_config)
+    get_rag_config_dict = config.rag_config.get_rag_config_dict
+
     cases_path = BLIND_EVALUATION_CASES_PATH if args.blind else args.cases_file
     evaluation_cases = load_evaluation_cases(cases_path)
     evaluation_queries = [case["query"] for case in evaluation_cases]
@@ -1436,6 +1462,15 @@ def main() -> None:
         }
         for case in evaluation_cases
     ]
+
+    # 本脚本的用例集带 ``expected_intent`` / ``expected_evidence_keywords``，
+    # 那是**种子 FAQ 的 intent 体系**（A 轨口径）。2026-09-25 聊天链路默认切到
+    # chunk 轨之后，这里若不锚定，就会以「无身份 + B 轨」运行 → 检索零命中 →
+    # 评测结果整片为空 —— 而"全空"看起来像"模型答不出来"，不像配置问题。
+    # 所以显式锚定，并允许外部用环境变量覆盖（但因 ``auth=None`` 会 fail closed，
+    # 覆盖成 chunk 目前拿不到结果）。
+    # ⚠️ 因此**本脚本的分数仍是 A 轨口径**，不能当作切轨后的检索质量（F2 同族缺口）。
+    os.environ.setdefault("RAG_CHAT_RETRIEVAL_PATH", "seed")
 
     from services.chat_service import get_answer_from_rag
 
@@ -1461,10 +1496,11 @@ def main() -> None:
         output_path = save_reports_to_file(
             reports=reports,
             use_local_judge=args.use_local_judge,
+            composer_mode=composer_mode,
         )
         print()
         print(f"Saved report: {output_path}")
-   
+
 
 if __name__ == "__main__":
     main()

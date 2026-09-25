@@ -68,10 +68,10 @@ def print_query_results(query: str, expected_keywords: list[str], limit: int = 3
         matched_expected_keywords = check_expected_keywords(top_answer, expected_keywords)
     else:
         matched_expected_keywords = []
-  
+
     hit_rate = calculate_hit_rate(matched_expected_keywords, expected_keywords)
     judgement = judge_hit_rate(hit_rate)
-    
+
 
     print(f"Top1 命中关键词：{'、'.join(matched_expected_keywords) or '无'}")
     print(
@@ -89,7 +89,7 @@ def print_query_results(query: str, expected_keywords: list[str], limit: int = 3
         )
         print(f"  {item['answer']}")
         print()
-    
+
     return {
         "query": query,
         "hit_rate": hit_rate,

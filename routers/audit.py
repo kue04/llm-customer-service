@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 
 from schemas.audit_schema import AuditLogListResponse
 from services.audit_service import list_audit_logs
-from services.auth_service import get_operator_context, require_read_operation_role
+from services.auth_service import AuthContext, get_auth_context, require_read_operation_role
 
 router = APIRouter()
 
@@ -14,9 +14,9 @@ def audit_logs(
     object_type: str = "",
     operator_role: str = "",
     request_id: str = "",
-    operator_context: dict = Depends(get_operator_context),
+    auth: AuthContext = Depends(get_auth_context),
 ):
-    require_read_operation_role("audit_read", operator_context)
+    require_read_operation_role("audit_read", auth)
     return list_audit_logs(
         limit=limit,
         action_type=action_type,

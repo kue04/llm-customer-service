@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B 轨混合检索 · 指标看板（2026-09-25 实测）</title>
+<style>
+  :root{
+    --bg:#14161a; --card:#1c1f25; --line:#2c313a;
+    --fg:#e8eaed; --fg2:#9aa0a6; --fg3:#6b7280;
+    --dense:#85B7EB; --sparse:#EF9F27; --hybrid:#5DCAA5; --cap:#EF9F27;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:32px 24px 56px; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px; line-height:1.65;
+  }
+  .wrap{max-width:1040px;margin:0 auto;}
+  h1{font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:.2px;}
+  .sub{color:var(--fg2);font-size:13px;margin:0 0 22px;}
+  .verdict{
+    background:var(--card); border:1px solid var(--line); border-left:3px solid var(--hybrid);
+    border-radius:8px; padding:14px 18px; margin-bottom:26px; font-size:13.5px;
+  }
+  .verdict b{color:var(--hybrid);}
+  .legend{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:18px;font-size:12.5px;color:var(--fg2);}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .dot{width:11px;height:11px;border-radius:2px;display:inline-block;}
+  .panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:20px;}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px 14px;}
+  .panel h2{font-size:14px;font-weight:600;margin:0 0 2px;}
+  .panel .meta{font-size:12px;color:var(--fg3);margin:0 0 18px;}
+  .groups{display:flex;justify-content:space-around;gap:10px;}
+  .group{flex:1;min-width:0;}
+  .bars{
+    position:relative;height:170px;display:flex;align-items:flex-end;gap:6px;
+    border-bottom:1px solid var(--line);padding:0 4px;
+  }
+  .bar{flex:1;border-radius:3px 3px 0 0;position:relative;min-height:3px;}
+  .bar .v{
+    position:absolute;top:-17px;left:50%;transform:translateX(-50%);
+    font-size:10.5px;color:var(--fg2);white-space:nowrap;
+  }
+  .b-dense{background:var(--dense);}
+  .b-sparse{background:repeating-linear-gradient(45deg,var(--sparse),var(--sparse) 3px,transparent 3px,transparent 6px);border:1px solid var(--sparse);}
+  .b-hybrid{background:var(--hybrid);}
+  .glabel{text-align:center;font-size:12px;color:var(--fg2);margin-top:8px;}
+  .cap-line{
+    position:absolute;left:0;right:0;border-top:1px dashed var(--cap);opacity:.75;
+  }
+  .cap-line em{
+    position:absolute;right:0;top:-16px;font-size:10.5px;color:var(--cap);font-style:normal;background:var(--card);padding-left:6px;
+  }
+  table{width:100%;border-collapse:collapse;margin-top:26px;font-size:13px;}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);}
+  th:first-child,td:first-child{text-align:left;}
+  th{color:var(--fg2);font-weight:500;font-size:12px;}
+  .best{color:var(--hybrid);font-weight:600;}
+  .flat{color:var(--fg3);}
+  .foot{margin-top:28px;font-size:12px;color:var(--fg3);border-top:1px solid var(--line);padding-top:16px;}
+  .foot code{background:#262a31;padding:1px 5px;border-radius:3px;color:#c9cdd4;font-size:11.5px;}
+  .warn{color:#E8A0A0;font-size:12px;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>B 轨混合检索 · 指标看板</h1>
+  <p class="sub">2026-09-25 实测 · 索引 v4 · 9229 chunk · 走生产代码路径 <code>utils.hybrid_retriever.search_hybrid_chunks</code></p>
+
+  <div class="verdict">
+    <b>结论：混合检索是真的（双路独立召回 + 加权 RRF），但收益不是「指标全面上涨」。</b><br>
+    标题式查询上 R@10 打满融合上限 1.0000、R@1 提升 2 条；口语化提问上<b>零退化也零收益</b>。
+    原因是两路 top-10 并集本身就是天花板 —— 稠密单路已经摸到了，留给融合的空间本来就只有 1 条。
+  </div>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--dense)"></i>dense 稠密单路</span>
+    <span><i class="dot" style="background:var(--sparse)"></i>sparse 稀疏单路（FTS5 bm25）</span>
+    <span><i class="dot" style="background:var(--hybrid)"></i>hybrid 双路 RRF</span>
+    <span><i class="dot" style="background:transparent;border-top:2px dashed var(--cap);border-radius:0;width:14px;height:0"></i>并集上限（任何融合策略的天花板）</span>
+  </div>
+
+  <div class="panels">
+
+    <div class="panel">
+      <h2>标题式查询 · 81 条</h2>
+      <p class="meta">弱监督构造，query 取自小节标题，与正文用词高度重合</p>
+      <div class="groups">
+        <div class="group">
+          <div class="bars">
+            <div class="cap-line" style="bottom:100%"><em>上限 1.0000</em></div>
+            <div class="bar b-dense" style="height:71.6%"><span class="v">.716</span></div>
+            <div class="bar b-sparse" style="height:79.0%"><span class="v">.790</span></div>
+            <div class="bar b-hybrid" style="height:74.1%"><span class="v">.741</span></div>
+          </div>
+          <div class="glabel">R@1</div>
+        </div>
+        <div class="group">
+          <div class="bars">
+            <div class="bar b-dense" style="height:96.3%"><span class="v">.963</span></div>
+            <div class="bar b-sparse" style="height:90.1%"><span class="v">.901</span></div>
+            <div class="bar b-hybrid" style="height:96.3%"><span class="v">.963</span></div>
+          </div>
+          <div class="glabel">R@5</div>
+        </div>
+        <div class="group">
+          <div class="bars">
+            <div class="bar b-dense" style="height:98.8%"><span class="v">.988</span></div>
+            <div class="bar b-sparse" style="height:98.8%"><span class="v">.988</span></div>
+            <div class="bar b-hybrid" style="height:100%"><span class="v">1.000</span></div>
+          </div>
+          <div class="glabel">R@10</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>口语化提问 · 30 条</h2>
+      <p class="meta">人工改写，刻意换掉正文用词，接近真实用户提问形态</p>
+      <div class="groups">
+        <div class="group">
+          <div class="bars">
+            <div class="bar b-dense" style="height:40.0%"><span class="v">.400</span></div>
+            <div class="bar b-sparse" style="height:10.0%"><span class="v">.100</span></div>
+            <div class="bar b-hybrid" style="height:40.0%"><span class="v">.400</span></div>
+          </div>
+          <div class="glabel">R@1</div>
+        </div>
+        <div class="group">
+          <div class="bars">
+            <div class="bar b-dense" style="height:50.0%"><span class="v">.500</span></div>
+            <div class="bar b-sparse" style="height:10.0%"><span class="v">.100</span></div>
+            <div class="bar b-hybrid" style="height:50.0%"><span class="v">.500</span></div>
+          </div>
+          <div class="glabel">R@5</div>
+        </div>
+        <div class="group">
+          <div class="bars">
+            <div class="cap-line" style="bottom:60.0%"><em>上限 0.6000</em></div>
+            <div class="bar b-dense" style="height:56.7%"><span class="v">.567</span></div>
+            <div class="bar b-sparse" style="height:13.3%"><span class="v">.133</span></div>
+            <div class="bar b-hybrid" style="height:56.7%"><span class="v">.567</span></div>
+          </div>
+          <div class="glabel">R@10</div>
+        </div>
+      </div>
+      <p class="warn">口语化集上 hybrid 与 dense 每一列完全相同 —— 融合没带来任何变化。</p>
+    </div>
+
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>数据集</th><th>mode</th><th>R@1</th><th>R@5</th><th>R@10</th><th>MRR</th><th>NDCG@10</th><th>命中条数</th><th>单条耗时</th></tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="3">标题式 81</td><td>dense</td><td>0.7160</td><td>0.9630</td><td>0.9877</td><td>0.7698</td><td>0.8204</td><td>80</td><td>172.7 ms</td></tr>
+      <tr><td>sparse</td><td class="best">0.7901</td><td>0.9012</td><td>0.9877</td><td class="best">0.8257</td><td class="best">0.8621</td><td>80</td><td>185.7 ms</td></tr>
+      <tr><td>hybrid</td><td>0.7407</td><td>0.9630</td><td class="best">1.0000</td><td>0.7922</td><td>0.8404</td><td class="best">81</td><td>355.7 ms</td></tr>
+      <tr><td rowspan="3">口语化 30</td><td>dense</td><td class="best">0.4000</td><td class="best">0.5000</td><td class="best">0.5667</td><td class="best">0.4274</td><td class="best">0.4588</td><td>17</td><td>170.0 ms</td></tr>
+      <tr><td>sparse</td><td>0.1000</td><td>0.1000</td><td>0.1333</td><td>0.1037</td><td>0.1100</td><td>4</td><td>180.8 ms</td></tr>
+      <tr><td>hybrid</td><td class="flat">0.4000</td><td class="flat">0.5000</td><td class="flat">0.5667</td><td class="flat">0.4274</td><td class="flat">0.4588</td><td>17</td><td>340.5 ms</td></tr>
+    </tbody>
+  </table>
+
+  <div class="foot">
+    <b>怎么复跑：</b><br>
+    <code>$env:HF_HUB_OFFLINE='1'; $env:TRANSFORMERS_OFFLINE='1'; $env:RAG_JWT_SECRET='dev-secret-please-change-me-32bytes+'</code><br>
+    <code>.\venv\Scripts\python.exe scripts\evaluate_hybrid_retrieval.py</code>
+    <br><br>
+    <b>关键取值：</b>融合权重 <code>w_dense=10 / w_sparse=1 / k=60</code>（扫过权重后唯一在两套集上都不掉点的配置；等权 RRF 会让口语化 R@1 掉到 0.2667）。
+    默认仍是 <code>dense</code>，要显式传 <code>retrieval_mode=hybrid</code> 才走混合。<br>
+    <b>证据：</b><code>reports/retrieval_hybrid/evaluation_20260925.txt</code> ·
+    <code>reports/retrieval_hybrid/b8_hybrid_review.txt</code> · 门禁 1004 / 0F / 0E / 0S<br>
+    <b>已知未做：</b>口语化查询绝对水平偏低（30 条里 7 条两路都捞不到，疑似金标假阴性，未复核）；
+    延迟瓶颈是每请求重读 19MB manifest（无缓存，已记 F6）；线上默认未切，聊天链路不建议切。
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,853 @@
+{
+  "generated_by": "tmp/probe_b17_keep_which.py",
+  "top_k": 20,
+  "summary": {
+    "exact_slot_extra": 22,
+    "equal_score_groups": 20,
+    "exact_groups": 20,
+    "containment_pairs": 48,
+    "queries": 7
+  },
+  "rows": [
+    {
+      "query": "外卖配送超时怎么赔偿",
+      "returned": 20,
+      "exact_duplicate_groups": [
+        {
+          "hash": "bb63f1c7f7ddaf04",
+          "ranks": [
+            1,
+            2
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.805432,
+            0.805432
+          ],
+          "chunk_ids": [
+            "c_449f3392443946f48d390debca5d44c3",
+            "p_0d7d97bf5e6fa5f7adaf9106433a01a3"
+          ]
+        },
+        {
+          "hash": "389f79ee7e670aae",
+          "ranks": [
+            3,
+            4
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.805432,
+            0.805432
+          ],
+          "chunk_ids": [
+            "c_e038f53c98f17f2716ad725ff7382d67",
+            "p_0f02480d9344114b5cfd10f1af803f09"
+          ]
+        },
+        {
+          "hash": "269c75721a68096b",
+          "ranks": [
+            5,
+            6
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.762471,
+            0.762471
+          ],
+          "chunk_ids": [
+            "c_1183a834dbdf2280d65cfc2dcf0f2e3a",
+            "p_b0beeee711396f306ed882807bf32596"
+          ]
+        },
+        {
+          "hash": "fb1382c946dcfbc8",
+          "ranks": [
+            7,
+            8
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.749791,
+            0.749791
+          ],
+          "chunk_ids": [
+            "c_a9cca597a73a218d0ed520184912d2c3",
+            "p_b79bc5e2af7733cc7e6c949b2fca4c92"
+          ]
+        },
+        {
+          "hash": "be6200929793dc25",
+          "ranks": [
+            9,
+            10,
+            11,
+            12
+          ],
+          "chunk_types": [
+            "child",
+            "parent",
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.733765,
+            0.733765,
+            0.733765,
+            0.733765
+          ],
+          "chunk_ids": [
+            "c_18d7de8974be306c2d43613a7eb75977",
+            "p_b056a61cb9cb129b167b961c8f6aa9a6",
+            "c_8300cf2fec4d5365c836233b47d64e1d",
+            "p_3f7b32a7d9799136b4c2e9dd0a49c0ec"
+          ]
+        },
+        {
+          "hash": "33a3fdc3daa52040",
+          "ranks": [
+            15,
+            16
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.72444,
+            0.72444
+          ],
+          "chunk_ids": [
+            "c_f686728e10da4cd6ba517fb54ff2d4c9",
+            "p_811028fcaaec3a537a0d0d5df3b4944a"
+          ]
+        }
+      ],
+      "exact_slot_extra": 8,
+      "equal_score_groups": 6,
+      "containment_pairs": [
+        {
+          "child": "c_f3d57cb824c4ce",
+          "parent": "p_688778b540821a",
+          "child_rank": 13,
+          "parent_rank": 17,
+          "child_len": 438,
+          "parent_len": 840
+        },
+        {
+          "child": "c_437ed6f0902681",
+          "parent": "p_82b26ca93abd6f",
+          "child_rank": 14,
+          "parent_rank": 18,
+          "child_len": 438,
+          "parent_len": 840
+        },
+        {
+          "child": "c_6abe3f01a3b3ab",
+          "parent": "p_688778b540821a",
+          "child_rank": 19,
+          "parent_rank": 17,
+          "child_len": 530,
+          "parent_len": 840
+        },
+        {
+          "child": "c_631540a2bf034d",
+          "parent": "p_82b26ca93abd6f",
+          "child_rank": 20,
+          "parent_rank": 18,
+          "child_len": 530,
+          "parent_len": 840
+        }
+      ]
+    },
+    {
+      "query": "消费者七天无理由退货的规定",
+      "returned": 20,
+      "exact_duplicate_groups": [
+        {
+          "hash": "bb5f9b8e46c1ca8c",
+          "ranks": [
+            1,
+            2
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.806121,
+            0.806121
+          ],
+          "chunk_ids": [
+            "c_f163e94f5690f5ab37b6f68c245ed879",
+            "p_9727a76c89ca6104a87b242aa8dbf9f8"
+          ]
+        },
+        {
+          "hash": "5f4872692c882e49",
+          "ranks": [
+            3,
+            4
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.806121,
+            0.806121
+          ],
+          "chunk_ids": [
+            "c_28bb6b3cae6dfccf6f4b4c3db84fb244",
+            "p_d4f85aeacfea5351f2dbf9dca168b3c4"
+          ]
+        },
+        {
+          "hash": "2feea1735207ab91",
+          "ranks": [
+            5,
+            6
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.785764,
+            0.785764
+          ],
+          "chunk_ids": [
+            "c_6df110789176ce18ef33b6853abafae2",
+            "p_e7a4c735e6eff49d73a3de7fec8f3932"
+          ]
+        },
+        {
+          "hash": "d2180867fc59f173",
+          "ranks": [
+            7,
+            8
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.785764,
+            0.785764
+          ],
+          "chunk_ids": [
+            "c_6f180909b4c5da6b0438fe8da95b7895",
+            "p_ed8a19a6ac597100f38e576cf3f14d15"
+          ]
+        },
+        {
+          "hash": "5f75587f92818931",
+          "ranks": [
+            9,
+            10
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.783172,
+            0.783172
+          ],
+          "chunk_ids": [
+            "c_1c8e02eaf721a15764a4966a82bb1277",
+            "p_bb728ece2b91ce7bbc06679c595e7fc4"
+          ]
+        },
+        {
+          "hash": "db7a88f6a63e108f",
+          "ranks": [
+            11,
+            12
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.783172,
+            0.783172
+          ],
+          "chunk_ids": [
+            "c_c85321d95664f002ba4f444614268c10",
+            "p_f1cb4c60f4fd4bd8d262c56766319dd2"
+          ]
+        },
+        {
+          "hash": "88da33c9e4861279",
+          "ranks": [
+            13,
+            14
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.77296,
+            0.77296
+          ],
+          "chunk_ids": [
+            "c_56f7d52ee3ca5997aefb951bfe9426a2",
+            "p_b28cb007fe923d1114d8274761259a03"
+          ]
+        },
+        {
+          "hash": "6c9b4f22993c19d5",
+          "ranks": [
+            15,
+            16
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.77296,
+            0.77296
+          ],
+          "chunk_ids": [
+            "c_5013c6533f99311f6edbf91715661285",
+            "p_50b83613b416202a43689edc4ad56147"
+          ]
+        }
+      ],
+      "exact_slot_extra": 8,
+      "equal_score_groups": 8,
+      "containment_pairs": []
+    },
+    {
+      "query": "电子商务经营者应当履行的义务",
+      "returned": 20,
+      "exact_duplicate_groups": [
+        {
+          "hash": "95fea8c10c9e9b17",
+          "ranks": [
+            2,
+            3
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.771121,
+            0.771121
+          ],
+          "chunk_ids": [
+            "c_0e553cc766c3bf87979b56a5d7a796b7",
+            "p_16f7a4a87057af6822f45de7e2f69427"
+          ]
+        }
+      ],
+      "exact_slot_extra": 1,
+      "equal_score_groups": 1,
+      "containment_pairs": [
+        {
+          "child": "c_67c1f55b2b82fb",
+          "parent": "p_2512cdfd04862e",
+          "child_rank": 1,
+          "parent_rank": 12,
+          "child_len": 347,
+          "parent_len": 745
+        },
+        {
+          "child": "c_769802f7e3982c",
+          "parent": "p_4e086d1c79fa35",
+          "child_rank": 5,
+          "parent_rank": 4,
+          "child_len": 501,
+          "parent_len": 1787
+        },
+        {
+          "child": "c_6e1b4cdaa5d6e2",
+          "parent": "p_e77402840b776c",
+          "child_rank": 6,
+          "parent_rank": 7,
+          "child_len": 515,
+          "parent_len": 1400
+        },
+        {
+          "child": "c_1886cf063cf976",
+          "parent": "p_e77402840b776c",
+          "child_rank": 9,
+          "parent_rank": 7,
+          "child_len": 266,
+          "parent_len": 1400
+        },
+        {
+          "child": "c_dc24545040ec46",
+          "parent": "p_d29caf6d6ce8b5",
+          "child_rank": 10,
+          "parent_rank": 8,
+          "child_len": 422,
+          "parent_len": 753
+        },
+        {
+          "child": "c_c5283395e1a959",
+          "parent": "p_2512cdfd04862e",
+          "child_rank": 11,
+          "parent_rank": 12,
+          "child_len": 525,
+          "parent_len": 745
+        },
+        {
+          "child": "c_bfb15fff9df29b",
+          "parent": "p_4e086d1c79fa35",
+          "child_rank": 13,
+          "parent_rank": 4,
+          "child_len": 478,
+          "parent_len": 1787
+        },
+        {
+          "child": "c_ab017cf2faa17d",
+          "parent": "p_d29caf6d6ce8b5",
+          "child_rank": 14,
+          "parent_rank": 8,
+          "child_len": 474,
+          "parent_len": 753
+        },
+        {
+          "child": "c_f194c2ea7c08b6",
+          "parent": "p_4e086d1c79fa35",
+          "child_rank": 19,
+          "parent_rank": 4,
+          "child_len": 191,
+          "parent_len": 1787
+        },
+        {
+          "child": "c_78fea5b5cd38c1",
+          "parent": "p_6c49641631e615",
+          "child_rank": 20,
+          "parent_rank": 18,
+          "child_len": 519,
+          "parent_len": 582
+        }
+      ]
+    },
+    {
+      "query": "食品经营许可证怎么办",
+      "returned": 20,
+      "exact_duplicate_groups": [
+        {
+          "hash": "64b7241652db6ef9",
+          "ranks": [
+            2,
+            3
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.734375,
+            0.734375
+          ],
+          "chunk_ids": [
+            "c_f82e728249f521e808c759597be27ce0",
+            "p_72def37293aaf16f434017f47d4ab3e4"
+          ]
+        },
+        {
+          "hash": "ba1cb08683717520",
+          "ranks": [
+            11,
+            12
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.695343,
+            0.695343
+          ],
+          "chunk_ids": [
+            "c_652ceafe9c4fe5ec513be707380bc964",
+            "p_6dffcd3d8a766678d00f06707aea46b0"
+          ]
+        },
+        {
+          "hash": "d209940a2e25390c",
+          "ranks": [
+            18,
+            19
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.678433,
+            0.678433
+          ],
+          "chunk_ids": [
+            "c_8ba34e892bd33ac70ec066772db286fd",
+            "p_1a4572f92c6817e5ec74f070c1811ece"
+          ]
+        }
+      ],
+      "exact_slot_extra": 3,
+      "equal_score_groups": 3,
+      "containment_pairs": [
+        {
+          "child": "c_22b6741155656d",
+          "parent": "p_f496118e92cc3f",
+          "child_rank": 1,
+          "parent_rank": 5,
+          "child_len": 462,
+          "parent_len": 1118
+        },
+        {
+          "child": "c_806e7f266c52f3",
+          "parent": "p_f496118e92cc3f",
+          "child_rank": 4,
+          "parent_rank": 5,
+          "child_len": 564,
+          "parent_len": 1118
+        },
+        {
+          "child": "c_85169c9dbf901a",
+          "parent": "p_c440a0d17d86d8",
+          "child_rank": 6,
+          "parent_rank": 8,
+          "child_len": 480,
+          "parent_len": 947
+        },
+        {
+          "child": "c_fbe267cd011af0",
+          "parent": "p_f496118e92cc3f",
+          "child_rank": 7,
+          "parent_rank": 5,
+          "child_len": 208,
+          "parent_len": 1118
+        },
+        {
+          "child": "c_63a004efcbb245",
+          "parent": "p_c440a0d17d86d8",
+          "child_rank": 9,
+          "parent_rank": 8,
+          "child_len": 298,
+          "parent_len": 947
+        },
+        {
+          "child": "c_5890f6b0d13e0c",
+          "parent": "p_c440a0d17d86d8",
+          "child_rank": 10,
+          "parent_rank": 8,
+          "child_len": 479,
+          "parent_len": 947
+        },
+        {
+          "child": "c_7b6ba4a6158932",
+          "parent": "p_357ee1a9ae4690",
+          "child_rank": 15,
+          "parent_rank": 14,
+          "child_len": 512,
+          "parent_len": 1531
+        },
+        {
+          "child": "c_f6f35931b1b151",
+          "parent": "p_aa903cb397f19b",
+          "child_rank": 16,
+          "parent_rank": 13,
+          "child_len": 482,
+          "parent_len": 868
+        }
+      ]
+    },
+    {
+      "query": "广告不得含有哪些内容",
+      "returned": 20,
+      "exact_duplicate_groups": [
+        {
+          "hash": "79100767f428ed84",
+          "ranks": [
+            16,
+            17
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.700015,
+            0.700015
+          ],
+          "chunk_ids": [
+            "c_c6c524aa7cb1874a033dab63a974dc9b",
+            "p_bc0d6320c9393a09c57eb2bfe30f81ea"
+          ]
+        }
+      ],
+      "exact_slot_extra": 1,
+      "equal_score_groups": 1,
+      "containment_pairs": [
+        {
+          "child": "c_43e501a63c457d",
+          "parent": "p_ea28274a6ed7a3",
+          "child_rank": 2,
+          "parent_rank": 1,
+          "child_len": 472,
+          "parent_len": 2816
+        },
+        {
+          "child": "c_44582ab78fe133",
+          "parent": "p_5663ed3af6bf20",
+          "child_rank": 3,
+          "parent_rank": 10,
+          "child_len": 519,
+          "parent_len": 1110
+        },
+        {
+          "child": "c_c4a6dd326cab3b",
+          "parent": "p_de851e6636b1b9",
+          "child_rank": 4,
+          "parent_rank": 12,
+          "child_len": 218,
+          "parent_len": 1601
+        },
+        {
+          "child": "c_3ff9be327e7e7e",
+          "parent": "p_707786845d266c",
+          "child_rank": 6,
+          "parent_rank": 5,
+          "child_len": 514,
+          "parent_len": 598
+        },
+        {
+          "child": "c_c4976885ff0c58",
+          "parent": "p_ea28274a6ed7a3",
+          "child_rank": 7,
+          "parent_rank": 1,
+          "child_len": 537,
+          "parent_len": 2816
+        },
+        {
+          "child": "c_a03a785580077b",
+          "parent": "p_5663ed3af6bf20",
+          "child_rank": 8,
+          "parent_rank": 10,
+          "child_len": 490,
+          "parent_len": 1110
+        },
+        {
+          "child": "c_1b506f0cd65531",
+          "parent": "p_ea28274a6ed7a3",
+          "child_rank": 9,
+          "parent_rank": 1,
+          "child_len": 522,
+          "parent_len": 2816
+        },
+        {
+          "child": "c_8e6437fcdbf158",
+          "parent": "p_707786845d266c",
+          "child_rank": 11,
+          "parent_rank": 5,
+          "child_len": 235,
+          "parent_len": 598
+        },
+        {
+          "child": "c_64753e6c536853",
+          "parent": "p_de851e6636b1b9",
+          "child_rank": 14,
+          "parent_rank": 12,
+          "child_len": 501,
+          "parent_len": 1601
+        },
+        {
+          "child": "c_41a8522771af3d",
+          "parent": "p_de851e6636b1b9",
+          "child_rank": 19,
+          "parent_rank": 12,
+          "child_len": 483,
+          "parent_len": 1601
+        },
+        {
+          "child": "c_4ff87c501a5f3b",
+          "parent": "p_de851e6636b1b9",
+          "child_rank": 20,
+          "parent_rank": 12,
+          "child_len": 481,
+          "parent_len": 1601
+        }
+      ]
+    },
+    {
+      "query": "个人信息处理者收集个人信息需要遵守什么原则",
+      "returned": 20,
+      "exact_duplicate_groups": [],
+      "exact_slot_extra": 0,
+      "equal_score_groups": 0,
+      "containment_pairs": [
+        {
+          "child": "c_423ce1f5b876a8",
+          "parent": "p_dcb3f087f20703",
+          "child_rank": 9,
+          "parent_rank": 10,
+          "child_len": 556,
+          "parent_len": 2957
+        },
+        {
+          "child": "c_bd9fe090991293",
+          "parent": "p_476a7dcdf247e1",
+          "child_rank": 11,
+          "parent_rank": 12,
+          "child_len": 556,
+          "parent_len": 2957
+        },
+        {
+          "child": "c_bf0c6367984826",
+          "parent": "p_25ec4dbaf45596",
+          "child_rank": 17,
+          "parent_rank": 15,
+          "child_len": 491,
+          "parent_len": 2874
+        },
+        {
+          "child": "c_ab1c19a2b6311f",
+          "parent": "p_0416036ac02588",
+          "child_rank": 18,
+          "parent_rank": 16,
+          "child_len": 491,
+          "parent_len": 2874
+        }
+      ]
+    },
+    {
+      "query": "网络交易平台经营者对平台内经营者的管理义务",
+      "returned": 20,
+      "exact_duplicate_groups": [
+        {
+          "hash": "95fea8c10c9e9b17",
+          "ranks": [
+            4,
+            5
+          ],
+          "chunk_types": [
+            "child",
+            "parent"
+          ],
+          "scores": [
+            0.676574,
+            0.676574
+          ],
+          "chunk_ids": [
+            "c_0e553cc766c3bf87979b56a5d7a796b7",
+            "p_16f7a4a87057af6822f45de7e2f69427"
+          ]
+        }
+      ],
+      "exact_slot_extra": 1,
+      "equal_score_groups": 1,
+      "containment_pairs": [
+        {
+          "child": "c_26cb72512c4cc7",
+          "parent": "p_717476c638e61f",
+          "child_rank": 1,
+          "parent_rank": 8,
+          "child_len": 626,
+          "parent_len": 2420
+        },
+        {
+          "child": "c_c8f79254125c3f",
+          "parent": "p_d1dcbefcf7e132",
+          "child_rank": 2,
+          "parent_rank": 10,
+          "child_len": 506,
+          "parent_len": 1621
+        },
+        {
+          "child": "c_954bee2ebafed6",
+          "parent": "p_d1dcbefcf7e132",
+          "child_rank": 3,
+          "parent_rank": 10,
+          "child_len": 504,
+          "parent_len": 1621
+        },
+        {
+          "child": "c_57f239b749c7b8",
+          "parent": "p_717476c638e61f",
+          "child_rank": 7,
+          "parent_rank": 8,
+          "child_len": 592,
+          "parent_len": 2420
+        },
+        {
+          "child": "c_169c014c0c052d",
+          "parent": "p_717476c638e61f",
+          "child_rank": 9,
+          "parent_rank": 8,
+          "child_len": 583,
+          "parent_len": 2420
+        },
+        {
+          "child": "c_769802f7e3982c",
+          "parent": "p_4e086d1c79fa35",
+          "child_rank": 11,
+          "parent_rank": 14,
+          "child_len": 501,
+          "parent_len": 1787
+        },
+        {
+          "child": "c_9586601b646009",
+          "parent": "p_d1dcbefcf7e132",
+          "child_rank": 12,
+          "parent_rank": 10,
+          "child_len": 499,
+          "parent_len": 1621
+        },
+        {
+          "child": "c_1e99dc40a37dfe",
+          "parent": "p_717476c638e61f",
+          "child_rank": 13,
+          "parent_rank": 8,
+          "child_len": 466,
+          "parent_len": 2420
+        },
+        {
+          "child": "c_6f1caa0795ac77",
+          "parent": "p_d1dcbefcf7e132",
+          "child_rank": 15,
+          "parent_rank": 10,
+          "child_len": 475,
+          "parent_len": 1621
+        },
+        {
+          "child": "c_847466f70e1191",
+          "parent": "p_d1dcbefcf7e132",
+          "child_rank": 16,
+          "parent_rank": 10,
+          "child_len": 172,
+          "parent_len": 1621
+        },
+        {
+          "child": "c_5e4a789147f6ea",
+          "parent": "p_717476c638e61f",
+          "child_rank": 17,
+          "parent_rank": 8,
+          "child_len": 497,
+          "parent_len": 2420
+        }
+      ]
+    }
+  ]
+}

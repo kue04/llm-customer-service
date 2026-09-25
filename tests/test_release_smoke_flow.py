@@ -11,14 +11,18 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth_helpers import auth_headers
 
-ADMIN_HEADERS = {"X-User-Role": "admin", "X-Operator-Id": "release_smoke_admin"}
+
+ADMIN_HEADERS = auth_headers(roles=["admin"], user_id="release_smoke_admin")
 
 
 def build_fake_chat_service() -> types.ModuleType:
     fake_chat_service = types.ModuleType("services.chat_service")
 
-    def get_answer_from_rag(request):
+    def get_answer_from_rag(request, auth=None):
+        # auth 是 2026-09-25 切轨（F1）后新增的位置参数：聊天路由会把已校验的
+        # AuthContext 传下来（B 轨的权限过滤要用）。本替身不实现检索，签名对齐即可。
         from services import conversation_store
         from services.feedback_service import save_chat_session
 

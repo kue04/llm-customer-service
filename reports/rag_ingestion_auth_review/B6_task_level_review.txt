@@ -1,0 +1,334 @@
+任务级审查：批次 B6（阶段 3 的最后一个批次）
+审查日期：2026-09-23
+审查人：AI（B6 批次）
+审查范围：任务 3.3（幂等处理流水线 + worker）与任务 3.4（FAISS 索引 manifest 与原子切换）
+依据：docs/goal.md 计划原文；docs/RAG_EXECUTION_PROGRESS.md 第 4 节「B6 本批要做什么（范围锁定）」
+
+────────────────────────────────────────────────────────────────────
+本批一句话结论
+────────────────────────────────────────────────────────────────────
+B6 把「上传 → 解析 → 切分 → 落库 → 建索引 → 可检索」这条链路**第一次真正接上**：
+上一批（B5）遗留的「已建未启用」清单里，`chunk_document()` / `insert_chunks()` /
+queue 消费端 / `index_builds.manifest_uri` 四行**全部消失**，且这四条各有 AST 守卫测试
+守着（`tests/test_ingestion_pipeline.py::TestProductionCallPoints`）。
+
+同时本批**修掉了一个真缺陷**（不是环境噪声）：`delete_chunks` 逐行 ORM 删除撞复合
+自引用外键，导致「任务成功后重复投递」这条幂等路径必失败。见第五节。
+
+═══ 一、门禁结果（四件套） ═══
+
+证据文件（reports/rag_ingestion_auth_review/）：
+
+  B6_full_test-output.txt     pytest -q → **839 passed, 5 warnings, 4 subtests passed**
+  B6_ruff-output.txt          ruff check . → All checks passed!
+  B6_compileall-output.txt    compileall → 退出码 0
+  B6_data-size-output.txt     check_repo_data_size.py → 通过，没有超标文件
+  B6_baseline_test.txt        ★ 开工基线（本批**开工时**的那一次全量跑，见第五节）
+
+起点 / 终点对比（基线纪律）：
+
+  B4 收尾 555 → B5 收尾 **790**（本批起点）→ B6 收尾 **839**，本批新增 49 条，**零回归**。
+  warning：起点 5 条 → 终点 5 条，逐条核对均为既有噪声（fastapi[1] + starlette[1] 的
+  httpx 弃用提示、faiss SWIG 绑定[3]），**未新增**。
+
+★ 为什么第 5 个证据文件是「基线」而不是「门禁」
+  本批开工时先跑了一次全量基线，得到的是 **2 failed, 837 passed** ——
+  那 2 条红是**真缺陷**，不是环境噪声（判据见第五节）。修掉后才有的 839 passed。
+  两个文件都留在证据目录里：`B6_baseline_test.txt` 是"问题现场"，
+  `B6_full_test-output.txt` 是"修复后"。只留后者会让"这里红过"这件事消失。
+
+★ 关于「环境噪声」的既有教训（A5）与本批的对照
+  B5 收尾时出现过一次 `1 failed, 789 passed`，判定为环境噪声（sitecustomize 删除守卫，
+  异常类型是 `SystemExit`）。本批基线那次也是 failed，但**异常类型是
+  `sqlalchemy.exc.IntegrityError`、抛出点在项目自己的 SQL（`DELETE FROM document_chunks`）**
+  —— 两条判据都不符合噪声画像，因此按真缺陷处理。
+  「拿到一个 failed 先看异常类型 + 抛出点，再决定动不动代码」已登记为踩坑 D12。
+
+═══ 二、交付物清单与生产调用点 ═══
+
+新增（未跟踪）：
+
+  services/ingestion/pipeline.py          894 行  幂等流水线（8 阶段状态机）
+  services/ingestion/worker.py            332 行  队列消费者 + CLI 入口
+  services/ingestion/index_builder.py     537 行  索引重建 / 原子切换
+  services/ingestion/index_manifest.py    684 行  manifest 读写 + 指针管理
+  tests/test_ingestion_pipeline.py       1003 行  49 条用例
+
+改造：
+
+  services/ingestion/repository.py        +删改 chunk 的持久化原语（含本批修复）
+  services/ingestion/queue.py             消费端（xreadgroup / xack）
+  utils/vector_retriever.py               +341 行：新增 chunk 级检索路径
+  main.py                                 挂载 documents router（B4 遗留，本批复核生效）
+
+「生产调用点」核对（对应台账第 4 节的「已建未启用」清单）：
+
+  | 资产 | 定义位置 | 生产调用点 | 本批后状态 |
+  | --- | --- | --- | --- |
+  | `chunk_document()` | services/ingestion/chunkers/chunker.py | `pipeline.py:252` | ✅ 消失 |
+  | `insert_chunks()` | services/ingestion/repository.py | `pipeline.py:577` | ✅ 消失 |
+  | `delete_chunks()` | services/ingestion/repository.py | `pipeline.py:576` | ✅ 消失 |
+  | queue 消费端 | services/ingestion/queue.py | `worker.py` | ✅ 消失 |
+  | `index_builds.manifest_uri` | services/ingestion/models.py:430 | `index_builder.py` | ✅ 消失 |
+
+  守卫方式：`TestProductionCallPoints` 用 **AST 逐函数查形参**（不查字符串，沿用踩坑 D1
+  的教训）+ `TestContractGuards` 断言 `STAGE_ORDER` 与数据库 CHECK 约束同源、
+  以及「流水线不从环境读租户」。
+
+═══ 三、任务 3.3 逐条核对 ═══
+
+计划要求 → 实现位置 → 证据
+
+1. **固定状态流转**
+   `received → stored → parsed → normalized → chunked → persisted → indexed → published`
+   实现为 `pipeline.STAGE_ORDER`（常量即契约），且有一条守卫测试断言它与
+   `ingestion_jobs.stage` 的数据库 CHECK 约束**同源**（不是两处各写一遍）。
+   证据：TestContractGuards::test_stage_order_matches_the_database_check_constraint
+
+2. **每个阶段结束时提交，进度可现场查询**
+   每个 stage 结束调 `_advance()` → 写 `job.stage` + `commit()`。
+   代价（阶段之间可能失败）与要求（每阶段必须幂等）是一件事的两面，已在模块 docstring 里写清。
+   证据：TestHappyPath::test_every_stage_is_logged_in_order
+
+3. **幂等三支点**
+   · 内容判重：`repository.find_version_by_content_hash()`（`document_versions.content_hash`
+     租户粒度唯一）。**注意方向**：判重命中且版本不属于当前文档时，任务是**成功**
+     （`status=succeeded`, `stage=parsed`, `duplicate=True`），不是失败 —— 这是计划原文口径。
+   · 确定性 `chunk_id`：同输入重跑得到同一批 id。
+   · 落库先删后写：`_stage_persisted` 先 `delete_chunks` 再 `insert_chunks`。
+   证据：TestIdempotency（3 条）+ TestDuplicateContent（2 条）
+
+4. **「准备模式 / 执行模式」的幂等实现方式**（本批的核心设计，见第六节第 2 条）
+   `persist = position >= start`：失败重试时，失败阶段之前的阶段**重算但不重写**；
+   从失败阶段起正常执行并落库。
+   证据：TestIdempotency::test_retry_from_failed_stage_completes_without_second_version
+   （断言「不产生第二个版本、chunk 数与 id 不变」）
+
+5. **`[D-9]` 落地：切分入口签名不接收裸 tenant_id**
+   流水线负责构造 `ChunkContext`（`tenant_id` 取自 `documents` 表、`acl` 取自
+   `document_acl` 表、页码/来源/文件名取自 `ParsedDocument`），
+   切分入口签名仍是冻结的 `chunk_document(document, *, context, config)`。
+   **B5 的 AST 守卫测试仍绿**，说明没有为了少写两行把它改回裸参数。
+   证据：TestHappyPath::test_chunks_keep_tenant_acl_and_ordinal_in_metadata
+
+6. **`[D-6]` 落地：谁建 `document_version`**
+   上传接口**不建版本**；版本由本批流水线在 `parsed` 阶段创建，
+   且只在 `job.document_version_id` 为空时创建（重复创建会撞 uq(tenant_id, content_hash)）。
+   证据：TestDuplicateContent::test_reuploading_the_same_file_reuses_document_without_new_version
+
+7. **生效配置留痕**
+   `document_versions.metadata_json["chunking"]` 直接取 `ChunkConfig.storage_payload()`，
+   统计另挂 `["chunking"]["stats"]`，**没有第二份序列化**。
+   证据：TestHappyPath::test_effective_config_and_stats_are_recorded
+
+8. **知识库覆盖：越界即失败，不静默夹取**
+   从 `knowledge_bases.chunking_config_json` 读出 → `build_config()` 校验 →
+   `ChunkConfigError` 翻成稳定 `error_code=invalid_chunking_config`。
+   证据：TestChunkingConfig（3 条，含未知键与越界值）
+
+9. **警告写同一个固定键**
+   解析警告与切分统计同住 `metadata_json`（`warnings` 键共用），
+   `normalized` / `chunked` 阶段是**整体替换而非 merge**，不会互相覆盖。
+   证据：TestWarningsAndEmptyDocuments::test_parse_warnings_survive_chunking
+
+10. **失败留痕 + 从失败阶段重试**
+    8 个阶段**逐个注入故障**（monkeypatch 替换目标函数为抛异常），
+    断言四件事：失败阶段写对 / `error_code` 稳定 / `retry_count` 累加 / 文档状态正确。
+    证据：TestStageFailures（9 条）
+
+11. **worker**
+    消费 → 推进 → ack 时机；空队列不是错误；未知 job 跳过并 ack；
+    一个坏任务不阻塞后续任务；不可预期异常被兜住并 ack；
+    `run_forever` 的迭代上限；**队列不支持消费时要明确报错而不是静默空转**；
+    Redis 分支的 `XGROUP`/`XREADGROUP`/`XACK` 参数与消费者组 id 选择理由。
+    证据：TestWorker（12 条）
+
+12. **失败不抛异常**（计划外设计决定，见第六节第 3 条）
+    `process_job` 返回 `PipelineOutcome`（`status='failed'` + `error_code` + `error_message`），
+    不向上抛业务异常 —— worker 要连续处理一批任务，一个坏文件抛异常会打断整轮消费。
+    证据：TestWorker::test_unexpected_exception_is_contained_and_acked
+
+═══ 四、任务 3.4 逐条核对 ═══
+
+1. **原子切换语义**
+   新索引**先构建到临时路径** → 写 manifest → **最后一步才改指针**；
+   任一步失败可回滚到旧 manifest（指针未动 = 旧索引仍生效）。
+   证据：TestHappyPath::test_index_build_row_is_active_and_carries_manifest_uri
+   + index_builder 的失败分支用例
+
+2. **manifest 内容**
+   含 `chunk_id` 列表、`tokenizer_id`、切分配置版本、embedding 模型标识、`chunk_count`。
+   证据：同上 + `index_manifest` 的加载/校验用例
+
+3. **必须按 `metadata_json["ordinal"]` 重建文档顺序**（B5 的新发现）
+   这条**被严格遵守**：`index_builder._assemble_entries` 的排序键是
+   `(document_version_id, ordinal)`，并在 manifest 里留痕
+   `"ordered_by": "metadata_json.ordinal"`。
+   对照：`repository.list_chunks` 的 `(created_at, chunk_id)` 排序**从未**被用作索引顺序。
+   证据：grep `ordinal` → index_builder.py:15/19/25/136-175/321
+
+4. **`tokenizer_id` 变化会改变 `chunk_id` → 需重建索引**（设计预期，不是 bug）
+   已在 `tokenizer_id` 随 manifest 落库的前提下成立；换 tokenizer 时 manifest 不匹配，
+   检索端能识别「这份索引不是当前配置建的」。B8 需用真实 tokenizer 复验这条。
+
+5. **检索侧对接（计划 3.4 的"可检索"半边）**
+   `utils/vector_retriever.py` 新增 chunk 级检索路径：
+   `load_chunk_index()` / `search_chunk_index()` / `ChunkAccessFilter` / `ChunkHit`，
+   用 FAISS **原生预过滤**（`SearchParameters(sel=IDSelectorBatch(...))`）而不是后过滤。
+   `access` 是**必填关键字参数**，显式传 `None` 也抛错（有负向测试）。
+   **方向说明**：这是本批**主动多做**的一块（计划 3.4 只要求"建索引 + 原子切换"），
+   理由是 —— 索引建好了但检索端读不到，等于"已建未启用"再犯一次。
+   API 层的接线（4.3）与检索层隔离测试仍归 B7。
+
+═══ 五、本批修复的缺陷（唯一让门禁红过的真缺陷） ═══
+
+**现象**
+开工基线 `2 failed, 837 passed`，两条都在 `TestIdempotency`：
+  · test_redelivering_a_finished_job_changes_nothing
+  · test_chunk_ids_are_stable_across_reruns
+两条的共同点：都是「任务已经 succeeded 之后再跑一次」。失败阶段是 `persisted`。
+
+**根因**（不是"幂等逻辑写错了"，而是删除原语与它自己的注释相反）
+
+`repository.delete_chunks` 的注释写着：
+
+    父 chunk 的复合自引用外键是 (document_version_id, parent_chunk_id)，
+    删除时只要一次全量 delete 即可：外键在同一语句内整体消失，
+    不需要先删子再删父（逐条删反而会中途撞外键）。
+
+但**代码用的正是被注释否定的做法**：`session.delete(row)` 逐行删。ORM 于是发出
+`DELETE FROM document_chunks WHERE id = ?` 的 executemany —— **每行一条独立语句**；
+而 SQLite 对即时外键约束的检查发生在**每条语句结束时**，删父 chunk 那条语句结束时
+子 chunk 还指着它：
+
+    sqlalchemy.exc.IntegrityError: FOREIGN KEY constraint failed
+    [SQL: DELETE FROM document_chunks WHERE document_chunks.id = ?]
+
+首次执行之所以全绿，是因为**首次执行时表里没有旧行可删**（`rows` 为空，循环不执行），
+这个缺陷只在"重跑"路径上暴露 —— 而幂等测试恰好是唯一会走重跑的用例。
+
+**修复**
+`delete_chunks` 改为**一条** `DELETE ... WHERE tenant_id = ? AND document_version_id = ?`
+（批量 delete + `synchronize_session="fetch"`，让 session 里已删实例同步失效）。
+整个版本的行在同一语句内一起消失，约束在语句结束时看到的已是"全部删完"的一致状态，
+因此既不需要「先删子再删父」的拓扑排序，也不需要 `ON DELETE CASCADE`
+或 `PRAGMA defer_foreign_keys`。
+
+**验证**
+  · `pytest tests/test_ingestion_pipeline.py -q` → 49 passed
+  · 全量 `pytest -q` → **839 passed**
+  · ruff / compileall / 体积检查 → 全绿
+
+**面试怎么讲** → 已登记为踩坑 **B13**（四段式）。核心一句：
+「ORM 的 `session.delete(row)` 循环**不等于**一条批量 DELETE；
+自引用外键下前者会变成 N 条独立语句，每条都要独立满足约束。」
+
+═══ 六、偏离计划原文的方向标注 ═══
+
+沿用 B10 的规则：每条都标方向（**更严 / 更宽 / 换实现 / 计划外新增**），不偷改。
+
+1. `normalized` 阶段**不做二次清洗** —— 【更窄，有意】
+   计划只给了阶段名，字面像是"再归一化一遍正文"。实现把它定义成
+   **归一化「输入」**（配置 + 归属上下文 + 留痕），清洗仍归切分器内部（B5 已交付且带计数）。
+   理由：同一件事两个实现，清洗规则一改两处就会不同，而"少了一段内容"几乎看不出差异。
+
+2. **不做断点续传**，改为「准备模式重算不重写 / 执行模式正常执行」 —— 【换实现】
+   代价：重试要多花一次解析 + 切分的 CPU。收益：少一套「中间产物持久格式 + 生命周期 + 清理策略」。
+   取舍理由：省一次解析换来一套新状态机，不划算。
+   **副作用需要如实说明**：`persist=False` 的阶段仍会**重算**（纯函数、确定性），
+   因此"重试 N 次"与"执行 1 次"的**最终数据相同**，但**耗时更长**。
+
+3. **失败不抛异常，以 `status='failed'` 返回** —— 【更可测 / 更适合批处理】
+   `process_job` 是"不抛业务异常"的入口；真正不可预期的异常也会被兜成
+   `error_code=unexpected_error` 并保留 traceback 到日志。
+
+4. **空文档：切分 0 chunk 是成功，且跳过索引阶段** —— 【更宽 + 更严】
+   更宽：0 chunk 不判失败（内容为空是可解释的结果）。
+   更严：**不为 0 向量建索引** —— 建了会让"已有生效索引"变成假象，
+   而实际上检索端什么也检索不到。
+   证据：TestWarningsAndEmptyDocuments::test_empty_document_publishes_without_an_index
+
+5. **文档状态只在"确实没有任何已发布版本"时才置 failed** —— 【更宽/更保守，有意】
+   若一份文档已有可用旧版本、新版本处理失败，整体标 failed 会让用户以为
+   "这份文档不能用了"，而旧版本其实还在正常服务。
+   证据：TestStageFailures::test_document_is_marked_failed_only_when_no_published_version_exists
+
+6. **`list_indexable_chunks` 默认不过滤版本状态** —— 【更宽，理由见 [D-11]】
+   「索引文件里有什么」与「谁能检索到」是两件事，可见性交给检索层 fail-closed filter 决定。
+   若把可见性只押在"构建时过滤"上，ACL / 生效期一变就得重建整个索引，
+   而且仍然挡不住"同一份索引被两个租户共用"。
+
+7. **检索层多做的 chunk 级路径 + 强制 `access` 参数** —— 【计划外新增 + 更严】
+   见第四节第 5 条。缺 filter 必须**报错**而不是默认全库：默认全库 =
+   "少传一个参数就把所有租户的数据都检索出来"，而调用方写代码时根本不会注意到。
+
+═══ 七、测试盲区排查 ═══
+
+针对本批代码问「哪一行没有被任何用例覆盖」：
+
+1. `pipeline.py:436` 的分支（`未越过 parsed 但 persist=False`）标了
+   `# pragma: no cover - 只有数据被手工改过才会出现`，属**显式豁免**，不是漏测。
+2. `worker.py` 的 `if __name__ == "__main__"` 入口标了 `# pragma: no cover`；
+   但 `main(argv)` 本身**有测试**（argparse 参数解析可测），只有入口那一行豁免。
+3. **真实引擎分支未复验**（本机无 Docker / psql / Redis）：
+   Postgres 方言、Redis Stream 真实 `XREADGROUP` 往返、真实 tokenizer 与 embedding 模型。
+   这**不是本批的遗漏**，而是全项目一致的环境限制（与 B1~B5 相同），已登记为遗留问题 4。
+4. **检索层隔离测试仍缺**：`tests/test_retrieval_isolation.py` 尚未创建。
+   本批交付了带强制 filter 的检索路径（`search_chunk_index`），
+   但它的隔离性是**靠一条"暴露了入口"的守卫 + 负向参数用例**间接保证的，
+   没有"两个租户各建索引、互相检索不到"的端到端用例。→ 遗留问题 2，归 B7。
+5. `TestIdempotency` 的三条用例是本批**唯一**走"重跑"路径的用例 ——
+   这也正是第五节那个缺陷能藏到基线才暴露的原因。
+   **方法论教训**：「幂等」这类性质必须**专门写重跑用例**，不能指望正常链路顺带覆盖。
+
+═══ 八、硬性约束核对（可继承 → 下一批必须沿用） ═══
+
+1. 切分入口签名 `chunk_document(document, *, context: ChunkContext, config: ChunkConfig)`
+   **冻结**；`tenant_id` 只能通过 `ChunkContext` 传。改回去会挂 B5 的 AST 守卫。
+2. 版本创建只走 `repository.create_document_version()`，且只在 `job.document_version_id`
+   为空时创建；重复判定走 `find_version_by_content_hash()`（租户粒度）。
+3. 警告**固定在** `document_versions.metadata_json["warnings"]`，形状 `{code, message, detail}`；
+   解析警告与切分统计**同住一个数组**，不另起键。
+4. 任务状态推进只走 `fail_ingestion_job()` / `update_ingestion_job()`（后者支持只改 stage）。
+5. 落库顺序：**父 chunk 必须先于子 chunk**（复合自引用外键强制）。
+6. 读回顺序**只能信** `metadata_json["ordinal"]`，不能信 `created_at`。
+7. 删除某版本全部 chunk **必须是一条 DELETE 语句**（本批第 5 节的教训，新增）。
+8. 每个新模块必须登记**生产调用点**；权限隔离测试必须数据层与检索层**各写一套**。
+
+═══ 九、遗留问题 ═══
+
+1. **`worker` 有 CLI 入口但没有进程编排**。
+   `python -m services.ingestion.worker` 可用（`worker.main(argv)` 有测试），
+   但 `main.py` 的 `lifespan` 不启动它，`docker-compose.yml` 只有 `api` / `postgres` / `redis`
+   三个服务，**没有 worker 服务**。也就是说容器化部署后队列仍然没人消费。
+   → 归 B8（发布门禁）或独立小批次补 `worker` service + 重启策略。
+2. **检索层隔离测试缺失**（`tests/test_retrieval_isolation.py`）—— 见第七节第 4 条。→ B7。
+3. **API 层尚未接到 chunk 级检索路径**：`routers/retrieval.py` 仍走旧的种子 FAQ 路径
+   （A 轨）。本批只把 B 轨的检索**能力**交付了，接线归 B7 的 4.3。
+4. **真实引擎复验未做**：Postgres / Redis Stream / 真实 tokenizer + embedding
+   三种后端组合。→ B8 门禁（需要 Docker，本机没有）。
+5. **README 指标失实未修**（F4）：badge 写 332 passed，实际 839；
+   且未区分"FAISS + 规则加权"与真正的 BM25 混合检索。→ B8。
+6. **检索评测口径失真未修**（F2）：`evaluate_retrieval_metrics.py:85` 的 `is_relevant`
+   按 intent 匹配判相关，报出的 recall@1 不是文档/Chunk 级指标，且用例集与语料同源。
+   本批未触碰任何评测脚本。→ 独立小批次。
+7. `data/rag_metadata.db` 仍不存在 → alembic 0001 仍未落到开发库（与 B1~B5 相同）。
+
+═══ 十、任务级结论 ═══
+
+**PASS**
+
+  · 9 条计划要求（3.3）逐条有实现 + 精确断言；
+  · 5 条计划要求（3.4）逐条有实现 + 精确断言；
+  · 门禁四件套全绿（839 passed / ruff / compileall / 体积检查）；
+  · 起点 790 → 终点 839，零回归，未新增 warning；
+  · 「已建未启用」清单里 B6 负责的四行**全部消失**，并有 AST 守卫守住；
+  · 本批唯一让门禁红过的缺陷已修复并留证（`B6_baseline_test.txt` → `B6_full_test-output.txt`）；
+  · 7 处偏离计划原文的决定已逐条标方向（第六节）。
+
+7 条遗留问题**均不阻断阶段 3 收尾**（软件发布门禁与后续批次的接线），
+其中第 1、3 条明确归属 B7 / B8，不属本批范围。
+
+────────────────────────────────────────────────────────────────────
+审查人：AI（B6 批次）
+审查日期：2026-09-23

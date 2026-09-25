@@ -7,6 +7,8 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth_helpers import auth_headers
+
 
 class KnowledgeOpsTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -33,12 +35,7 @@ class KnowledgeOpsTest(unittest.TestCase):
         app.include_router(knowledge_router.router, prefix="/knowledge")
         self.app = app
         self.client = TestClient(app)
-        self.client.headers.update(
-            {
-                "X-User-Role": "knowledge_ops",
-                "X-Operator-Id": "knowledge_ops_1",
-            }
-        )
+        self.client.headers.update(auth_headers(roles=["knowledge_ops"], user_id="knowledge_ops_1"))
 
     def restore_paths(self) -> None:
         self.knowledge_service.DB_PATH = self.previous_db_path
@@ -197,7 +194,7 @@ class KnowledgeOpsTest(unittest.TestCase):
         with patch.object(self.knowledge_service, "rebuild_vector_store") as rebuild:
             response = self.client.post(
                 "/knowledge/rollback-latest",
-                headers={"X-User-Role": "admin", "X-Operator-Id": "admin_1"},
+                headers=auth_headers(roles=["admin"], user_id="admin_1"),
             )
 
         self.assertEqual(response.status_code, 200)
@@ -217,7 +214,7 @@ class KnowledgeOpsTest(unittest.TestCase):
             self.client.post("/knowledge/publish-approved")
             self.client.post(
                 "/knowledge/rollback-latest",
-                headers={"X-User-Role": "admin", "X-Operator-Id": "admin_1"},
+                headers=auth_headers(roles=["admin"], user_id="admin_1"),
             )
 
         response = self.client.get("/knowledge/publish-history")

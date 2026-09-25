@@ -1,0 +1,70 @@
+收工全量测试：批次 B17（Top-K 内容级去重）
+命令：./venv/Scripts/python.exe -m pytest -q --junitxml=tmp/gate_b17_junit.xml
+日期：2026-09-25
+耗时：203.35s（3 分 23 秒）
+
+────────────────────────────────────────────────────────────────────
+★ 本文件不是「完整 stdout」
+────────────────────────────────────────────────────────────────────
+本轮全量是在**后台**跑的，命令自带 `| tail -30`，因此**完整 stdout 未保留**，
+这里保存的是被 tail 捕获的部分（含最有价值的汇总行与 warning 明细）。
+
+权威数字**不取本文件**，取同轮产出的 JUnit XML：
+    reports/rag_ingestion_auth_review/B17_full_test_junit.xml
+    → tests=1030 failures=0 errors=0 skipped=0
+
+为什么不再重跑一次拿完整 stdout：本仓的环境删除守卫按轮计数，
+同一轮内重跑全量会把绿的跑成红的（踩坑 A6）——
+证据完整性不值得用「把绿跑红」去换。
+
+────────────────────────────────────────────────────────────────────
+原始输出（tail 捕获部分）
+────────────────────────────────────────────────────────────────────
+
+........................................................................ [ 42%]
+........................................................................ [ 49%]
+........................................................................ [ 56%]
+........................................................................ [ 63%]
+.................................................................... [ 69%]
+........................................................................ [ 76%]
+........................................................................ [ 83%]
+........................................................................ [ 90%]
+........................................................................ [ 97%]
+......................                                                   [100%]
+=============================== warnings summary ===============================
+venv\Lib\site-packages\fastapi\testclient.py:1
+  StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+venv\Lib\site-packages\starlette\testclient.py:53
+  DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated
+<frozen importlib._bootstrap>:488
+  DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+<frozen importlib._bootstrap>:488
+  DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+<frozen importlib._bootstrap>:488
+  DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+  (SwigPy* 三条来自 faiss 的 SWIG 绑定)
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1026 passed, 5 warnings, 4 subtests passed in 203.35s (0:03:23)
+
+────────────────────────────────────────────────────────────────────
+★ 本轮的汇总行**没有被守卫吞掉**（上一批 B8 是 N/A）
+────────────────────────────────────────────────────────────────────
+所以本批的 warning 数是**实测值**，不是估算：
+
+    warning 总数 = 5
+
+逐条来源（全部是既有噪声，与本批改动无关）：
+  1. fastapi.testclient 的 httpx 弃用       （1 条）
+  2. starlette.testclient 的 anyio 别名弃用（1 条）
+  3. faiss SWIG 绑定缺 __module__           （3 条）
+合计 5 条，与 B7 批次的 `--collect-only` 口径（5 条）持平，**未新增**。
+
+────────────────────────────────────────────────────────────────────
+★ 两个「测试数」口径的差仍是 4（踩坑 D18，本批复现）
+────────────────────────────────────────────────────────────────────
+JUnit XML    口径：tests = 1030   （基线 1004 → 增量 +26）
+stdout       口径：1026 passed + 4 subtests
+--collect-only 口径：1026 tests collected
+
+差 4 = pytest-subtests 的 subtest 条数；两个口径都自洽，
+登记测试规模时**只说清用的哪个口径**，不混用。

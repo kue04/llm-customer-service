@@ -10,6 +10,25 @@ RISK_RANK = {
     "low": 1,
 }
 
+# 兜底意图：无任何规则命中时使用。它不属于 INTENT_RULES，
+# 因此也不会被「上下文继承」当成合法的继承来源（见 _inherited_intent）。
+FALLBACK_INTENT_NAME = "通用客服咨询"
+FALLBACK_CONFIDENCE = 0.5
+
+# 上下文继承的置信度：必须显著低于任何直接命中的规则置信度（最低一档是 0.76），
+# 否则「猜出来的意图」会被当成「真命中的意图」——本项目明令禁止。
+INHERITED_CONFIDENCE = 0.6
+
+# 低于该置信度走 clarify 路由（让链路有机会先澄清而不是硬猜）。
+CLARIFY_CONFIDENCE_THRESHOLD = 0.6
+
+# 指代词白名单：本句零命中、但含这些词时，才允许继承上文主意图。
+COREFERENCE_HINTS = ("那", "这", "它", "他", "呢", "还要", "多久", "怎么办", "然后")
+
+# 修饰词归一化白名单（B6 第一步）：删掉插入语 / 程度副词 / 口语冗余再匹配，
+# 解决「骑手一直联系不上」匹配不到「骑手联系不上」这类精确子串漏判。
+FILLER_WORDS = ("一直", "老是", "总是", "真的", "非常", "特别", "有点", "一下", "还是", "都")
+
 
 @dataclass(frozen=True)
 class IntentRule:
@@ -101,8 +120,42 @@ INTENT_RULES = (
 )
 
 
+KNOWN_INTENT_NAMES = frozenset(rule.name for rule in INTENT_RULES)
+
+
+def _normalize(query: str) -> str:
+    normalized = query
+    for word in FILLER_WORDS:
+        normalized = normalized.replace(word, "")
+    return normalized
+
+
 def _matched_keywords(query: str, keywords: tuple[str, ...]) -> list[str]:
-    return [keyword for keyword in keywords if keyword in query]
+    """原句与归一化句任一命中即算命中；证据片段固定取规则表里的原词。
+
+    保留「原句命中」这一路，是为了不缩小既有召回面（归一化只做加法）。
+    """
+    normalized = _normalize(query)
+    return [keyword for keyword in keywords if keyword in query or keyword in normalized]
+
+
+def _looks_like_coreference(query: str) -> bool:
+    return any(hint in query for hint in COREFERENCE_HINTS)
+
+
+def _inherited_intent(query: str, facts: dict) -> str:
+    """本句零命中时的指代消解：只在「上文主意图是真实规则意图」且「本句含指代词」时继承。
+
+    两道守卫都是必要的：
+    - 上一轮本身就走兜底（last_primary_intent = 通用客服咨询）时继承毫无信息量；
+    - 脏 facts（历史数据 / 改过规则表）里的未知意图名不许进入结果。
+    """
+    last_intent = str(facts.get("last_primary_intent") or "")
+    if last_intent not in KNOWN_INTENT_NAMES:
+        return ""
+    if not _looks_like_coreference(query):
+        return ""
+    return last_intent
 
 
 def _build_intent(rule: IntentRule, evidence: list[str]) -> dict:
@@ -139,18 +192,36 @@ def _choose_primary_intent(query: str, intents: list[dict]) -> dict:
 
 
 def analyze_intents(query: str, conversation_context: dict | None = None) -> dict:
-    del conversation_context
+    context = conversation_context or {}
+    facts = context.get("facts") or {}
+
     matched_intents = []
     for rule in INTENT_RULES:
         evidence = _matched_keywords(query, rule.keywords)
         if evidence:
             matched_intents.append(_build_intent(rule, evidence))
 
+    inherited_from = ""
+    if not matched_intents:
+        inherited_from = _inherited_intent(query, facts)
+        if inherited_from:
+            inherited_risk = str(facts.get("last_risk_level") or "low")
+            matched_intents.append(
+                {
+                    "name": inherited_from,
+                    "confidence": INHERITED_CONFIDENCE,  # 继承来的，必须低于直接命中
+                    "risk_level": inherited_risk if inherited_risk in RISK_RANK else "low",
+                    "priority": 50,  # 非直接命中，排在所有真实规则之后
+                    "evidence": [],  # 本句没有命中证据，留空（前端有专门文案）
+                    "inherited_from_context": True,
+                }
+            )
+
     if not matched_intents:
         matched_intents.append(
             {
-                "name": "通用客服咨询",
-                "confidence": 0.5,
+                "name": FALLBACK_INTENT_NAME,
+                "confidence": FALLBACK_CONFIDENCE,
                 "risk_level": "low",
                 "priority": 99,
                 "evidence": [],
@@ -166,14 +237,25 @@ def analyze_intents(query: str, conversation_context: dict | None = None) -> dic
     max_risk = max(matched_intents, key=lambda item: RISK_RANK.get(item["risk_level"], 0))
     risk_level = max_risk["risk_level"]
 
-    return {
+    if primary_intent["confidence"] < CLARIFY_CONFIDENCE_THRESHOLD:
+        routing = "clarify"
+    elif RISK_RANK.get(risk_level, 0) >= RISK_RANK["high"]:
+        routing = "high_risk_rag"
+    else:
+        routing = "rag"
+
+    result = {
         "primary_intent": primary_intent["name"],
         "secondary_intents": secondary_intents,
         "risk_level": risk_level,
-        "routing": "high_risk_rag" if RISK_RANK.get(risk_level, 0) >= RISK_RANK["high"] else "rag",
+        "routing": routing,
         "intents": sorted(
             matched_intents,
             key=lambda item: (item["priority"], -item["confidence"]),
         ),
         "requires_safety_prefix": RISK_RANK.get(risk_level, 0) >= RISK_RANK["high"],
     }
+    if inherited_from:
+        # 让前端 / 日志能看出这是继承来的，而不是真命中的
+        result["inherited_from_context"] = inherited_from
+    return result

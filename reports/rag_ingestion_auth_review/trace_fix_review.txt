@@ -1,0 +1,149 @@
+审查日期：2026-09-23
+
+任务级审查：/chat/prompt trace 内容层 + 意图识别缺陷（B1~B7，前端对齐批次）
+================================================================================
+审查对象：docs/BACKEND_TRACE_FIX_PROMPT_2026-09-23.md（前端侧需求）
+          本次改动：services/chat_service.py、services/intent_service.py
+                    tests/test_intent_and_safety.py、scripts/verify_trace_fix.py
+配套交付说明：docs/BACKEND_TRACE_FIX_DELIVERY_2026-09-23.md
+
+--------------------------------------------------------------------------------
+一、门禁结果（四件套，证据落 reports/rag_ingestion_auth_review/）
+--------------------------------------------------------------------------------
+  ruff check .           PASS   trace_fix_ruff-output.txt     （All checks passed!）
+  compileall             PASS   trace_fix_compileall-output.txt（exit 0）
+  check_repo_data_size   PASS   trace_fix_data-size-output.txt（无超标文件）
+  pytest（JUnit XML）    PASS   trace_fix_junit.xml
+
+  tests=927  failures=0  errors=0  skipped=0
+  warning 5 条（全量 stdout 口径，踩坑 D15）—— 与基线一致，未新增
+
+  与基线的集合 diff（基线 B8_step3_junit.xml，tests=918）：
+      added=9   removed=0
+  新增的 9 条正是本批用例（tests.test_intent_and_safety.IntentContextAndRoutingTest），
+  **零删除、零失败**。
+
+  口径说明（踩坑 D18）：同一轮 stdout 汇总行显示 "923 passed, 4 subtests passed"，
+  与 XML 的 927 差 4 —— `N passed` 不含 subtest。**门禁只认 XML**。
+
+--------------------------------------------------------------------------------
+二、逐条对照需求（前端提示词 §3 的 B1~B7）
+--------------------------------------------------------------------------------
+ B1  memory_loaded 补内容                      PASS
+     实测：recent_preview 是 list；long_term_summary 有值时是
+           "last_service_summary=…；common_issue_types=退款/售后；…"；
+           无画像时**不放键**（不是空串）——已按硬约束 2 实现。
+
+ B2  intent_detected 补置信度/证据/次意图       PASS
+     实测：confidence=0.86（float）、evidence=["退款","多久到账"]、
+           secondary_intents=[]。取不到 confidence 时不放键（isinstance 判数字 + 排除 bool）。
+
+ B3  risk_precheck 补检测信息                  PASS
+     实测：routing="rag"、risk_level="medium"、risk_source="intent_detected"、
+           matched_high_risk_intents=[]、requires_safety_prefix=0
+           —— **JSON 里是数字 0，不是 false**（提示词 §B3 特别警告的那条）。
+
+ B4  order_tool_called 带工具名                PASS
+     实测：output_summary =
+           "query_order_status: order_user_mismatch；query_refund_status: order_user_mismatch"
+           旧的 "order_user_mismatch；order_user_mismatch" 重复问题消失；
+           metadata.tools[] 带 tool_name/status/latency_ms/summary。
+
+ B5  上下文继承（指代消解）                    PASS
+     实测：「我想退款要多久」→「那要多久才能到」
+           primary=退款进度、inherited_from_context="退款进度"、confidence=0.6。
+           confidence 0.6 低于直接命中的最低档 0.76 —— 分层是刻意的。
+
+ B6  第一步 修饰词归一化                        PASS
+     实测：「我想退款，另外骑手一直联系不上」→ secondary 含 "配送异常追问"。
+ B6  第二步 加「不新鲜」关键词                  **未做**（见第五节，待决策）
+
+ B7  低置信度走 clarify                        PASS（但见第三节的落差声明）
+     实测：兜底句 routing="clarify"，且 risk_precheck.metadata.routing 同步为 clarify。
+
+--------------------------------------------------------------------------------
+三、超出需求的改动（标注方向：更严 / 更宽）
+--------------------------------------------------------------------------------
+ 1. intent_detected.metadata 多一个 inherited_from_context（契约表外的键）
+    方向：**更严**（信息更多，不是放宽门禁）
+    理由：提示词 §B5 自己要求「必须让人分得清猜出来的和真命中的」。
+    风险：前端忽略未知键，无副作用。
+
+ 2. B5 加了两条守卫（提示词没写）
+    方向：**更严**
+    内容：(a) last_primary_intent 必须在 KNOWN_INTENT_NAMES（由 INTENT_RULES 推导）内；
+          (b) 本句必须含指代词。
+    理由：**不加 (a) 会把「上一句没识别出来」伪装成「继承成功」**——
+          上一轮走兜底时 facts.last_primary_intent 就是 "通用客服咨询"，
+          照提示词原样实现会带着 inherited_from_context=True 继承一个兜底意图。
+    风险：可能与前端期望的「继承更激进」不一致 —— 若需要更激进，应显式改需求而不是回退守卫。
+
+--------------------------------------------------------------------------------
+四、中途发现的问题与处置
+--------------------------------------------------------------------------------
+ 1. routing 在后端零分支消费（提示词 §B7 描述成「改链路」）
+    处置：按「只补信号、不改链路」实现，落在提示词 §6.5 划的范围内；
+          落差显式写进交付说明 + 台账 + 踩坑 B16。**没有偷偷扩大改动范围。**
+
+ 2. 提示词的验收脚本要求把 admin 令牌硬编码进 scripts/verify_trace_fix.py
+    处置：改走 TRACE_FIX_TOKEN 环境变量，缺失即 exit 2，不退化成跳过鉴权（踩坑 C7）。
+    理由：硬编码提交一次 = 一把 admin 令牌永久留在 git 历史里（JWT 撤销不了）。
+
+ 3. 全量测试数 923 vs 基线 918 对不上（差 5，而我新增了 9 条）
+    处置：不猜，把新旧 JUnit XML 的 testcase 名字做集合 diff → added=9 removed=0，
+          差的 4 个是 subtest。登记踩坑 D18。
+
+ 4. 起服务验收时没有动老霸在 8001 的既有实例
+    处置：另起 8002 实例（自设 RAG_JWT_SECRET），验收完仍在后台运行，可自行关闭。
+
+--------------------------------------------------------------------------------
+五、测试盲区（显式列出，不许藏着）
+--------------------------------------------------------------------------------
+ 1. **跨端界面复核未做（最大盲区）**
+    提示词 §5.4 明写「在界面截图上看到内容之前，这件事不算完成」。
+    字段在 JSON 里出现 ≠ 前端真的用上了。需前端跑 diag_panel_probe.cjs 出截图。
+
+ 2. **没有 HTTP 层的自动化断言**
+    端到端依赖人工跑 scripts/verify_trace_fix.py（真实服务 + 真实令牌），
+    **未纳入 pytest**。后果：这 16 项断言只在有人手动跑时才生效，CI 守不住。
+    缓解：B1~B4 的字段组装逻辑纯且短；B5~B7 的逻辑由 9 条单测锁住。
+    **若要补 HTTP 测试，需要先把 Redis / 检索 / LLM 依赖做稳定的替身 —— 列为后续项。**
+
+ 3. 归一化的误命中面未穷举
+    只有 1 条反向守卫（"我平时都很忙，先问问情况" → 仍是兜底）。
+    FILLER_WORDS 里 "都" 是单字，删除后可能在某些未覆盖的句子上产生新命中。
+    **已知风险，未全量回归语料。**
+
+ 4. 真实 LLM 生成路径未验证
+    本机 venv 缺 torch/transformers，生成走降级分支；
+    本次改动不触及生成逻辑，判定为不受影响，但**未经真实模型验证**。
+
+ 5. B6 第二步未做 → 「这个菜还不太新鲜」仍识别不到食品安全投诉
+    这是**已知未覆盖**，不是遗漏。
+
+--------------------------------------------------------------------------------
+六、结论
+--------------------------------------------------------------------------------
+ 后端部分（B1~B7 的后端改动）：              PASS
+ 整批完成度：                                **NEEDS_WORK**
+
+ 判据逐条：
+   J1  四个 step 的 metadata 字段按契约表落盘      PASS（端到端 13 项断言实测通过）
+   J2  硬约束 7 条无违反                           PASS（缺键不放默认值、int 不传 bool、
+                                                       未动 memory_snapshot 与 /retrieval/*）
+   J3  门禁四件套全绿、测试只增不减                PASS（927 / 0F / 0E，added=9 removed=0）
+   J4  意图识别三处缺陷已修且有测试锁定            PASS（9 条新增用例，含 4 条反向守卫）
+   J5  **跨端界面复核**（提示词 §5.4）             **无法判定（缺前端截图）**
+       —— 不是「未达标」，是**还没验**。
+   J6  **B6 第二步**                               **无法判定（缺业务决策）**
+       —— 属业务策略，未做是**有意为之**，不是遗漏。
+
+ NEEDS_WORK 的三个阻塞项（缺任何一个都不能改写为 PASS）：
+
+   1. 前端跑 diag_panel_probe.cjs 出界面截图，确认字段真的被消费；
+   2. 老霸对 B6 第二步（往食品安全投诉加「不新鲜」）拍板；
+   3. 前端 src/lib/status.ts 的 ROUTING_TEXT 补 clarify 词条。
+
+ 声明范围：本结论**只覆盖**提示词 §3 列出的 B1~B7 后端改动与本次门禁结果。
+ 它**不覆盖**：检索质量、生成质量、性能与成本、以及任何前端侧行为。
+ **不得把本结论读作「诊断面板已可用」** —— 界面复核未做。

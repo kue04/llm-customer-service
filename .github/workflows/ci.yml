@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Ruff check
+        run: ruff check .
+
+      - name: Repo data size guard
+        run: python scripts/check_repo_data_size.py --max-mb 1
+
+      - name: Acceptance spec render guard
+        # 长文档最容易出的静默故障：未闭合围栏把大段内容吞进代码块，源文件肉眼看正常。
+        # 这道门禁在本地只手动跑过一次 —— 挂进 CI 才算真的存在（踩坑 E8 同款：
+        # 不被自动跑到的检查会随文档改动静默失效）。
+        run: python scripts/verify_acceptance_spec.py
+
+      - name: Pytest
+        run: pytest -q

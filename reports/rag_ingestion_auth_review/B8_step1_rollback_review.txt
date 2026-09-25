@@ -1,0 +1,149 @@
+任务级审查：B8 第一步（回滚资产做成真能力）
+审查日期：2026-09-23
+审查人：AI（B8 第一步）
+审查范围：把 `rollback_index` 一族从「已建未启用」变成「有测试、有生产调用点」的能力
+          —— 即台账记的「前置项 1」与 7.4 判据的阻断项之一。
+依据：docs/RAG_NEXT_WINDOW_PROMPT.md（B8 作业规程，2026-09-23 基线校正）；
+      docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md（v2.1，§17.3 接线判据、§17.2 结论状态机）；
+      docs/RAG_EXECUTION_PROGRESS.md 第 1/2/4 节；docs/RAG_DEV_PITFALLS.md F 节
+用户决策：回滚资产三选一 → 选「**补测试 + 接 ops 回滚入口**」（2026-09-23 22:30）
+
+────────────────────────────────────────────────────────────────────
+本步一句话结论
+────────────────────────────────────────────────────────────────────
+回滚资产卡在「零调用点、零测试」上已经跨了好几个批次（F 节欠账 + 7.4 阻断项）。
+本步把它**一次性做干净**：补 8 条测试 + 新增受权限保护的运维端点，
+并且把 6 个符号里唯一没有归属的 `index_root_for` 删掉 —— 现在**回滚一族全部有归属**。
+
+关键判断是「**只补测试不够**」：按规范 §17.3，定义在、测试在、**无人调用**仍记为未完成。
+所以真正的交付物是**端点**（调用点），测试只是它的证据。
+
+═══ 一、门禁结果（四件套，证据在 reports/rag_ingestion_auth_review/） ═══
+
+  B8_full_test_junit.xml     全量（JUnit XML，**权威口径**）→ tests=893 failures=0 errors=0 skipped=0
+  B8_full_test-output.txt    全量 stdout → `889 passed, 5 warnings, 4 subtests passed`，**退出码 0**
+  B8_collectonly_tests.txt   收集清单 → 889 tests collected（用于取测试数，非取 warning）
+  B8_ruff-output.txt         ruff check . → All checks passed!
+  B8_compileall-output.txt   compileall（main/routers/services/schemas/utils/config/scripts/tests）→ 退出码 0，无输出
+  B8_data-size-output.txt    check_repo_data_size.py → 通过，没有超标文件
+
+起点 / 终点对比：
+
+  B7 收尾 **884**（880 passed + 4 subtests）→ 本步 **893**（889 + 4），
+  **新增 9 条**：8 条回滚测试 + 1 条权限独立性测试。**零失败、零错误、零回归。**
+
+  本轮**未触发 A6 的删除守卫**（退出码 0、汇总行完整）——
+  与 B7 那次「全绿但退出码 1、无汇总行」形成对照，说明那条守卫是**间歇触发**的，
+  更说明「以 JUnit XML 为权威、不看退出码」这条口径不能省。
+
+═══ 二、接线登记（规范 §17.3：定义在、测试在、无人调用 = 未完成） ═══
+
+| 符号 | 生产调用点 | 测试 |
+|---|---|---|
+| `rollback_index` | `routers/documents.py::rollback_chunk_index` | `tests/test_index_rollback.py` ×8 |
+| `active_index_version` | 同上（记录回滚**前**的版本，用于响应与审计） | 同上（间接，断言 `previous_version`） |
+| `available_versions` | 同上（响应里给出可再切换的版本列表） | 同上（`test_endpoint_returns_from_and_to_version`） |
+| `ERROR_INDEX_ROLLBACK_FAILED` | 同上（错误码映射到 409） | 同上（断言 `error_code`） |
+| `ERROR_INDEX_BUILD_NOT_FOUND` | 同上（同属"请求侧原因"分支） | 同上（`build_entries` 路径） |
+| `build_entries` | `rebuild_index` 内部（B6 起就有） | `tests/test_ingestion_pipeline.py` |
+| ~~`index_root_for`~~ | **已删除** | — |
+
+**`index_root_for` 为什么删掉而不是接线**：它是 `index_root` 的 1 行公开别名
+（`return index_root(root, index_name)`），全仓**零调用零测试**，也没有"外部调用方"可言
+（索引根目录在生产链路上统一走 `pipeline.default_index_root()`）。
+按 §17.3 它属于「未完成」；留着它就等于把一个 dead code 永久挂在"能力清单"旁边。
+删除同时清掉了随之无用的 `index_root` import 与 `__all__` 条目。
+
+> 这一条也是本次的一个方法论落点：**§17.3 的判据不是"要补测试"，而是"要有归属"。**
+> 没有归属的东西，正确处置是**删掉**，不是给它补一个测试让它"看起来完成"。
+
+═══ 三、三条设计判断（都写在代码注释里，可复查） ═══
+
+1. **回滚单独授权**（新增 `index:rollback`，不复用 `index:rebuild`）
+   授权的单元是**动作**，不是资源类别。「能重建索引」≠「能把线上检索切回旧版本」。
+   两者当前角色集合相同（supervisor / admin），但独立成键 → 将来能单独收窄
+   （例如只给 admin）而不改动重建的授权。
+
+2. **错误码分 409 / 503**，不是一律 503
+   * `409`：目标版本目录不存在 / 不属于该租户 / `index_builds` 无记录 → **请求侧**问题，
+     "换一个版本重试"是有意义的动作；
+   * `503`：环境没准备好（faiss / 模型缺失）→ "等一会再来"。
+   重建端点当时一律 503；回滚这里更细，因为**「我选错了版本」和「服务现在不行」
+   该采取的行动完全不同** —— 给同一个码等于让调用方猜。
+
+3. **`reason` 进 `MASKED_SUMMARY_KEYS`**
+   回滚理由是自由文本，可能含个人信息（"因为 138xxxx 的账单数据错了"）。
+   `_record_audit` 的约定是"摘要里的自由文本统一过 `mask_sensitive_text`"，
+   而该约定靠 `MASKED_SUMMARY_KEYS` 白名单实现 —— 新增自由文本字段却不登记白名单，
+   审计表就会变成绕开脱敏的旁路。
+
+═══ 四、中途红了一条：判定与处置 ═══
+
+`tests/test_auth_context.py::test_resource_scopes_follow_the_plan_enumeration`
+在受影响子集跑时**红**（268 passed / 1 failed）。
+
+按 D12 的判据逐条核对：
+
+| 判据 | 本次事实 |
+|---|---|
+| 异常类型 | `AssertionError`（逻辑信号，非 `SystemExit` / `PermissionError`） |
+| 抛出点 | **项目自己的测试代码**（不是环境注入的模块） |
+| 与本次改动的关联 | **正是本批新增的第 10 个权限** |
+| 是否可复现 | 稳定复现 |
+
+→ 判定：**真信号，不是环境噪声**。
+
+但它守的是「权限枚举与计划**完全相等**」，而加权限是**有意的设计决策**。
+所以处置是**改测试期望**，且刻意做了两件事：
+
+* **保留 `==` 不放宽成 `>=`** —— 这样下次再加权限，必须在这个测试里显式登记；
+  权限表变更是显式决策，而不是静默多开一道门；
+* 新增权限写成独立的 `added_beyond_plan` 集合，与"计划内的九个"分开标注
+  （B10：超出计划原文的取舍必须标注方向）。
+
+另新增 `test_index_rollback_is_granted_separately`，把"独立成键"这件事钉住。
+
+> **诚实标注**：这条红的**现场输出没有落盘**（发现时是子集跑，输出未 tee）。
+> 断言原文、判据与处置已完整记入本文件。这一点不影响结论，但不该假装留了现场。
+
+═══ 五、口径修正：warning 条数从哪里取 ═══
+
+**发现**：`B7_collectonly_warnings.txt` 这个**文件名有歧义** ——
+文件里根本没有 warning 汇总，只有测试清单（末尾是 `880 tests collected`）。
+B7 记的"warning 5 条"实际来自全量运行的 stdout，而不是这个文件。
+
+**本次核对**：`pytest --collect-only -q` **不执行测试**，因此不产生 warning summary。
+本步的 `889 passed, 5 warnings, 4 subtests passed` 取自**全量 stdout**
+（`B8_full_test-output.txt`），与基线**持平（5 条）**。
+
+**处置**：① 本批证据文件改名 `B8_collectonly_tests.txt`（名副其实：它取的是**测试数**）；
+② 口径写进本文件与踩坑记录（D15），修正 MEMORY.md 第 8 节。
+
+> 这类"名字承诺了内容却没兑现"的东西比"没有口径"更危险 —— 它看起来有据可依。
+
+═══ 六、结论 ═══
+
+  【任务级结论】**PASS**
+
+  判据：
+  * 6 个符号**全部有归属**（5 个已接线 + 1 个删除），"已建未启用"状态解除；
+  * 全量 **893 / 0 failures / 0 errors / 0 skipped**，零回归，warning 持平；
+  * `ruff check .` 干净，compileall 退出码 0，体积检查通过；
+  * 4 份证据落盘，红/绿判据可复查（红的现场缺输出，已如实标注）。
+
+  **声明范围（避免过度声明）**：
+  * 本结论只覆盖 **B8 第一步**；
+  * **不等于 7.4 判据通过** —— 7.4 是"阶段完成条件"整组，
+    回滚通过只是其中一条，另有 7.2 四格式端到端未做等；
+  * **不等于 B8 PASS**，更**不等于发布门禁 PASS**（§17.2：两级必须分别出具）。
+
+═══ 七、遗留与下一步 ═══
+
+  B8 剩余三步：
+  1. **接线 AST 守卫** —— 守住 `routers/retrieval.py` 对 `retrieve_chunk_items` /
+     `build_chunk_access_filter` 的引用不被改回（B7 的接线目前只有人工核对）；
+  2. **四格式端到端**（7.2 判据）—— pdf / docx / html / md 走完
+     上传 → 解析 → chunk → 索引 → 可检索；
+  3. **7.3 逐项证据 + 阶段总审查 + 发布门禁**。
+
+  本步**未提交**（提交由用户决定时机）。

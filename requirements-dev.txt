@@ -1,0 +1,44 @@
+# CI / 本地轻量开发依赖。
+#
+# 与 requirements.txt 的区别：
+# requirements.txt 包含 torch / transformers / peft / sentence-transformers 等重型依赖，
+# 完整安装需要数 GB，不适合在 GitHub Actions 上每次拉取。
+#
+# 本项目在缺失 torch / transformers / peft / sentence-transformers 时会走降级分支
+# （见 services/chat_service.py 与 utils/vector_retriever.py 顶部的 try/except），
+# 单元测试通过 mock 覆盖检索与生成，因此 CI 只需要下面这些包即可跑通 ruff + pytest。
+#
+# 需要实际跑模型推理、embedding 或 reranker 时，请安装完整 requirements.txt。
+
+fastapi==0.136.0
+uvicorn==0.46.0
+pydantic==2.13.3
+numpy==2.4.4
+faiss-cpu==1.13.2
+httpx==0.28.1
+pytest==9.1.1
+ruff==0.14.5
+# 阶段 1 起需要：元数据模型、迁移、JWT。
+# 这三者都是纯 Python 包，CI 不需要 torch 即可跑通模型/鉴权测试。
+sqlalchemy==2.0.54
+alembic==1.20.0
+PyJWT==2.14.0
+# 阶段 2 起需要：文档解析。
+# 这四个包必须进 dev：tests/test_document_parsers.py 直接对 PDF / DOCX / HTML 样本
+# 断言结构（页码、标题层级、表格 JSON），没有 skip 分支，缺包会让 CI 直接报错。
+# 它们都提供预编译 wheel（含 pymupdf / lxml），不会在 CI 上触发本地编译。
+pymupdf==1.28.2
+python-docx==1.2.0
+beautifulsoup4==4.15.0
+trafilatura==2.2.0
+# 阶段 2.3 起需要：FastAPI 的 UploadFile（multipart/form-data）依赖它，
+# tests/test_document_upload_api.py 直接构造上传请求，缺包会让 CI 直接报错。
+python-multipart==0.0.32
+# redis 刻意**不进 dev**：队列在未配置 RAG_REDIS_STREAM_URL 时走内存降级，
+# 而 Redis Stream 分支用注入的假客户端测试（见 tests/test_document_upload_api.py），
+# 既不连真实 Redis 也不 import redis，因此 CI 无需安装。
+# OCR 的 rapidocr-onnxruntime 刻意不进 dev：它会拖进 onnxruntime 与模型权重，
+# 而全部解析器测试都用注入的假引擎覆盖 OCR 触发逻辑，不需要真实引擎。
+# 规范回归门禁（scripts/verify_acceptance_spec.py）需要它渲染 Markdown；
+# 缺了它这道门禁根本跑不起来，而"跑不起来的门禁"等于没有门禁。
+markdown==3.10.3

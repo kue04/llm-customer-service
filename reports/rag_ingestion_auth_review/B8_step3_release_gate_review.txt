@@ -1,0 +1,117 @@
+任务级审查：B8 第三步（四格式端到端，阶段 7.2 判据）
+审查日期：2026-09-23
+审查人：AI（B8 第三步）
+审查范围：PDF / DOCX / HTML / Markdown 四种格式「上传 → 解析 → 切分 → 索引 → 检索」端到端
+依据：docs/RAG_NEXT_WINDOW_PROMPT.md 第「7.2 四种文件端到端链路」八条；
+      docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md（§17.2 结论状态机、§17.3 接线判据）；
+      docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md 第 9 节（建议的验收口径 A/B/C/D 表）
+
+────────────────────────────────────────────────────────────────────
+本步一句话结论
+────────────────────────────────────────────────────────────────────
+7.2 是阶段 7 剩下的第二条阻断项。它要的**不是**"每段功能都对"，
+而是"**串起来能跑通**"—— 而项目此前**没有任何一条测试从 HTTP 入口走到检索结果**：
+上传测到"建了 job"、流水线测到"跑完 8 阶段"、检索测到"能按权限过滤"，
+三段各自全绿。F1 双轨制与 B14 的静默零命中，都是"两段各自全绿、接口对上才暴露"的产物。
+本步把这条链路补上，四种格式各跑一遍，**逐格式 PASSED**。
+
+═══ 一、门禁结果（证据 reports/rag_ingestion_auth_review/B8_step3_*） ═══
+
+  B8_step3_junit.xml            全量（JUnit XML，权威口径）→ tests=918 failures=0 errors=0 skipped=0
+  B8_step3_full_test-output.txt  全量 stdout → `914 passed, 5 warnings, 4 subtests passed`
+  B8_e2e_four_formats.txt        端到端逐条输出（-v）→ 四格式 + 3 条专项全部 PASSED
+  B8_step3_ruff-output.txt       ruff check . → All checks passed!
+  B8_step3_compileall-output.txt compileall → 退出码 0，无输出
+  B8_step3_data-size-output.txt  体积检查 → 通过
+
+起点 / 终点对比：
+
+  step2 收尾 **911** → 本步 **918**，**新增 7 条**，**零回归**；warning **5 条持平**。
+
+═══ 二、7.2 八条逐条对照 ═══
+
+| # | 规程要求 | 本批实现 | 判定 |
+|---|---|---|---|
+| 1 | 走**真实路由**上传 | `POST /knowledge-bases/{id}/documents`（multipart），拿 `document_id` / `job_id` | ✅ |
+| 2 | 消费队列跑完 8 阶段 | 测试内 `IngestionPipeline.process_job`（规程明示"worker 或测试内直接 process_job"） | ✅ |
+| 3 | 重建索引 | `POST /ingestion/indexes/rebuild`（真实端点，不是直接调函数） | ✅ |
+| 4 | 检索命中本文档 chunk | `POST /retrieval/search`；断言 `retrieval_path == "chunk-index"`（防退回 A 轨）+ 命中集合与本文档 chunk 有交集 | ✅ |
+| 5 | 链路 id 串联一致 | `document_id` / `document_version_id` / `document_version` / `tenant_id` / `source_type` 逐项一致；另加 **`text` 与库内 chunk 逐字相同** | ✅ |
+| 6 | 长文档 ≥ 2 chunk | Markdown 样本断言 `len(chunks) >= 2` | ✅ |
+| 7 | 重复上传不产生重复有效版本 | 同一文件上传两次 → `list_document_versions` 仍为 1；且复用同一 `document_id` | ✅ |
+| 8 | 失败可查错 + 可重试 | "过准入但解析失败"的 docx → `error_code` 非空；`/reprocess` 新建 job（`job_id` 不同） | ✅ |
+
+**超出规程的部分（按 B10 标注方向：更严）**：
+
+1. 第 5 条除 id 一致外，另断言 **`text` 与库内 chunk 逐字相同** ——
+   这一条能抓到"索引里的文本与库里不一致"这类最难查的静默错位（比 id 对不上隐蔽得多）；
+2. 第 4 条显式断言 `retrieval_path`，把"退回 A 轨"变成一条**会红的**断言
+   （否则退回去也可能命中，看不出差别）；
+3. 第 8 条额外断言 `/reprocess` 产生**新的** job，而不是复用失败的那个。
+
+═══ 三、两条刻意的设计判断 ═══
+
+**1. 两组生产默认值都要换，且必须是同一个 embedder**
+
+上传路由与检索路由**各自**读一组 `default_index_root` / `default_embedder` /
+`default_embedding_model`。只换一组，另一组就会去加载真模型（慢且可能失败）；
+换了但不是同一个 embedder，则**查询向量与索引向量不在同一空间**，分数毫无意义
+（B7 已踩过同一取舍，这里保持一致）。
+
+**2. 检索 query 取自待检索文档自己的 chunk**
+
+测试 embedder 是词袋哈希（同词共现 → 相似度高），query 必须与 chunk 共享 token 才可能有分。
+用文档自己的词构造 query ＝"用户问文档里写过的内容"，**验证的是链路通不通**，
+**不是检索质量**。检索质量属 M10 Recall@k，其口径修正尚未做
+（验收规范 §10.3 已把它标为「未就绪 / N/A（口径不一致）」）。
+
+> **表述纪律**：本步**不得**被读作"检索质量已验收"。它证明的是链路连通性；
+> 质量评测仍挂在 §10.5 的「不可测」清单里。两者不能互相顶替。
+
+═══ 四、中途的弯路（已登记为踩坑 D17） ═══
+
+第一版"坏文件"写成 `b"PK\x03\x04" + b"\x00" * 512`，被**准入层**以 **415** 拦下：
+「文件内容与扩展名 .docx 不一致」。
+
+**修正后的认识**：「坏」是**分层**的 ——
+① 准入层（`content_sniff`：magic bytes + zip 内是否有 `word/` 条目）；
+② 解析层（python-docx）；③ 流水线层（错误码与状态）。
+我以为是"解析失败"，实际构造的是"准入拒绝"。
+
+**解决**：用 `zipfile` 造一个**合法 zip**，内含 `[Content_Types].xml` 与
+`word/document.xml`（内容是非法 XML）→ 过准入、解析必失败。
+**副产品**：那次 415 是"准入校验确实在工作"的正面证据。
+
+═══ 五、结论 ═══
+
+  【任务级结论】**PASS**
+
+  判据：
+  * 7.2 八条**逐条实现**，三处按"更严"方向标注（B10）；
+  * 端到端逐条输出留档（`B8_e2e_four_formats.txt`，四格式各自 PASSED）；
+  * 全量 **918 / 0 failures / 0 errors / 0 skipped**，新增 7 条，零回归，warning 持平；
+  * ruff / compileall / 体积检查全过；证据 6 份落盘。
+
+  **声明范围（避免过度声明）**：
+  * 本结论只覆盖 **7.2 这一条判据**；
+  * **不构成检索质量结论**（见第三节第 2 点）；
+  * **不等于阶段 7 PASS**，更不等于发布门禁 PASS ——
+    阶段级结论要等 7.3 / 7.4 逐项出齐后另出（§17.2：两级分别出具）。
+
+═══ 六、对阶段 7 门禁的影响与下一步 ═══
+
+**7.4 的两条已知阻断项至此全部消除**：
+
+| 阻断项 | 状态 | 消除于 |
+|---|---|---|
+| 7.2 四格式端到端未做 | ✅ 已做 | 本批 |
+| 7.4 索引回滚无测试 | ✅ 已做（含 API 出口） | B8-1（`f934a26`） |
+
+**剩余工作**：
+1. **7.3 六条逐项证据**（安全审查逐项，目前"测试已有、证据未归档"）；
+2. **7.4 逐条判据结论**（逐条写 PASS / NEEDS_WORK）；
+3. **`stage7_review.txt`**（开头要有「阶段编号：7」与「审查日期」两行）；
+4. 台账分批表 / 审查汇总表更新 + 第 4 节暂停点改写；
+5. 踩坑与记忆追加。
+
+  本步**未提交**（提交由用户决定时机）。

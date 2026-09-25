@@ -1,0 +1,525 @@
+阶段编号：2（**完整阶段级审查**，覆盖任务 2.1 / 2.2 / 2.3）
+阶段目标：定义解析契约（2.1）、实现五种格式解析器与注册表（2.2）、
+         增加上传与异步任务 API（2.3）
+
+★ 范围声明（本次修订）★
+────────────────────────────────────────────────────────────────────
+上一版本文件只覆盖 2.1 / 2.2，并显式标注「2.3 未实现，阶段级结论待回填」。
+批次 B4 完成 2.3 后，阶段 2 的三个任务全部结束，本文已回填**阶段级结论**。
+
+保留这段修订说明是为了让「上一版为什么没有结论」可追溯 ——
+上一版刻意没有写「阶段结论：NEEDS_WORK」，因为按执行计划第 3 条的纪律，
+NEEDS_WORK 会触发「停止后续任务、不得进入下一批」，而 2.3 恰恰属于**同一个阶段**
+的剩余工作：用 NEEDS_WORK 标记一个「只差自己剩余部分」的阶段会造成死锁。
+
+═══ 一、已完成任务 ═══
+
+2.1 定义解析契约
+  - services/ingestion/parsers/base.py（新增）
+      · DocumentParser：runtime_checkable 协议
+        （supported_types / parser_name / parser_version / parse(source, filename)）
+      · ParsedDocument：title / blocks / metadata / warnings（+ source_type /
+        parser_name / parser_version 三个自描述字段，见台账 [D-4]）
+      · Block：type / text / order / page / heading_path / table_json / image_ref
+      · ParseWarning：code / message / detail（可 JSON 直存，供任务查询接口读取）
+      · ParserError：结构化错误码 + parser_name / filename / detail + to_dict()
+      · TemplateDocumentParser：模板基类（统一算 hash、包错误、重编号、
+        title 兜底、产物自检）
+  - services/ingestion/parsers/_text.py（新增，计划外）
+      编码回退链与分段逻辑，被 plain_text / markdown / html 三个解析器共用
+
+2.2 实现格式解析器和注册表
+  - services/ingestion/parsers/plain_text.py / markdown.py / html.py / pdf.py / docx.py
+  - services/ingestion/parsers/ocr.py（只定义接口，默认不装 rapidocr-onnxruntime）
+  - services/ingestion/parser_registry.py（ParserRegistry + 懒加载 default_registry）
+  - tests/fixtures/sample.{md,html,docx,pdf}（脚本生成，均 < 1 MB）
+  - scripts/make_parser_fixtures.py（新增，计划外：样本生成器）
+  - .gitattributes（新增，计划外：文本样本锁 LF）
+  - tests/test_document_parsers.py（116 个测试）
+  - requirements.txt / requirements-dev.txt：两侧同步 4 个解析依赖
+
+2.3 增加上传和异步任务 API（批次 B4，本次新增）
+  - routers/documents.py（新增）：五个端点
+        POST /knowledge-bases/{knowledge_base_id}/documents   上传，202 + document_id/job_id
+        GET  /documents/{document_id}                          文档详情（含最新版本摘要）
+        GET  /documents/{document_id}/versions                 版本列表
+        POST /documents/{document_id}/reprocess                重新处理（新建 job）
+        GET  /ingestion-jobs/{job_id}                          任务查询（含解析警告）
+  - services/ingestion/object_store.py（新增）：ObjectStore 接口 + LocalObjectStore
+        （原子写入、路径逃逸防护）+ 对象 key / source_uri 寻址 + 文件名净化
+  - services/ingestion/content_sniff.py（新增）：magic bytes 嗅探 + 一致性判定
+  - services/ingestion/queue.py（新增）：IngestionQueue 接口 +
+        InMemoryIngestionQueue（开发降级）+ RedisStreamIngestionQueue
+  - schemas/document_schema.py（新增）：上传 / 详情 / 版本 / 任务响应模型
+  - scripts/export_openapi.py（新增，计划外：让「OpenAPI 导出」可复现）
+  - tests/test_document_upload_api.py（新增，107 个测试）
+  - main.py：注册 documents router（路由内含两个前缀，故 include_router 不加 prefix）
+  - requirements.txt：python-multipart + redis；requirements-dev.txt：python-multipart
+  - **无新增 Alembic 迁移**：B4 不改表结构（版本仍由流水线创建、
+    解析警告仍放 document_versions.metadata_json）
+
+═══ 二、自动检查结果（证据见同目录） ═══
+
+证据文件：
+  B4_task2_3_test-output.txt  —— 本批新增测试文件
+  B4_stage2-check.txt         —— 计划第 7.1 节的阶段检查（pytest + ruff + compileall + 体积 + OpenAPI）
+  B4_full_test-output.txt     —— 全量回归
+  B4_followup_review.txt      —— 回头审查补测角色矩阵后的门禁重跑（见 3.7 [D]）
+  openapi.json                —— 导出的 OpenAPI schema（37 条路径，181 KB）
+  B3_task2_2_test-output.txt / B3_stage2-check.txt / B3_full_test-output.txt /
+  B3_fixture-size-output.txt  —— 2.1 / 2.2 的证据（保留）
+
+1) python -m pytest tests/test_document_upload_api.py -q
+   → 107 passed（实测 7.4 ~ 7.6 s）                                [通过]
+2) python -m pytest tests/test_document_parsers.py -q
+   → 116 passed in 1.06s                                         [通过]
+3) python -m pytest -q（全量）
+   → 555 passed, 5 warnings, 4 subtests passed（实测 12.9 ~ 13.5 s）[通过]
+   B2 收尾基线 332 → B3 收尾 448 → B4 收尾 555，本阶段共新增 223 个测试，
+   **零回归、零既有失败**。warning 数从 3（阶段 0/1）增至 5（B3 期间出现两条
+   fastapi/starlette testclient 的 DeprecationWarning，与本阶段改动无关），
+   **B4 没有引入新的 warning**：实现期发现 HTTP_413_REQUEST_ENTITY_TOO_LARGE
+   已被 starlette 标记废弃，改用 HTTP_413_CONTENT_TOO_LARGE。
+   （注：B4 首轮收尾为 100 / 548，回头审查补 7 条角色矩阵用例后重跑为
+   107 / 555，重跑证据见 B4_followup_review.txt，补记见 3.7 [D]。）
+4) python -m ruff check . → All checks passed!                   [通过]
+5) python -m compileall services routers schemas models alembic main.py scripts
+   → 退出码 0                                                    [通过]
+6) python scripts/check_repo_data_size.py → 通过，没有超标文件    [通过]
+7) python scripts/export_openapi.py → 导出 37 条路径             [通过]
+8) python scripts/make_parser_fixtures.py --check
+   → 四个样本 767 B / 1,357 B / 37,210 B / 4,472 B，全部 OK     [通过]
+
+═══ 三、人工审查结果 ═══
+
+── 3.1 计划 2.1 的四项契约要求 ──
+
+[√] 新增 services/ingestion/parsers/base.py，定义 DocumentParser 协议
+      supported_types / parser_name / parser_version /
+      parse(source: bytes, filename: str) -> ParsedDocument 四要素齐备。
+      runtime_checkable，测试对全部 5 个解析器做 isinstance 断言。
+
+[√] ParsedDocument 字段：title、blocks[]、metadata、warnings[]
+      四个字段齐备。额外加的三个自描述字段已在台账 [D-4] 记录理由。
+
+[√] 每个 block 含 type、text、order、page、heading_path、table_json、image_ref
+      七个字段齐备（Block.to_dict() 一一对应，测试断言）。
+
+[√] 解析器不得写数据库
+      不靠纪律，靠两条可执行断言：
+        · test_parser_modules_do_not_depend_on_database：源码扫描，出现
+          sqlalchemy / services.ingestion.repository / services.ingestion.db 即失败
+        · test_parsers_do_not_accept_tenant_id：断言 parse 签名恰好是
+          (source, filename)，从接口层面杜绝 tenant_id 渗入
+      实测：5 个解析器模块与 base.py / _text.py 全部零数据库引用。
+
+[√] 失败返回结构化错误，不能吞异常
+      实现方式为「抛 ParserError（带稳定 error_code）」而非返回错误对象，理由见台账
+      [T-2.1] 决策 1：返回值会留出「调用方忘记检查」的口子，后果是空文档静默进索引。
+      不吞异常的证明是 `__cause__` 断言，而不是「看起来会抛」：
+        · test_unexpected_exception_is_wrapped_without_being_swallowed
+          注入 RuntimeError → 断言 error_code=parse_failed 且 __cause__ 是原 RuntimeError
+        · test_parser_error_from_subclass_is_not_rewrapped
+          子类抛 ParserError → 原样上抛，不被二次包装丢错误码
+        · test_invalid_produced_document_is_rejected
+          解析器写出「表格块没有 table_json」的产物 → 在源头失败，不流到下游
+
+── 3.2 计划 2.2 的八项实现要求 ──
+
+[√] PDF 保留页码
+      sample.pdf 实测：page_count=2，blocks 的 page 依次为 [1,1,1,1,1,2,2]；
+      第 2 页的标题块 heading_path 正确接上「年度服务报告 > 下半年计划」。
+
+[√] DOCX 保留标题层级和表格
+      sample.docx 实测：四级标题路径正确嵌套到三级
+      （('员工手册（DOCX 样本）','休假制度','年假天数')）；
+      表格输出 {columns:[班次,上班时间,下班时间], rows:[['早班','09:00','18:00'],['晚班','13:00','22:00']]}。
+      实现上按 w:body 子元素顺序遍历并下钻 w:sdt —— 只读 document.paragraphs
+      **看不到任何表格**，这是本任务最容易踩的坑，已用块序列断言锁定。
+
+[√] HTML 清理 script/style/nav/footer 等无关内容
+      样本同时含 script、style、nav、header、footer、aside、form；
+      断言这些内容一律不出现在结果里（含「站点页眉标题」「广告位」「版权所有」三条具体文本）。
+
+[√] 表格同时保留稳定 JSON 和可检索文本
+      全部表格统一走 build_table_json（形状固定 {columns, rows}，行跑齐长度）
+      + render_table_text（` | ` 连接、首行表头）；
+      测试对 Markdown / HTML / DOCX / PDF 四种来源的表格 JSON 做**精确相等**断言。
+      契约自检保证「是表格块却没有可检索文本」不可通过。
+
+[√] OCR 仅在可提取文本为空或低于配置阈值时调用
+      阈值默认 32 字符，可经 RAG_OCR_MIN_TEXT_CHARS 覆盖（构造期读取，配错即报错）。
+      四个场景全部有测试：
+        · 文本层充足           → 不调用 OCR（engine.calls == []）
+        · 文本层不足 + 引擎可用 → 整页渲染 2 倍 PNG 送 OCR，产出正文块，pdf_ocr_used=True
+        · 文本层不足 + 引擎缺失 → 不报错，写 no_text_layer 警告（detail.ocr_engine=None）
+        · 引擎可用但识别为空    → 同样写 no_text_layer 警告
+      边界断言：31 字符触发、32 字符不触发（「低于阈值」而非「为空」）。
+
+[√] 每份原文件计算 SHA-256
+      由模板统一计算并写入 metadata["content_hash"]；
+      四个样本均断言 == hashlib.sha256(原始字节).hexdigest()。
+
+[√] 解析警告必须可由任务查询接口读取
+      阶段 2.2 侧的保证：warnings 为结构化对象（code/message/detail），
+      to_dict() 可直接 json.dumps，且解析产物在返回前会做 JSON 序列化自检。
+      已定义 5 个警告码：encoding_fallback / no_text_layer / empty_section /
+      degraded_extraction / image_skipped。
+      阶段 2.3 侧的落地（本条在 2.3 才算闭环）：
+      GET /ingestion-jobs/{job_id} 从 document_versions.metadata_json["warnings"]
+      读出并展开成 [{code, message, detail}]，与 ParseWarning.to_dict() 一一对应；
+      测试断言返回体与写入的警告列表**精确相等**（含 detail 里的 ocr_engine=None），
+      并覆盖「job 未绑定版本时退回文档最新版本」「metadata 缺失/形状非法时返回空列表」。
+
+[√] 新增 fixture 四个文件
+      tests/fixtures/sample.{pdf,docx,html,md}，均由脚本生成，体积 767 B ~ 37 KB。
+      另补一条「文本样本与生成脚本常量一致」的断言。
+
+[√] 新增 tests/test_document_parsers.py，断言块顺序、标题路径、页码、表格结构、
+    OCR 触发条件和坏文件错误
+      六项全部覆盖，且都使用**精确断言**而非「包含某关键词」（清单见 B3 版本文档，
+      本版未删减）：块顺序 == range(n) 且逐样本断言完整块类型序列；
+      标题路径断言精确元组（含「闭合层级不得被串起来」的专门用例）；
+      Markdown / HTML / DOCX 断言 page 全为 None 且 page_count == 0
+      （不能把「无页码概念」写成 0 或 1）；表格断言精确相等 + 可检索文本精确字符串；
+      坏文件错误覆盖 8 条路径，每条断言具体 error_code。
+
+── 3.3 计划 2.3 的实现要求（本批新增）──
+
+[√] 五个路由全部实现，路径与计划原文逐字一致
+      实测 OpenAPI 导出（reports/rag_ingestion_auth_review/openapi.json）：
+        /knowledge-bases/{knowledge_base_id}/documents  post
+        /documents/{document_id}                        get
+        /documents/{document_id}/versions               get
+        /documents/{document_id}/reprocess              post
+        /ingestion-jobs/{job_id}                        get
+      五个端点各有一条 OpenAPI 断言，并断言它们沿用全局 bearerAuth 声明、
+      上传端点声明 multipart/form-data 请求体（联调方按它写客户端）。
+
+[√] 每个受保护 handler 显式接收 AuthContext
+      五个 handler 全部 `auth: AuthContext = Depends(get_auth_context)`，
+      业务层不从 header 自行读身份；授权走
+      `require_read_operation_role` / `require_write_operation_role`。
+      未登记的 operation 不授予任何人（fail closed）这条既有性质未被绕过。
+
+[√] 上传仅执行「鉴权、类型/大小检查、对象存储、创建任务」，解析异步
+      用一条 **AST 级守卫测试**证明，而不是靠人工 review：
+        · routers/documents.py 不 import 任何具体解析器
+          （只允许 services.ingestion.parsers.base 的 ParserError）；
+        · 代码里不出现 parse_document(...) 调用（解析入口属于 worker / 3.3）；
+        · 不 import hashlib（内容 hash 的**计算与判定**都归流水线）。
+      额外一条：拒绝路径（415）断言对象存储里**没有任何文件**、
+      数据库里没有任何 document / job —— 准入检查确实发生在写入之前，不留孤儿字节。
+
+[√] 默认最大 50 MB，仅接受 PDF、DOCX、HTML、MD、TXT
+      DEFAULT_MAX_UPLOAD_MB = 50，可经 RAG_UPLOAD_MAX_MB 覆盖；
+      实测「超一字节 → 413」「恰好等于上限 → 202」「配置写成 abc/0/-3 → 500」
+      （配置写错报 500 而不是静默用默认值，否则「限制没生效」不可观测）。
+
+[√] 上传读取是**流式累计**而不是全量进内存
+      _read_upload_limited 按 1 MB 分块读取，累计超限立即中止并 413；
+      不用 await file.read() 一把梭（50 MB × 并发会打爆内存）。
+
+[√] 文件名只作展示，不能拼接 shell 命令；对象 key 使用随机文档 ID 并包含 tenant 路径
+      对象 key = `rag/<tenant_id>/<document_id>/<净化后的文件名>`；
+      tenant_id / document_id 都是服务端生成的 32 位 hex；
+      文件名经 sanitize_filename 剥离路径分隔符、控制字符与 `..`
+      （参数化断言 9 种输入：`../../etc/passwd` → `passwd`、
+      `..\..\windows\...\cmd.txt` → `cmd.txt`、空串 → `upload` 等）；
+      LocalObjectStore 落盘前再校验最终路径位于根目录内（越界 key 抛错），
+      且**全链路没有 shell 调用**。测试还验证对象里的字节与上传内容逐字节相同。
+
+[√] 扩展名白名单与解析能力同源
+      直接取 `parser_registry.ALLOWED_EXTENSIONS`（10 项），router 里没有第二份列表
+      （守卫测试断言源码中不出现 `".pdf"` 字面量）；
+      10 个扩展名每个一条参数化用例，均 202。
+
+[√] MIME 与文件内容不一致时拒绝
+      content_sniff.sniff_content_type 只认强特征：`%PDF-` → pdf、
+      `PK\x03\x04` 且 zip 内含 `word/` 条目 → docx；md / txt 无魔数一律返回 None。
+      策略：扩展名指向强特征格式时内容必须一致，否则 415
+      （`report.pdf` + HTML 内容 → 415、`report.pdf` + 纯文本 → 415、
+      `.docx` 位置上传不含 word/ 的普通 zip → 415）。
+      **弱特征格式一律放行**：`说明.md` + 纯中文 → 202、`note.md` 以 `<!DOCTYPE html>`
+      开头 → 202 —— 否则「正常文档传不上去」会成为更难接受的错误。
+      反面用例：`report.pdf` + 纯文本 → 415；`report.docx` + 非 zip → 415；
+      `.docx` 位置上传一个不含 word/ 的 zip（如 xlsx）→ 415；
+      以 `PK\x03\x04` 开头但被截断的坏 zip → 嗅探返回 None → 415。
+      同时验证 B3 的「扩展名优先于 MIME」继续成立：`report.pdf` + 真实 PDF 内容
+      + `Content-Type: text/html` → 202 且按 pdf 处理。
+      ※ 「强特征 / 弱特征」两级划分是对接文档 5.2 未定义的边界，属实现补的取舍，
+        见 3.7 [B]（文档只说「明确时拒绝」，没说 html 前缀命中算不算「明确」）。
+
+[√] tenant_id 全程只来自 AuthContext；跨租户返回 404/403 且不泄漏存在性
+      查询串里塞 `tenant_id=<另一个租户>` → 文档仍落在令牌所属租户（断言两个租户各查一次）。
+      四类资源（知识库 / 文档 / 版本 / 任务）各有一条「跨租户与不存在**逐字节相同**」断言。
+      知识库成员角色按 `KB_MEMBER_ROLES × KB_WRITE_MEMBER_ROLES` **四角色全覆盖**：
+      无成员关系 → 403；viewer → 403；reviewer → 403；owner / editor → 202。
+      另有纯集合断言：写白名单必须是合法角色的**真子集**
+      （拼错角色名会静默变成「永远 403」；等于全集则说明分级失效）。
+      ※ 「reviewer / viewer 不可写」比对接文档 3.1 第 2 步（只要求「有成员关系」）
+        更严，属实现加固，见 3.7 [A]；四角色全覆盖是回头审查补的盲区，见 3.7 [D]。
+      跨库同名文件的越权写入口子也已堵上：命中另一知识库的文档时，
+      要求对该**归属库**同样有写权限，否则 403。
+
+[√] ingestion_jobs 初值 pending / received（不是 stored）
+      上传返回体带 job_status=job_stage，并断言库里就是 ("pending","received")；
+      documents.status 为 received（stored 由流水线在写完对象后推进）。
+
+[√] 写操作写入 audit_events（actor、tenant、action、resource、request_id、脱敏摘要）
+      上传与重处理各一条断言（含 action 名、actor、request_id、resource_id）。
+      脱敏范围收窄过一次：**只对自由文本脱敏**（filename / user_agent / error_message）。
+      一开始对所有字符串统一脱敏，测试立刻发现 knowledge_base_id / job_id（32 位 hex）
+      里的连续数字串会被通用「订单号」规则打码，审计摘要里的 ID 变成不可关联的乱码 ——
+      结构化 ID 由服务端生成、不含个人信息，必须保持原样。
+      实测：文件名 `13800138000.txt` 落库为 `[手机号已脱敏].txt`，而 kb id / job id 完好。
+
+[√] 七个必测场景全覆盖（计划原文：拒绝不支持扩展名、MIME 与文件内容不一致、
+    超大文件、无权限、成功创建任务、任务失败可查询和可重试）
+        · 不支持扩展名：415（5 种畸形名：.exe / .zip / 无扩展名 / report.pdf.exe / .sh）
+        · 内容不一致：上述 6 条正反用例
+        · 超大文件：413 + 边界 + 配置错误 500
+        · 无权限：无令牌 401 / 缺 scope 403（agent 令牌）/ 无成员关系 403 /
+          reviewer 403 / viewer 403 / 跨租户 404
+        · 成功创建任务：202 + 文档 + job + 对象字节 + 审计 + 队列投递
+        · 任务失败可查询：fail_ingestion_job 后 GET 返回 failed + stage + error_code +
+          error_message + retry_count
+        · 可重试：/reprocess 新建 job（不复用旧 job 改状态），旧 job 记录保持不变
+      另补（计划未逐条列出但属于同类风险）：跨租户不可区分、审计脱敏、
+      拒绝时不产生孤儿对象、OpenAPI 端点齐全、对象存储与队列的单元测试、
+      队列不可用时 503 且 job 保留为 pending（不丢用户的操作痕迹）、
+      **成员角色矩阵真值表**（见 3.7 [D]，回头审查补）。
+
+[√] 解析警告可由任务查询接口读取 —— 见 3.2 最后一条（在 2.3 完成闭环）。
+
+[√] 新增依赖同步两侧
+      python-multipart 两侧都加（FastAPI 解析 multipart 的硬依赖，
+      tests/test_document_upload_api.py 直接构造上传请求，只放一侧 CI 会直接红）；
+      redis 只进 requirements.txt 并已在 [D-7] 说明理由：队列未配 URL 时走内存降级，
+      Redis 分支用注入的假客户端测试，不 import redis，CI 不需要它；
+      配了 URL 却没装客户端时队列明确报不可用（503），不会静默退回内存队列
+      （静默降级会制造「接口说受理了、其实任务不在任何队列里」这种最坏故障）。
+
+[√] 起点 448 passed，本批结束后零回归 → 见第二节实测 555 passed。
+
+── 3.4 ★ 计划 2.2 的「重复文件标记 duplicate」实现位置说明（阶段收尾的必要条件）★ ──
+
+计划 2.2 的字面表述是「每份原文件计算 SHA-256；重复文件标记 duplicate，
+不能创建第二份有效文档版本」，把这两件事写在同一段里，读起来像「2.2 就该实现
+duplicate 标记」。**实际拆分如下，这是有意的，不是遗漏：**
+
+* **机制在 2.2**：每份原文件的 SHA-256 由解析模板统一计算并写入
+  `ParsedDocument.metadata["content_hash"]`（`REQUIRED_METADATA_KEYS` 保证它必然存在）。
+  解析器只**产出** hash，不判定重复 —— 它既不接收 tenant_id，也不访问数据库，
+  这两条各有测试兜底（`test_parsers_do_not_accept_tenant_id`、
+  `test_parser_modules_do_not_depend_on_database`）。
+* **判定在 3.3（流水线）**：流水线在 `parsed` 阶段拿到 content_hash 后调用
+  `repository.find_version_by_content_hash(session, tenant_id, hash)`，
+  命中则把 `documents.status` 标为 `duplicate`、**不建新版本**、job 正常结束。
+  判定需要流水线上下文（同租户下已有版本、当前 job 的 document_id、事务边界），
+  这些在纯函数式的解析器里根本不可得。
+* **数据库级保证在阶段 1**：`uq_document_versions(tenant_id, content_hash)`
+  保证「同一租户内相同内容不得产生第二份版本」。这是数据库层的兜底，
+  与流水线的判定是两层防线：即使流水线判漏了，写入也会被约束拒绝，
+  不会静默产生重复版本。
+* **为什么不让上传接口来做判定**：上传期还不知道 content_hash（不解析就算不出来），
+  若为了判定而提前解析，就把「上传只做准入 + 落对象 + 建任务」的边界打破了，
+  也会让上传接口的响应时间取决于文件大小与解析器性能。见 [D-6]。
+
+因此：**2.2 的范围是「产出 hash 的机制」，不是「duplicate 状态的判定」**；
+判定与状态流转属于 3.3。本阶段（2.3）的上传接口也**不做**内容 hash 的重复判定，
+这一点已由 AST 守卫测试（不 import hashlib）与 [D-6] 的决策记录双重固定。
+按此口径，计划 2.2 的这条要求**不构成缺口**。
+
+── 3.5 阶段 2 额外加固（计划未显式要求，但属于同类风险）──
+
+  · **扩展名优先于 MIME**（parser_registry.detect_source_type），并有测试锁定。
+    若反过来，攻击者可以用「报表.pdf + Content-Type: text/html」绕过基于扩展名的
+    准入规则；B4 在此基础上把这条性质**在新接口上再验证了一遍**。
+  · **注册表拒绝重复注册与未知来源类型**，避免「解析行为取决于注册顺序」。
+  · **默认注册表懒加载**：OCR 阈值环境变量配错时在首次解析才暴露。
+  · **降级兜底必须是严格改进**：HTML 结构遍历结果不足时，只有 trafilatura 抽出的
+    文本**严格多于**结构结果才降级（两个失败用例都是在实现期被测试逼出来的，见风险 3）。
+  · **B4 新增的三条守卫**（都是「用测试而不是纪律保证」的延续）：
+    队列缓存必须有（内存队列每次请求新建会让投递内容随请求消失，有测试断言同一实例）；
+    LocalObjectStore 写出前先落临时文件再 os.replace（半截文件不会被流水线读到，
+    并断言不留 .tmp 残留）；审计摘要只对自由文本脱敏（见上文，是测试逼出来的修正）。
+
+── 3.6 实现期被测试逼出来的两个真实缺陷（记录以备考）──
+
+1. **JWT 的 sub 不是 users.id**。第一版直接拿 `auth.user_id` 去比对
+   `knowledge_base_members.user_id`（该列是指向 `users.id` 的外键），
+   结果是「成员关系存在也永远匹配不上」→ 写权限被无声全判 403。
+   线上表现会是「加了成员也用不了」，且不报任何错。
+   修正：统一经 `_resolve_principal_user_id` 映射一次（`documents.created_by` 同理，
+   否则直接写 sub 会撞外键）。
+2. **通用脱敏规则会打碎结构化 ID**（见 3.3 审计那一条），
+   把 `knowledge_base_id` / `job_id` 变成不可关联的乱码。修正为只脱敏自由文本。
+
+两条都不是靠人工 review 发现的：第一条由 415 用例报出 403 暴露，
+第二条由审计断言不相等暴露。
+
+── 3.7 回头审查：三处「超出对接文档原文」的取舍 + 一处覆盖盲区（B4 收尾后补记）──
+
+本节是 B4 交付完成后**回头看**的产物。目的不是复述「做完了」，而是把
+「本实现比对接文档字面要求**更多 / 更宽 / 更严**的地方」全部显式标注出来。
+这些取舍本身没问题，但如果不写清楚，下一位执行者会误以为它们是文档要求，
+从而在改动时错判约束强度（例如以为「放宽写权限」不需要额外决策记录）。
+
+[A] 更严：写操作要求「知识库**写**成员」，而不只是「有成员关系」
+    对接文档 3.1 第 2 步只要求「校验成员身份（无成员关系 403）」，未区分角色。
+    实现额外收紧了：只有 owner / editor 能写（KB_WRITE_MEMBER_ROLES），
+    reviewer / viewer 一律 403。
+    依据：若「有成员关系即可写」，viewer 就能上传并覆盖同名文档的对象字节，
+    使成员分级形同虚设；
+    代价：与文档字面存在差异 —— 按文档写客户端的联调方会以为 viewer 能上传。
+    故在此显式记录。已同步到 3.3 权限段与台账 [D-7] 第 4 点。
+
+[B] 更宽：内容一致性只在「嗅探结果明确」时拒绝，且 html 前缀命中**不拒**
+    对接文档 5.2 给的策略是「只在嗅探结果明确且与扩展名不一致时拒绝（415），
+    None 一律放行」，但没有定义「明确」的边界。实现把它物化为**两级**：
+      · 强特征（`%PDF-` → pdf；zip 内含 `word/` 条目 → docx）：不一致必拒 415；
+      · 弱特征（html 的 `<!DOCTYPE html` / `<html` 前缀启发式）：即使嗅出 html，
+        也不作为拒绝依据 —— Markdown 内嵌 HTML 是常见写法，
+        按内容拒收会造成「正常文档传不上去」；
+      · 无魔数（md / txt）：嗅探返回 None（不做近似判断），放行。
+    即：相对文档，实现**更宽**之处是「html 前缀命中也不拒」，
+    **更明确**之处是把「明确」定义成了可测试的两级枚举。
+    文档原话「HTML…允许不确定」与本实现方向一致，
+    但文档没说「嗅出 html 之后到底拒不拒」，该缺口由此决策补齐。
+
+[C] 更严：`source_uri` 由服务端从文件名派生，**不接受客户端传入**
+    对接文档 3.1 第 7 步只说「用 `get_document_by_source_uri` 命中则复用」，
+    没有规定 `source_uri` 的来源。实现取「净化后的文件名」派生
+    （`upload://<净化文件名>`），并忽略 body 中的同名字段。
+    依据：若允许客户端自报 `source_uri`，KB-A 的成员就能传入 KB-B 文档的 URI
+    给别人的库追加版本 —— 一个越权写入口。已同步到 [D-7] 第 1 点。
+
+[D] 覆盖盲区（**已补**，属于「实现正确但没测到」，不是「已知未实现」）
+    成员角色矩阵原本只采样了三个点：editor（放行）、viewer（403）、
+    无成员关系（403）。而 `KB_MEMBER_ROLES` 有**四个**合法角色 ——
+    **owner（写白名单的另一半）与 reviewer 都没有用例**。
+    盲区后果很实在：若实现把 `KB_WRITE_MEMBER_ROLES` 误写成 `{"editor"}`，
+    测试会**全绿**，但「库主（owner）传不上自己的文件」在线上必然发生。
+    已补 4 条：
+      · `test_upload_allows_knowledge_base_owner`（补上白名单另一半）
+      · `test_upload_rejects_reviewer_member`（reviewer 有「审核」语义，最易被误认为可写）
+      · `test_upload_respects_knowledge_base_role_matrix[owner|editor|reviewer|viewer]`
+        —— 由 `KB_MEMBER_ROLES` 与 `KB_WRITE_MEMBER_ROLES` **两张真值表驱动**而非抽样，
+        以后往角色枚举里加值，要么被接纳、要么被拒，不会出现
+        「既没被授权、也没有测试提醒」的静默缺口；
+      · `test_write_member_roles_are_a_strict_subset_of_all_member_roles`
+        —— 纯集合断言，同时守两个方向：拼错角色名（如 `"ower"`）会导致
+        「加了成员也永远 403」且不报错；写白名单等于全集则说明分级失效。
+    测试文件 **100 → 107**，全量 **548 → 555**（见第二节，已重跑）。
+
+═══ 四、风险与回滚点 ═══
+
+风险 1（继承自 B2，未消除）：本机无 Docker / 无 PostgreSQL，
+  数据层只在 SQLite 上实测。缓解与复验安排同阶段 1，归入阶段 7 门禁。
+
+风险 2（B3 引入，未消除）：**PDF 标题识别是启发式的**（字号倍数 + 长度 + 句末标点）。
+  会误判，但只影响 heading_path 的丰富程度，**不会丢内容** ——
+  最坏情况是一个段落被当成标题。若真实 PDF 的层级还原不准，可考虑 pymupdf_layout。
+
+风险 3（B3 引入，已在实现期消除，记录以备考）：HTML 降级兜底最初有两个缺陷 ——
+  (a) 送进 trafilatura 的是**未清洗**的 HTML，它会从已被判定为噪声的 nav/footer
+      里把内容捞回来，等于同一策略在两处得出互相矛盾的结论；
+  (b) 只要兜底结果非空就降级，于是 4 个字的合法短页面也会被判定为「降级」。
+  修复：改送清洗后的 HTML，并要求兜底结果严格多于结构结果。
+
+风险 4（B3 引入，未消除）：**扫描件 OCR 未在真实引擎上跑过**。
+  本机默认不装 rapidocr-onnxruntime，全部触发逻辑用注入的假引擎覆盖，
+  真实引擎的接入效果（识别质量、单页耗时、内存占用）需要单独复验，归入阶段 7。
+
+风险 5（B4 新增，未消除）：**Redis 分支没有连过真实 Redis**。
+  Redis Stream 实现用注入的假客户端断言 XADD 参数与 XLEN，
+  「配了 URL 却没装客户端」用 `sys.modules["redis"] = None` 模拟。
+  真实 Redis 上的行为（连接、重连、消费组创建）归入阶段 7 门禁；worker 属 3.3。
+
+风险 6（B4 新增，需注意）：**同名重传会覆盖同一个对象 key**。
+  同一租户内「同名 = 同一份文档」，重传即这份文档的新修订，因此 key 相同、对象被覆盖。
+  代价：如果两次上传之间 job 还没被 worker 消费，先到的 job 会读到后一份字节。
+  缓解：流水线必须在拿到 job 后尽快读取字节，并以 content_hash 唯一约束兜底
+  （最坏结果是一个 duplicate 标记，不是数据损坏）。
+  若产品上要求保留每个修订的原始字节，需要给每次上传独立的 blob key，
+  那要动 ingestion_jobs 表结构（新增列必须走 Alembic 迁移），
+  属于一次明确的范围变更，不在本批内。
+
+风险 7（B4 新增，需注意）：**读接口目前只做租户过滤 + 操作权限，还没有资源级 ACL**。
+  `document:read` 与 `document_acl` 表属于阶段 4.1 / 4.2，
+  届时在仓储层的查询条件上收紧，端点签名不变。
+
+风险 8（B4 新增，需注意）：**对象写入与元数据写入不是同一个事务，失败会留下孤儿字节**。
+  对象存储与数据库之间没有分布式事务，两者只能靠顺序与回滚尽力对齐：
+  当前顺序是「先查/建 document（事务内）→ 写对象 → 建 job + 写审计 → 提交」。
+  对象 key 含 document_id，而新文档的 id 只有插入后才有，因此**事务确实跨在对象写入之外**
+  （这是「先落库再写对象」的直接结果，也换来一个好处：对象写入失败时整条记录随事务回滚，
+  不会留下「有文档没有字节」的空壳）。代价是反方向的不一致 —— 对象已写入而提交失败时，
+  对象存储里会残留一份无人引用的字节。
+  缓解：流水线以 job 为入口、以 content_hash 唯一约束兜底，孤儿字节不影响正确性，
+  只占空间；彻底清理需要一个按对象存储与 documents 表对账的任务，归入阶段 7 门禁项。
+  另需注意：本地磁盘写入极快，但换成 S3 后这段事务会覆盖一次网络写入的时长 ——
+  50 MB 上限下的同步写入仍在可接受范围内，若将来放宽上限需要重新评估（改为
+  「先写对象 → 再开事务」或异步直传）。
+
+回滚点：本阶段改动集中在
+  B4：routers/documents.py、services/ingestion/{object_store,content_sniff,queue}.py、
+      schemas/document_schema.py、scripts/export_openapi.py、
+      tests/test_document_upload_api.py（均为新增，可整文件删除）；
+      main.py、services/ingestion/__init__.py、requirements*.txt、
+      tests/test_ingestion_models.py（只改了 docstring，可 git 恢复）
+  B3：services/ingestion/parsers/（全新目录）、parser_registry.py、
+      tests/test_document_parsers.py、tests/fixtures/、scripts/make_parser_fixtures.py、
+      .gitattributes（均为新增，可删）
+  **数据库侧无迁移变更**（B4 没有 0002），与阶段 1 的迁移与鉴权改动完全无耦合。
+回滚命令（需用户确认后执行）：
+  git checkout -- main.py services/ingestion/__init__.py requirements.txt requirements-dev.txt tests/test_ingestion_models.py
+  rm -f routers/documents.py services/ingestion/object_store.py services/ingestion/content_sniff.py \
+        services/ingestion/queue.py schemas/document_schema.py scripts/export_openapi.py \
+        tests/test_document_upload_api.py
+
+═══ 五、遗留问题（不阻塞本阶段结论） ═══
+
+1. **worker 未实现**（阶段 3.3）：上传后 job 停在 pending，队列只有投递端，
+   没有 xreadgroup / xack 与消费组创建。端到端异步链路要等 3.3。
+2. 计划 7.2 的「四种文件端到端链路」（document_id 串联 版本 → 块 → chunk → manifest
+   → 检索结果）依赖阶段 3 的切分与索引；本阶段只覆盖其中的**上传环节**，
+   完整链路验收归入阶段 3 与阶段 7 门禁。7.3 的安全审查项中，
+   「未发布/归档/过期/旧版本不进入索引」同理归入阶段 3/4。
+3. HTML 的列表项每项单独成块，而 Markdown 的连续列表合成一个块。
+   两者语义不同（<li> 是显式结构，Markdown 列表是纯文本推断），故未强行统一；
+   切分器（3.2）需要同时处理这两种形态。
+4. PDF 表格识别依赖 PyMuPDF find_tables() 的 lines 策略，只靠空格对齐的
+   「表格」不会被识别（符合预期）；识别失败时降级为正文而不中断解析。
+5. DOCX 单元格合并（w:gridSpan / w:vMerge）不做还原，合并区域的文字会在每个
+   参与合并的格子里各出现一次。有意取舍：错误还原会把内容错位到别的列，更危险。
+6. 本机 venv 在 B3 期间被破坏过一次并已按轻量口径重建（不含 torch / transformers /
+   datasets / trl / peft / sentence-transformers）。B4 期间在其中补装了
+   python-multipart（两侧依赖已同步）；redis 未装（不在 dev 侧，理由见 [D-7]）。
+7. 读接口的资源级 ACL 尚未收紧（见风险 7）。
+
+═══ 结论（覆盖范围：任务 2.1 / 2.2 / 2.3） ═══
+
+阶段结论：**PASS**
+
+依据：
+* 计划 2.1 的四项契约要求、2.2 的八项实现要求、2.3 的八项实现要求**逐条满足**，
+  且每条都有**精确断言**而非笼统的「看起来对」（见第三节，含正反用例）；
+* 计划第 7.1 节的阶段检查全部通过：全量 **555 passed**（相对 B3 收尾 448
+  **零回归**）、ruff 干净、compileall 退出码 0、仓库体积检查通过、OpenAPI 导出正常；
+* 三条纪律都落成了**可执行断言**，不依赖后续人工 review：
+  「解析器不得写数据库」「解析器不接收 tenant_id」「上传不做解析 / 不做内容 hash 判定」；
+* 安全性质有负向测试：跨租户四类资源均与「不存在」逐字节相同、
+  查询串自报 tenant_id 无效、**四个成员角色按真值表全覆盖**
+  （owner / editor 放行，reviewer / viewer 与无成员关系均 403）、
+  伪造内容类型的文件在准入期被 415 拦下；
+* 「本实现比对接文档更严 / 更宽」的三处取舍已在 3.7 显式标注
+  （写成员分级、内容嗅探的两级边界、source_uri 服务端派生），
+  使后续改动者不会误判约束强度；
+* 计划 2.2 字面表述中的「重复文件标记 duplicate」已按第三节 3.4 的口径说明
+  （机制在 2.2、判定在 3.3），不构成缺口；
+* 遗留问题均为**下一阶段或门禁项**（worker、真实 Redis、真实 OCR 引擎、
+  真实 PostgreSQL、资源级 ACL、端到端链路），没有一项属于本阶段范围内的未完成工作。
+
+允许进入阶段 3（Chunk 切分、持久化与索引，批次 B5）。

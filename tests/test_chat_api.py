@@ -8,11 +8,16 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth_helpers import auth_headers
+
 
 class ChatPromptApiTest(unittest.TestCase):
     def test_chat_prompt_returns_retrieved_documents_and_trace(self) -> None:
         fake_chat_service = types.ModuleType("services.chat_service")
-        fake_chat_service.get_answer_from_rag = lambda request: {
+        # auth 是 2026-09-25 切轨（F1）后新增的位置参数（聊天路由会把已校验的
+        # AuthContext 传下来）。伪造模块的替身签名必须跟着真身走 —— 这类漂移
+        # 类型检查看不见，只在运行时炸（踩坑 D22）。
+        fake_chat_service.get_answer_from_rag = lambda request, auth=None: {
             "request_id": "req-test",
             "reply": "answer",
             "risk_level": "medium",
@@ -88,7 +93,7 @@ class ChatPromptApiTest(unittest.TestCase):
 
             response = client.post(
                 "/chat/prompt",
-                headers={"X-User-Role": "agent", "X-Operator-Id": "agent_1"},
+                headers=auth_headers(roles=["agent"], user_id="agent_1"),
                 json={"message": "refund question"},
             )
         finally:
@@ -171,7 +176,7 @@ class ChatPromptApiTest(unittest.TestCase):
 
                 response = client.post(
                     "/chat/review-action",
-                    headers={"X-User-Role": "agent", "X-Operator-Id": "agent_1"},
+                    headers=auth_headers(roles=["agent"], user_id="agent_1"),
                     json={
                         "request_id": "req-review",
                         "action": "accepted",
@@ -219,7 +224,7 @@ class ChatPromptApiTest(unittest.TestCase):
 
                 response = client.post(
                     "/chat/review-action",
-                    headers={"X-User-Role": "knowledge_ops", "X-Operator-Id": "ops_1"},
+                    headers=auth_headers(roles=["knowledge_ops"], user_id="ops_1"),
                     json={"request_id": "req-forbid", "action": "accepted"},
                 )
             finally:
@@ -262,7 +267,7 @@ class ChatPromptApiTest(unittest.TestCase):
 
                 response = client.post(
                     "/chat/review-action",
-                    headers={"X-User-Role": "agent", "X-Operator-Id": "agent_1"},
+                    headers=auth_headers(roles=["agent"], user_id="agent_1"),
                     json={
                         "request_id": "req-handoff",
                         "action": "human_handoff",

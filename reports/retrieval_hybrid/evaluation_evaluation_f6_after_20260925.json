@@ -1,0 +1,1166 @@
+{
+  "generated_at": "2026-09-25T16:43:04",
+  "tenant_id": "tenant-dev",
+  "index": {
+    "index_name": "document_chunks",
+    "index_version": 4,
+    "chunk_count": 9229,
+    "embedding_model": "BAAI/bge-small-zh-v1.5",
+    "embedding_dimension": 512,
+    "sparse_available": true,
+    "sparse_gram_algorithm": "unicode61-bigram-v1",
+    "sparse_chunk_count": 9229
+  },
+  "datasets": {
+    "title": {
+      "case_count": 81,
+      "metrics": {
+        "dense": {
+          "recall@1": 0.7160493827160493,
+          "recall@5": 0.9629629629629629,
+          "recall@10": 0.9876543209876543,
+          "mrr": 0.7698216735253773,
+          "ndcg@10": 0.8203983127010398,
+          "hits_in_top10": 80,
+          "latency_ms_mean": 23.328100000049115,
+          "latency_ms_p50": 15.43149999997695,
+          "latency_ms_max": 648.9017999992939
+        },
+        "sparse": {
+          "recall@1": 0.7901234567901234,
+          "recall@5": 0.9012345679012346,
+          "recall@10": 0.9876543209876543,
+          "mrr": 0.8256515775034295,
+          "ndcg@10": 0.862135335569082,
+          "hits_in_top10": 80,
+          "latency_ms_mean": 11.590467901318513,
+          "latency_ms_p50": 11.54099999985192,
+          "latency_ms_max": 15.492100001210929
+        },
+        "hybrid": {
+          "recall@1": 0.7407407407407407,
+          "recall@5": 0.9629629629629629,
+          "recall@10": 1.0,
+          "mrr": 0.7922153635116599,
+          "ndcg@10": 0.8403667274497837,
+          "hits_in_top10": 81,
+          "latency_ms_mean": 27.036049382747287,
+          "latency_ms_p50": 26.562799999737763,
+          "latency_ms_max": 35.65759999946749
+        }
+      },
+      "complementarity_top10": {
+        "both": 79,
+        "dense_only": 1,
+        "sparse_only": 1,
+        "neither": 0,
+        "union": 81,
+        "dense_total": 80,
+        "sparse_total": 80
+      },
+      "raw_text_match_baseline": {
+        "note": "用未压平的原始文本比对（本批修正前的口径），仅稠密路，用于量化口径差异",
+        "dense_recall@1": 0.6296296296296297,
+        "dense_recall@10": 0.9629629629629629
+      },
+      "details": [
+        {
+          "id": "g001",
+          "rank_dense": 5,
+          "rank_sparse": 1,
+          "rank_hybrid": 4
+        },
+        {
+          "id": "g002",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g003",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g004",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g005",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g006",
+          "rank_dense": 5,
+          "rank_sparse": 5,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g007",
+          "rank_dense": 5,
+          "rank_sparse": 9,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g008",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g009",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g010",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g011",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g012",
+          "rank_dense": 5,
+          "rank_sparse": 9,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g013",
+          "rank_dense": 5,
+          "rank_sparse": 1,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g014",
+          "rank_dense": 5,
+          "rank_sparse": 1,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g015",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g016",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g017",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g018",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g019",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g020",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g021",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g022",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g023",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g024",
+          "rank_dense": 9,
+          "rank_sparse": 5,
+          "rank_hybrid": 9
+        },
+        {
+          "id": "g025",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g026",
+          "rank_dense": 1,
+          "rank_sparse": 5,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g027",
+          "rank_dense": 5,
+          "rank_sparse": 9,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g028",
+          "rank_dense": 5,
+          "rank_sparse": 9,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g029",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g030",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g031",
+          "rank_dense": 5,
+          "rank_sparse": 1,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g032",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g033",
+          "rank_dense": 5,
+          "rank_sparse": 5,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g034",
+          "rank_dense": 5,
+          "rank_sparse": 5,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g035",
+          "rank_dense": 1,
+          "rank_sparse": 2,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g036",
+          "rank_dense": 9,
+          "rank_sparse": null,
+          "rank_hybrid": 8
+        },
+        {
+          "id": "g037",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g038",
+          "rank_dense": null,
+          "rank_sparse": 1,
+          "rank_hybrid": 10
+        },
+        {
+          "id": "g039",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g040",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g041",
+          "rank_dense": 5,
+          "rank_sparse": 5,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g042",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g043",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g044",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g045",
+          "rank_dense": 5,
+          "rank_sparse": 5,
+          "rank_hybrid": 4
+        },
+        {
+          "id": "g046",
+          "rank_dense": 5,
+          "rank_sparse": 5,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g047",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g048",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g049",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g050",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g051",
+          "rank_dense": 5,
+          "rank_sparse": 9,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g052",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g053",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g054",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g055",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g056",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g057",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g058",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g059",
+          "rank_dense": 3,
+          "rank_sparse": 1,
+          "rank_hybrid": 3
+        },
+        {
+          "id": "g060",
+          "rank_dense": 5,
+          "rank_sparse": 1,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g061",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g062",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g063",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g064",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g065",
+          "rank_dense": 5,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g066",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g067",
+          "rank_dense": 5,
+          "rank_sparse": 9,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g068",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g069",
+          "rank_dense": 5,
+          "rank_sparse": 9,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "g070",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g071",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g072",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g073",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g074",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g075",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g076",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g077",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g078",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g079",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g080",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "g081",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        }
+      ]
+    },
+    "colloquial": {
+      "case_count": 30,
+      "metrics": {
+        "dense": {
+          "recall@1": 0.4,
+          "recall@5": 0.5,
+          "recall@10": 0.5666666666666667,
+          "mrr": 0.42740740740740735,
+          "ndcg@10": 0.45875394710105294,
+          "hits_in_top10": 17,
+          "latency_ms_mean": 15.047386666932045,
+          "latency_ms_p50": 15.019150000625814,
+          "latency_ms_max": 15.944099999614991
+        },
+        "sparse": {
+          "recall@1": 0.1,
+          "recall@5": 0.1,
+          "recall@10": 0.13333333333333333,
+          "mrr": 0.1037037037037037,
+          "ndcg@10": 0.11003433318879938,
+          "hits_in_top10": 4,
+          "latency_ms_mean": 10.11705333306357,
+          "latency_ms_p50": 10.03344999935507,
+          "latency_ms_max": 13.928299998951843
+        },
+        "hybrid": {
+          "recall@1": 0.4,
+          "recall@5": 0.5,
+          "recall@10": 0.5666666666666667,
+          "mrr": 0.42740740740740735,
+          "ndcg@10": 0.45875394710105294,
+          "hits_in_top10": 17,
+          "latency_ms_mean": 25.096666666710615,
+          "latency_ms_p50": 25.16414999990957,
+          "latency_ms_max": 29.05550000104995
+        }
+      },
+      "complementarity_top10": {
+        "both": 3,
+        "dense_only": 14,
+        "sparse_only": 1,
+        "neither": 12,
+        "union": 18,
+        "dense_total": 17,
+        "sparse_total": 4
+      },
+      "raw_text_match_baseline": {
+        "note": "用未压平的原始文本比对（本批修正前的口径），仅稠密路，用于量化口径差异",
+        "dense_recall@1": 0.36666666666666664,
+        "dense_recall@10": 0.5333333333333333
+      },
+      "details": [
+        {
+          "id": "c001",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c002",
+          "rank_dense": 9,
+          "rank_sparse": null,
+          "rank_hybrid": 9
+        },
+        {
+          "id": "c003",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c004",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c005",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c006",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c007",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c008",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c009",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c010",
+          "rank_dense": 9,
+          "rank_sparse": null,
+          "rank_hybrid": 9
+        },
+        {
+          "id": "c011",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c012",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c013",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c014",
+          "rank_dense": 5,
+          "rank_sparse": null,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "c015",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c016",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c017",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c018",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c019",
+          "rank_dense": null,
+          "rank_sparse": 9,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c020",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c021",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c022",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c023",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c024",
+          "rank_dense": null,
+          "rank_sparse": null,
+          "rank_hybrid": null
+        },
+        {
+          "id": "c025",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c026",
+          "rank_dense": 5,
+          "rank_sparse": null,
+          "rank_hybrid": 5
+        },
+        {
+          "id": "c027",
+          "rank_dense": 1,
+          "rank_sparse": 1,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c028",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c029",
+          "rank_dense": 1,
+          "rank_sparse": null,
+          "rank_hybrid": 1
+        },
+        {
+          "id": "c030",
+          "rank_dense": 5,
+          "rank_sparse": null,
+          "rank_hybrid": 5
+        }
+      ]
+    }
+  },
+  "negative_cases": {
+    "count": 40,
+    "top1_detail": [
+      {
+        "id": "n001",
+        "query": "如何申请发明专利的实质审查",
+        "dense_rank": 1,
+        "sparse_rank": 4,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n002",
+        "query": "个人所得税专项附加扣除怎么申报",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n003",
+        "query": "办理护照需要准备哪些材料",
+        "dense_rank": 1,
+        "sparse_rank": 8,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n004",
+        "query": "高血压患者的日常饮食要注意什么",
+        "dense_rank": 1,
+        "sparse_rank": 20,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n005",
+        "query": "Python 里怎么用装饰器缓存函数结果",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n006",
+        "query": "如何用 React 实现虚拟滚动列表",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n007",
+        "query": "去日本旅游需要提前多久订机票",
+        "dense_rank": 1,
+        "sparse_rank": 28,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n008",
+        "query": "新能源汽车的电池衰减怎么检测",
+        "dense_rank": 1,
+        "sparse_rank": 26,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n009",
+        "query": "考研数学应该怎么安排复习计划",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n010",
+        "query": "如何给家里的小猫做驱虫",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n011",
+        "query": "洗衣机脱水时剧烈晃动是什么原因",
+        "dense_rank": 3,
+        "sparse_rank": 2,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n012",
+        "query": "怎么用 GIMP 给照片换背景",
+        "dense_rank": 5,
+        "sparse_rank": 32,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n013",
+        "query": "滑雪初学者应该选单板还是双板",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n014",
+        "query": "冰箱冷藏室结冰了怎么处理",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n015",
+        "query": "小孩子几岁开始学游泳比较合适",
+        "dense_rank": 1,
+        "sparse_rank": 2,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n016",
+        "query": "如何在家自己发豆芽",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n017",
+        "query": "吉他换弦的时候要注意什么",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n018",
+        "query": "种植多肉植物应该多久浇一次水",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n019",
+        "query": "怎么挑选适合跑步的运动鞋",
+        "dense_rank": 1,
+        "sparse_rank": 8,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n020",
+        "query": "企业年会节目该怎么策划",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n021",
+        "query": "手机进水后第一时间应该做什么",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n022",
+        "query": "怎么判断家里是不是有白蚁",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n023",
+        "query": "学习油画需要准备哪些基础工具",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n024",
+        "query": "高铁上可以带宠物吗",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n025",
+        "query": "如何用 Photoshop 做证件照",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n026",
+        "query": "入职体检一般要查哪些项目",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n027",
+        "query": "怎么给老式自行车换链条",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n028",
+        "query": "露营的时候帐篷应该怎么选",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n029",
+        "query": "如何判断西瓜是不是熟了",
+        "dense_rank": 5,
+        "sparse_rank": 24,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n030",
+        "query": "给宝宝冲奶粉的水温多少合适",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n031",
+        "query": "怎么练习自由泳的换气",
+        "dense_rank": 1,
+        "sparse_rank": 20,
+        "routes": [
+          "dense",
+          "sparse"
+        ]
+      },
+      {
+        "id": "n032",
+        "query": "家里墙面发霉了要怎么处理",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n033",
+        "query": "如何挑选一款适合自己的键盘",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n034",
+        "query": "第一次去健身房应该练什么",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n035",
+        "query": "怎么用 Excel 做数据透视表",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n036",
+        "query": "养金鱼的水多久换一次",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n037",
+        "query": "怎样把旧手机的数据迁移到新手机",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n038",
+        "query": "冬天手部皮肤干裂怎么办",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n039",
+        "query": "如何准备一场半程马拉松",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      },
+      {
+        "id": "n040",
+        "query": "怎么判断家里的甲醛是否超标",
+        "dense_rank": 1,
+        "sparse_rank": null,
+        "routes": [
+          "dense"
+        ]
+      }
+    ]
+  }
+}

@@ -8,6 +8,8 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth_helpers import auth_headers
+
 
 class AuditAndReleaseTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -41,7 +43,7 @@ class AuditAndReleaseTest(unittest.TestCase):
         app.include_router(release_router.router, prefix="/release")
         self.app = app
         self.client = TestClient(app)
-        self.client.headers.update({"X-User-Role": "admin", "X-Operator-Id": "admin_1"})
+        self.client.headers.update(auth_headers(roles=["admin"], user_id="admin_1"))
 
     def restore_paths(self) -> None:
         self.feedback_service.DB_PATH = self.previous_feedback_db_path

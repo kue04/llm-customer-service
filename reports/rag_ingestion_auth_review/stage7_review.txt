@@ -1,0 +1,163 @@
+阶段编号：7（发布门禁：7.1 / 7.2 / 7.3 / 7.4 —— **全部完成**）
+阶段目标：阶段审查与发布门禁（7.1 自动检查 / 7.2 文件链路验收 / 7.3 安全审查 / 7.4 阶段完成条件）
+审查日期：2026-09-23
+审查人：AI（B8 批次，本阶段唯一批次）
+
+★ 范围声明（必须先读）★
+────────────────────────────────────────────────────────────────────
+阶段 7 **就是发布门禁本身** —— 它不是"又一个阶段"，而是计划里对前六个阶段的对外检查。
+本阶段由单一批次 B8 一次交付，分三步：B8-1 回滚资产 / B8-2 接线 AST 守卫 / B8-3 四格式端到端。
+
+**关于「阶段 PASS ≠ 发布门禁 PASS」**：这条纪律是针对**阶段 0~4** 的 ——
+它们各自的 PASS 都不构成对外声明（stage4_review 第六节明确写过「不含发布门禁」）。
+**阶段 7 的 PASS 才是发布门禁结论本身**，因此本文件的结论可以直接对外引用，
+但必须连同下方第五节的三条限制一起读。
+
+本阶段开工前登记的两条**阻断项**，已全部消除：
+
+  · 7.2 四格式端到端未做        → 已做（B8-3，提交 135d280）
+  · 7.4 索引回滚无测试          → 已做（B8-1，提交 f934a26；含 API 出口）
+
+═══ 一、自动检查结果（7.1） ═══
+
+证据文件（reports/rag_ingestion_auth_review/）：
+
+  B8_step3_junit.xml              pytest（JUnit XML 口径）→ tests=918 / failures=0 / errors=0 / skipped=0
+  B8_step3_full_test-output.txt   pytest stdout → `914 passed, 5 warnings, 4 subtests passed`，退出码 0
+  B8_collectonly_tests.txt        pytest --collect-only -q → 889 tests collected（取**测试数**用）
+  B8_step3_ruff-output.txt        ruff check . → All checks passed!
+  B8_step3_compileall-output.txt  compileall → 退出码 0，无输出
+  B8_step3_data-size-output.txt   check_repo_data_size.py → 通过，没有超标文件
+
+  分步证据（每一步各自的四件套与端到端输出）：
+  B8_full_test_junit.xml / B8_step2_junit.xml / B8_e2e_four_formats.txt
+
+测试数量与回归：
+
+  阶段 4（B7）收尾 **884**（= 880 passed + 4 subtests）
+    → B8-1 回滚资产 **893**（+8 回滚 +1 权限独立性）
+    → B8-2 接线守卫 **911**（+18）
+    → B8-3 四格式端到端 **918**（+7）
+  本阶段新增 **34** 条，**零失败、零错误、零回归**。
+
+  warning：5 条 → 5 条（fastapi/httpx、starlette/anyio、faiss SWIG ×3），**未新增**。
+
+★ 门禁取数口径（本阶段新增一条修正）
+
+  · 全量测试以 **JUnit XML** 的 `tests / failures / errors` 为权威；
+  · **warning 条数取自全量运行的 stdout**（`N warnings`），
+    **不是** `--collect-only` —— 后者不执行测试、输出里没有 warning 汇总。
+    这一点在 B8 期间被实测纠正，并发现 B7 的证据文件名
+    `B7_collectonly_warnings.txt` 名实不符（内容只有测试清单）。
+    已改名 `B8_collectonly_tests.txt` 并登记踩坑 **D15**。
+  · 本阶段的四轮全量里，**只有 B7 那轮触发过环境删除守卫**（A6）；
+    B8 的四轮都是退出码 0、汇总行完整 —— 该守卫是**间歇触发**，
+    反过来证明「不看退出码、只认 XML」这条口径不能省。
+
+═══ 二、文件链路验收（7.2） ═══
+
+交付：`tests/test_release_gate.py`（7 条 = pdf/docx/html/md 各一条 + 3 条专项）
+证据：`B8_e2e_four_formats.txt`（`-v` 逐条输出）
+
+  第 1 条 走**真实路由**上传（`POST /knowledge-bases/{id}/documents`）        ✅
+  第 2 条 消费任务跑完 8 阶段（`IngestionPipeline.process_job`）              ✅
+  第 3 条 **真实端点**重建索引（`POST /ingestion/indexes/rebuild`）           ✅
+  第 4 条 `POST /retrieval/search` 命中本文档 chunk
+         （另断言 `retrieval_path == "chunk-index"`，防退回 A 轨）            ✅
+  第 5 条 链路串联：`document_id` / `document_version_id` / `document_version`
+         / `tenant_id` / `source_type` 一致，且 `text` 与库内 chunk 逐字相同   ✅
+  第 6 条 长文档 ≥ 2 chunk（Markdown 样本）                                   ✅
+  第 7 条 重复上传不产生重复**有效**版本                                       ✅
+  第 8 条 失败任务可查错（`error_code`）且可重试（`/reprocess` 新建 job）      ✅
+
+  四种格式在 `-v` 输出里**逐条 PASSED**（pdf / docx / html / md）。
+
+  **为什么这条测试是本次交付里最有价值的一条**：它是项目**第一条从 HTTP 入口
+  走到检索结果**的测试。此前上传、流水线、检索三段各自全绿却从未串过 ——
+  F1 双轨制与 B14 的静默零命中，都是"两段各自全绿、接口对上才暴露"的产物。
+
+═══ 三、安全审查逐项（7.3） ═══
+
+本阶段**六条逐项**给出可指认的用例名（规程允许"用例名或证据文件"）。
+**说明**：这六条在此前阶段已有覆盖，本阶段做的是**逐项指认与复核**，
+没有为它们重复构造新测试（重复实现会引入漂移，见 D15 同源的理由）。
+
+| # | 判据（计划 7.3 原文） | 可指认用例 | 结论 |
+|---|---|---|---|
+| 1 | 伪造 `X-User-Role` 不提升权限 | `test_auth_context.py::test_forged_role_header_cannot_elevate_privileges`<br>另：`test_token_supplied_scopes_cannot_elevate_privileges`、`test_token_supplied_scopes_are_ignored` | ✅ |
+| 2 | body / 查询串的 `tenant_id` 不影响范围 | `test_document_upload_api.py::test_tenant_id_in_query_string_is_ignored`<br>`test_retrieval_api.py::test_client_supplied_tenant_and_filter_are_ignored`<br>`test_retrieval_isolation.py::TestCrossTenantIsolation::test_tenant_filter_comes_from_identity_not_from_content` | ✅ |
+| 3 | 跨租户资源返回 404/403 且**不泄漏存在性** | `test_document_upload_api.py::test_get_document_cross_tenant_is_indistinguishable_from_missing`<br>`...::test_list_versions_cross_tenant_is_indistinguishable_from_missing`<br>`...::test_get_job_cross_tenant_is_indistinguishable_from_missing`<br>`...::test_reprocess_cross_tenant_is_indistinguishable_from_missing` | ✅ |
+| 4 | 无 ACL 文档不出现在结果 / 引用 / trace / 错误信息 | `test_retrieval_isolation.py::TestAclIsolation::test_controlled_document_is_invisible_without_grant`<br>`TestFilterIsMandatory`（5 条，含"缺 filter 报错而不是全库检索"）<br>`TestCrossTenantIsolation`（5 条，含"被过滤而非仅排序靠后"）<br>`TestPositiveControl::test_acl_metadata_travels_with_the_chunk` | ✅ |
+| 5 | 未发布 / 归档 / 过期 / 旧版本**不进入索引** | `test_retrieval_isolation.py::TestVersionVisibility::test_unpublished_version_is_not_retrievable`<br>`...::test_only_published_chunks_enter_the_visible_set`<br>`...::test_republishing_brings_it_back`<br>机制侧：`repository.list_published_chunk_refs` 只取已发布引用 | ✅ |
+| 6 | 索引构建失败**不破坏旧版本** | `test_ingestion_pipeline.py::TestStageFailures::test_document_is_marked_failed_only_when_no_published_version_exists`<br>`...::test_indexed_stage_fails_when_embedding_backend_is_unavailable`<br>`test_index_rollback.py`（全套 8 条，含"目标版本不可达时**指针保持不动**"） | ✅ |
+
+  **第 5 条的限定（如实记录）**：证据形式是"可指认用例名 + 实现机制"，
+  **不是**一份独立的"旧版本实测报告"。若要更强的证据，需另建一份
+  "同一文档 v1 已发布、v2 未发布 → 只检索到 v1 的 chunk"的专项用例 ——
+  目前由 `TestVersionVisibility` 三条近似覆盖。
+
+═══ 四、阶段完成条件（7.4） ═══
+
+| # | 判据（计划 7.4 原文） | 结论 | 依据 |
+|---|---|---|---|
+| 1 | 全部自动测试通过 | **通过** | 918 / 0 failures / 0 errors / 0 skipped（JUnit XML） |
+| 2 | 四种文件端到端通过 | **通过** | `B8_e2e_four_formats.txt`，pdf/docx/html/md 逐条 PASSED |
+| 3 | 权限负向测试全部通过 | **通过** | 见第三节六条，全部可指认 |
+| 4 | 索引原子切换 / 回滚通过 | **通过** | 切换：`TestHappyPath::test_index_build_row_is_active_and_carries_manifest_uri`；<br>回滚：`test_index_rollback.py` 8 条（B8-1 新增，含 API 出口）|
+| 5 | 审查材料保存在 `reports/rag_ingestion_auth_review/` | **通过** | 本阶段证据 15 份 + 三份任务级审查 |
+| 6 | 结论写 `PASS` / `NEEDS_WORK` 并引用测试结果 | **本文出具** | 见第五节 |
+
+  7.1 的四件套（pytest / ruff / compileall / check_repo_data_size）全部通过；
+  计划原文的 `pytest -q` 期望 ≥884 条，实际 **918 条**。
+
+═══ 五、结论 ═══
+
+  【阶段 7 / 发布门禁】**PASS**
+
+  判据：7.1 四件套全绿；7.2 八条逐条通过且四格式留档；7.3 六条逐项可指认；
+  7.4 六条全部成立；两条开工前的阻断项（7.2 四格式、7.4 回滚）已消除；
+  全量 918 条零失败零错误零回归，warning 未新增。
+
+  ★ 三条限制（**必须与结论一起引用**）★
+
+  1. **本 PASS 的判据范围 = 计划第 7 节的四条**（7.1~7.4）。
+     它**不覆盖**：检索质量指标（M10 Recall@k 等，口径未就绪）、
+     真实的 OCR 引擎（当前仅接口 + 阈值判定）、病毒扫描与限流（未实现）、
+     压测与 P95/P99 聚合（未做）、成本账本（未实现）。
+     这些在 `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md` §1.0 与 §10.5 里
+     分别标为 `未实现` / `未就绪`，是**已知差距清单**，不是本结论的覆盖范围。
+
+  2. **roadmap 建议归入 B8 的两条 P3 事项未做**：
+     「真实 OCR 引擎复验」与「压测与 P95/P99 聚合」。
+     它们是 `RAG_GAP_ANALYSIS_AND_ROADMAP.md` 8.2 的**建议**，
+     **不在计划 7.4 的六条判据里**，因此不阻断本 PASS；
+     如实标注为"属后续路线"，不藏。
+
+  3. **检索质量无结论**。`tests/test_release_gate.py` 验证的是**链路连通性**，
+     不是检索质量（其 query 取自待检索文档自己的 chunk，见该文件 docstring）。
+     两者不能互相顶替 —— **不得把本 PASS 读作"检索效果已验收"**。
+
+═══ 六、测试盲区与未覆盖声明（按作业规程要求排查） ═══
+
+  1. **红/绿现场不完整（如实记录）**：本阶段两次"红"都没有落盘原始输出 ——
+     B8-1 的 `test_resource_scopes_follow_the_plan_enumeration`（子集跑时发现）
+     与 B8-3 的 docx 准入 415（构造坏文件时发现）。
+     两次的断言原文、判据与处置都已完整写入对应任务级审查与踩坑 D16/D17，
+     但**没有 tee 到证据文件**。这是流程瑕疵，如实标注，不假装留了现场。
+  2. **7.3 第 4 条的 trace / 错误信息维度**：现有用例覆盖的是
+     "检索结果与引用预览"，**trace 与错误信息里的泄漏**没有专项用例。
+     判定为**低风险但未覆盖**（引用预览与检索共用同一 `ChunkAccessFilter`）。
+  3. **未做**：真实模型（embedding / reranker）下的端到端 ——
+     全部测试用确定性替身，这是项目一贯取向（不上网、不下载模型），
+     代价是"真实模型下的行为"只在 `chat_service` 一侧有既有覆盖。
+  4. **跨数据库**：全量测试跑在 SQLite 上。PostgreSQL 复验**未做** ——
+     roadmap 8.1 把"B8 含 PostgreSQL 复验"写进了 B8 的内容里，
+     但计划 7.1~7.4 均未要求，故**不阻断本 PASS**，如实标为未做。
+
+═══ 七、后续 ═══
+
+  · 项目按计划走完了阶段 0~7（B1~B8 全部完成）；
+  · 对外可声明的范围以第五节的 PASS + 三条限制为准；
+  · 已知差距的完整清单见 `docs/RAG_ENTERPRISE_ACCEPTANCE_SPEC.md` §1.0（13 项）
+    与 `docs/RAG_GAP_ANALYSIS_AND_ROADMAP.md`；
+  · 提交/推送由用户处理（本阶段所有改动均已在工作区，见台账 §5）。

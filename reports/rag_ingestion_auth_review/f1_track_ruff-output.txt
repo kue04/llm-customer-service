@@ -1,0 +1,33 @@
+F401 [*] `json` imported but unused
+  --> tests\test_hybrid_retrieval.py:23:8
+   |
+21 | from __future__ import annotations
+22 |
+23 | import json
+   |        ^^^^
+24 | import sqlite3
+   |
+help: Remove unused import: `json`
+
+F821 Undefined name `replace`
+   --> tests\test_hybrid_retrieval.py:174:20
+    |
+173 |         base = _entries(["甲", "乙", "丙"])
+174 |         shifted = [replace(entry, row_id=100 + index) for index, entry in enumerate(base)]
+    |                    ^^^^^^^
+175 |         build_sparse_index(tmp_path, shifted)
+    |
+
+F821 Undefined name `replace`
+   --> tests\test_hybrid_retrieval.py:199:20
+    |
+197 |         entries = _entries(["甲", "乙"])
+198 |         build_sparse_index(tmp_path, entries)
+199 |         mutated = [replace(entry, row_id=entry.row_id + 1) for entry in entries]
+    |                    ^^^^^^^
+200 |         with pytest.raises(IndexManifestError) as excinfo:
+201 |             verify_sparse_index(tmp_path / SPARSE_FILENAME, _manifest(mutated))
+    |
+
+Found 3 errors.
+[*] 1 fixable with the `--fix` option.

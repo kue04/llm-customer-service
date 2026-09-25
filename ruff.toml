@@ -1,0 +1,32 @@
+# Ruff 配置
+#
+# 说明：只开启基础错误类规则（E/F/W/I），不做格式化（format 交给人工）。
+# scripts/ 下允许 E402，因为这些脚本需要先 sys.path.insert(0, PROJECT_ROOT)
+# 才能 import 项目内模块，这是刻意的写法而不是疏漏。
+
+line-length = 120
+target-version = "py311"
+
+exclude = [
+    "venv/",
+    "tmp/",
+    ".codex_deps/",
+    "local_models/",
+]
+
+[lint]
+# 只开启「确定性错误」类规则：语法问题、未使用变量/导入、未定义名、尾随空白等。
+# 刻意不开 isort(I) 与格式化规则：开启会对存量代码产生几十处纯风格 diff，
+# 属于与功能无关的改动，本次优化不引入。
+select = ["E4", "E7", "E9", "F", "W"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"scripts/*" = ["E402"]
+# alembic/env.py 需要先把项目根目录插进 sys.path 才能 import 项目内模块，
+# 与 scripts/ 同理，这是刻意写法而不是疏漏。
+# alembic/versions/*.py 的模块名以数字开头（0001_...），也无法用普通包导入。
+"alembic/*" = ["E402"]
+# tests/conftest.py 需要先把项目根与 tests 目录插进 sys.path，
+# 才能 import auth_helpers 并固定鉴权环境变量；同样是刻意写法。
+"tests/conftest.py" = ["E402"]

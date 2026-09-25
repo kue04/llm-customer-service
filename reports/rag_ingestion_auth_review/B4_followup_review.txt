@@ -1,0 +1,21 @@
+=== B4 回头审查门禁（角色矩阵补测后重跑）===
+时间: 2026-09-23 13:52:19
+
+--- 1) pytest tests/test_document_upload_api.py -q ---
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+107 passed, 5 warnings in 7.40s
+
+--- 2) pytest -q（全量）---
+555 passed, 5 warnings, 4 subtests passed in 12.87s
+
+--- 3) ruff check . ---
+All checks passed!
+
+--- 4) compileall ---
+exit=0
+
+--- 5) check_repo_data_size.py ---
+检查目录：D:\llm\llm-customer-service
+单文件上限：1.0 MB
+结果：通过，没有超标文件。

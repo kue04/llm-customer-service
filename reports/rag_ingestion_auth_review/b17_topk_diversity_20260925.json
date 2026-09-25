@@ -1,0 +1,325 @@
+{
+  "generated_by": "tmp/probe_topk_diversity.py",
+  "chat_limit": 3,
+  "duplicate_chunk_ids_total": 0,
+  "wasted_slots_by_downstream_dedupe": 6,
+  "rows": [
+    {
+      "query": "外卖配送超时怎么赔偿",
+      "raw_count": 3,
+      "distinct_chunk_ids": 3,
+      "distinct_headings": 1,
+      "distinct_texts": 2,
+      "duplicate_chunk_ids": 0,
+      "duplicate_headings": 2,
+      "identical_texts": 1,
+      "effective_evidence_after_downstream_dedupe": 2,
+      "hits": [
+        {
+          "rank": 1,
+          "chunk_id": "c_449f3392443946f48d390debca5d44c3",
+          "document_id": "fb7c44de63b24a6fa6bc57a112772010",
+          "document_title": "外卖平台配送服务规范（2026 版）",
+          "heading_path": [
+            "外卖平台配送服务规范（2026 版）",
+            "第三章 超时与异常处置"
+          ],
+          "score": 0.8054
+        },
+        {
+          "rank": 2,
+          "chunk_id": "p_0d7d97bf5e6fa5f7adaf9106433a01a3",
+          "document_id": "fb7c44de63b24a6fa6bc57a112772010",
+          "document_title": "外卖平台配送服务规范（2026 版）",
+          "heading_path": [
+            "外卖平台配送服务规范（2026 版）",
+            "第三章 超时与异常处置"
+          ],
+          "score": 0.8054
+        },
+        {
+          "rank": 3,
+          "chunk_id": "c_e038f53c98f17f2716ad725ff7382d67",
+          "document_id": "5ba9334d5b364057a709842f6699addf",
+          "document_title": "外卖平台配送服务规范（2026 版）",
+          "heading_path": [
+            "外卖平台配送服务规范（2026 版）",
+            "第三章 超时与异常处置"
+          ],
+          "score": 0.8054
+        }
+      ]
+    },
+    {
+      "query": "消费者七天无理由退货的规定",
+      "raw_count": 3,
+      "distinct_chunk_ids": 3,
+      "distinct_headings": 1,
+      "distinct_texts": 1,
+      "duplicate_chunk_ids": 0,
+      "duplicate_headings": 2,
+      "identical_texts": 2,
+      "effective_evidence_after_downstream_dedupe": 1,
+      "hits": [
+        {
+          "rank": 1,
+          "chunk_id": "c_f163e94f5690f5ab37b6f68c245ed879",
+          "document_id": "c4b3321582384996831007e327be82c5",
+          "document_title": "退款售后 常见问题解答（第 1 部分）",
+          "heading_path": [
+            "退款售后 常见问题解答（第 1 部分）",
+            "39. 平台自营商品7天无理由退货标准"
+          ],
+          "score": 0.8061
+        },
+        {
+          "rank": 2,
+          "chunk_id": "p_9727a76c89ca6104a87b242aa8dbf9f8",
+          "document_id": "c4b3321582384996831007e327be82c5",
+          "document_title": "退款售后 常见问题解答（第 1 部分）",
+          "heading_path": [
+            "退款售后 常见问题解答（第 1 部分）",
+            "39. 平台自营商品7天无理由退货标准"
+          ],
+          "score": 0.8061
+        },
+        {
+          "rank": 3,
+          "chunk_id": "c_28bb6b3cae6dfccf6f4b4c3db84fb244",
+          "document_id": "b15db3b4a92b4f948862b94f98a97ba1",
+          "document_title": "退款售后 常见问题解答（第 1 部分）",
+          "heading_path": [
+            "退款售后 常见问题解答（第 1 部分）",
+            "39. 平台自营商品7天无理由退货标准"
+          ],
+          "score": 0.8061
+        }
+      ]
+    },
+    {
+      "query": "电子商务经营者应当履行的义务",
+      "raw_count": 3,
+      "distinct_chunk_ids": 3,
+      "distinct_headings": 2,
+      "distinct_texts": 2,
+      "duplicate_chunk_ids": 0,
+      "duplicate_headings": 1,
+      "identical_texts": 1,
+      "effective_evidence_after_downstream_dedupe": 2,
+      "hits": [
+        {
+          "rank": 1,
+          "chunk_id": "c_67c1f55b2b82fbfb4484a704685e6f68",
+          "document_id": "a441f429f2b743beb00f1a99bdb1d27e",
+          "document_title": "中华人民共和国电子商务法",
+          "heading_path": [
+            "第一章 总 则"
+          ],
+          "score": 0.7832
+        },
+        {
+          "rank": 2,
+          "chunk_id": "c_0e553cc766c3bf87979b56a5d7a796b7",
+          "document_id": "8012cea75bd0485b851711d59d17e673",
+          "document_title": "中华人民共和国电子商务法",
+          "heading_path": [
+            "中华人民共和国电子商务法",
+            "、引导本行业经营者公平参与市场竞争。\n第一节 一般规定"
+          ],
+          "score": 0.7711
+        },
+        {
+          "rank": 3,
+          "chunk_id": "p_16f7a4a87057af6822f45de7e2f69427",
+          "document_id": "8012cea75bd0485b851711d59d17e673",
+          "document_title": "中华人民共和国电子商务法",
+          "heading_path": [
+            "中华人民共和国电子商务法",
+            "、引导本行业经营者公平参与市场竞争。\n第一节 一般规定"
+          ],
+          "score": 0.7711
+        }
+      ]
+    },
+    {
+      "query": "食品经营许可证怎么办",
+      "raw_count": 3,
+      "distinct_chunk_ids": 3,
+      "distinct_headings": 2,
+      "distinct_texts": 2,
+      "duplicate_chunk_ids": 0,
+      "duplicate_headings": 1,
+      "identical_texts": 1,
+      "effective_evidence_after_downstream_dedupe": 2,
+      "hits": [
+        {
+          "rank": 1,
+          "chunk_id": "c_22b6741155656d84d035c38804e5c6c2",
+          "document_id": "c5c0d1dbeda744fcbeb42f1456f2acaa",
+          "document_title": "国境口岸食品卫生监督管理规定（2018修正）",
+          "heading_path": [
+            "第二章 食品生产经营单位的许可管理"
+          ],
+          "score": 0.7372
+        },
+        {
+          "rank": 2,
+          "chunk_id": "c_f82e728249f521e808c759597be27ce0",
+          "document_id": "67583b9bf7e74acb906efe48da602bb3",
+          "document_title": "国境口岸食品卫生监督管理规定（2018修正）",
+          "heading_path": [
+            "国境口岸食品卫生监督管理规定（2018修正）",
+            "可以按照相关标准进行卫生监督管理。\n第二章 食品生产经营单位的许可管理"
+          ],
+          "score": 0.7344
+        },
+        {
+          "rank": 3,
+          "chunk_id": "p_72def37293aaf16f434017f47d4ab3e4",
+          "document_id": "67583b9bf7e74acb906efe48da602bb3",
+          "document_title": "国境口岸食品卫生监督管理规定（2018修正）",
+          "heading_path": [
+            "国境口岸食品卫生监督管理规定（2018修正）",
+            "可以按照相关标准进行卫生监督管理。\n第二章 食品生产经营单位的许可管理"
+          ],
+          "score": 0.7344
+        }
+      ]
+    },
+    {
+      "query": "广告不得含有哪些内容",
+      "raw_count": 3,
+      "distinct_chunk_ids": 3,
+      "distinct_headings": 2,
+      "distinct_texts": 3,
+      "duplicate_chunk_ids": 0,
+      "duplicate_headings": 1,
+      "identical_texts": 0,
+      "effective_evidence_after_downstream_dedupe": 3,
+      "hits": [
+        {
+          "rank": 1,
+          "chunk_id": "p_ea28274a6ed7a335a535528d67e7cbd2",
+          "document_id": "cd23425b018c40a195e9d3be4add76b4",
+          "document_title": "中华人民共和国广告法（2018修正）",
+          "heading_path": [
+            "第二章 广告内容准则"
+          ],
+          "score": 0.7506
+        },
+        {
+          "rank": 2,
+          "chunk_id": "c_43e501a63c457d8ad7acebfeaca9d98c",
+          "document_id": "cd23425b018c40a195e9d3be4add76b4",
+          "document_title": "中华人民共和国广告法（2018修正）",
+          "heading_path": [
+            "第二章 广告内容准则"
+          ],
+          "score": 0.7423
+        },
+        {
+          "rank": 3,
+          "chunk_id": "c_44582ab78fe133541ab447b7d5ec17eb",
+          "document_id": "0ca31991d1674625918827fa1e6920f1",
+          "document_title": "中华人民共和国广告法（2018修正）",
+          "heading_path": [
+            "中华人民共和国广告法（2018修正）",
+            "内容欺骗、误导消费者的其他情形。\n第三章 广告行为规范"
+          ],
+          "score": 0.731
+        }
+      ]
+    },
+    {
+      "query": "个人信息处理者收集个人信息需要遵守什么原则",
+      "raw_count": 3,
+      "distinct_chunk_ids": 3,
+      "distinct_headings": 2,
+      "distinct_texts": 2,
+      "duplicate_chunk_ids": 0,
+      "duplicate_headings": 1,
+      "identical_texts": 1,
+      "effective_evidence_after_downstream_dedupe": 2,
+      "hits": [
+        {
+          "rank": 1,
+          "chunk_id": "c_e7699bfb6a09cdd89369b735b55af39c",
+          "document_id": "b6b9f7d727924272baa43445b001be20",
+          "document_title": "账户&协议 常见问题解答（第 5 部分）",
+          "heading_path": [
+            "账户&协议 常见问题解答（第 5 部分）",
+            "1. （已失效 ）《京东隐私政策》2020年8月25日-2020年10月19日"
+          ],
+          "score": 0.7142
+        },
+        {
+          "rank": 2,
+          "chunk_id": "c_4631198c03435cb28b31ad9fd242083e",
+          "document_id": "6e3a969b70664578b849f07b7b293312",
+          "document_title": "账户&协议 常见问题解答（第 5 部分）",
+          "heading_path": [
+            "账户&协议 常见问题解答（第 5 部分）",
+            "1. （已失效 ）《京东隐私政策》2020年8月25日-2020年10月19日"
+          ],
+          "score": 0.7142
+        },
+        {
+          "rank": 3,
+          "chunk_id": "c_947c26c08ace5744d816d7bb51d64daa",
+          "document_id": "62ab91f41c30452a8fbdc69e776377b4",
+          "document_title": "账户&协议 常见问题解答（第 9 部分）",
+          "heading_path": [
+            "账户&协议 常见问题解答（第 9 部分）",
+            "1. 《京东隐私政策》2021年12月8日-2022年4月19日"
+          ],
+          "score": 0.7034
+        }
+      ]
+    },
+    {
+      "query": "网络交易平台经营者对平台内经营者的管理义务",
+      "raw_count": 3,
+      "distinct_chunk_ids": 3,
+      "distinct_headings": 2,
+      "distinct_texts": 3,
+      "duplicate_chunk_ids": 0,
+      "duplicate_headings": 1,
+      "identical_texts": 0,
+      "effective_evidence_after_downstream_dedupe": 3,
+      "hits": [
+        {
+          "rank": 1,
+          "chunk_id": "c_26cb72512c4cc7179e81d09dc000729e",
+          "document_id": "a441f429f2b743beb00f1a99bdb1d27e",
+          "document_title": "中华人民共和国电子商务法",
+          "heading_path": [
+            "第二节 电子商务平台经营者"
+          ],
+          "score": 0.6995
+        },
+        {
+          "rank": 2,
+          "chunk_id": "c_c8f79254125c3faf987c797ef96de458",
+          "document_id": "8012cea75bd0485b851711d59d17e673",
+          "document_title": "中华人民共和国电子商务法",
+          "heading_path": [
+            "中华人民共和国电子商务法",
+            "规定。\n第二节 电子商务平台经营者"
+          ],
+          "score": 0.6949
+        },
+        {
+          "rank": 3,
+          "chunk_id": "c_954bee2ebafed6c4c270c8e2e667b316",
+          "document_id": "8012cea75bd0485b851711d59d17e673",
+          "document_title": "中华人民共和国电子商务法",
+          "heading_path": [
+            "中华人民共和国电子商务法",
+            "规定。\n第二节 电子商务平台经营者"
+          ],
+          "score": 0.6821
+        }
+      ]
+    }
+  ]
+}

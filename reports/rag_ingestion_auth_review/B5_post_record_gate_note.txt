@@ -1,0 +1,74 @@
+B5 记录后门禁复跑说明（2026-09-23）
+================================================================================
+
+## 本文件要澄清什么
+
+`B5_post_record_gate.txt` 是「写完四处记录之后再跑一次门禁」的原始输出。
+该次运行结果是：
+
+    1 failed, 789 passed, 5 warnings, 4 subtests passed in 199.17s
+
+**那 1 个 failed 不是代码回归，是本机沙箱的「批量删除保护」把测试进程打断的。**
+下面给出判定依据。**先读结论：B5 的 790 passed（见 `B5_full_test-output.txt`）成立，
+本批新增的 235 条测试在本次复跑中全部通过。**
+
+## 失败用例与堆栈（决定性证据）
+
+    失败：tests/test_document_upload_api.py::test_local_object_store_round_trip
+    失败点：store.delete(key)
+
+    services\ingestion\object_store.py:234: in delete
+        path.unlink()
+    ...\cli\vendor\shim\sitecustomize.py:1168: in _safe_path_unlink
+        _try_trash(abs_path)
+    ...\cli\vendor\shim\sitecustomize.py:967: in _try_trash
+        _check_bulk_delete_guard(abs_path)
+    ...\cli\vendor\shim\sitecustomize.py:851: in _check_bulk_delete_guard
+        _exit_bulk_guard_control(
+    ...\cli\vendor\shim\sitecustomize.py:826: in _exit_bulk_guard_control
+        raise SystemExit(1)
+    E   SystemExit: 1
+
+    Captured stderr call:
+    [safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]
+    {"count":550,"threshold":50,"scope":"turn",
+     "targets":["D:\\llm\\llm-customer-service\\tmp\\pytest_basetemp\\...\\store\\rag\\tenant-upload-a\\doc1\\a.pdf"],
+     "targetCount":1}
+
+关键三行：
+
+1. **异常类型是 `SystemExit`，不是 `AssertionError`** ——
+   用例里 `store.put` / `store.exists` / `store.get` / 「无 `.tmp` 残留」四条断言**全部通过**，
+   只有最后一步 `delete()` 被运行时守卫打断。**被测逻辑没有问题。**
+2. **抛出点在 `sitecustomize.py`（运行环境注入的 shim），不在项目代码里** ——
+   `object_store.delete()` 只是正常调 `Path.unlink()`。
+3. **守卫自己的 JSON 写明了 `"scope":"turn"`、`"count":550`、`"threshold":50`** ——
+   这是**本轮对话累计删除量**超阈值触发的，与仓库内容无关。
+
+## 为什么会超阈值（我自己的操作导致）
+
+为了取到被吞掉的 pytest 汇总行，我在**同一轮对话里连续跑了 5 次全量测试**
+（正常一轮只跑 1 次）。每次全量 pytest 都会在临时目录里创建/删除数百个文件，
+累计删除量很快越过 50 的阈值；**一旦越过，本轮内后续所有删除都被拦下**，
+于是那条唯一会删文件的用例（对象存储的 `delete`）就红了。
+
+它还顺带解释了另一件事：前几次全量运行**看不到汇总行**
+（`790 passed, ...` 那一行），只看到 `[100%]` 后面跟着守卫的 JSON ——
+守卫是在 **sessionfinish 阶段**（pytest 清理临时目录时）触发并
+`raise SystemExit(1)`，进程在打印汇总行之前就退出了，所以退出码是 1、汇总行缺失。
+**输出里没有任何 `F`／`E` 字符**，说明测试本身是跑完且全绿的。
+（`B5_full_test-output.txt` 的 790 passed 是在**预算未耗尽**时正常取得的，以它为准。）
+
+## 结论与后续做法
+
+- **B5 的验收结论不变**：全量 790 passed / 5 warnings / 4 subtests，零回归，门禁四件套全绿。
+- **不要把这个 failure 当成缺陷去改代码** —— 它下一次以干净预算重跑就会消失。
+  若确认要在本机复现「绿」的结果：**在预算未被消耗的一轮里跑一次全量 pytest 即可**。
+- **可复用的纪律**：一轮里只跑一次全量测试；需要多次取数时改用
+  「一次运行 + 落证据文件 + 从文件里读」的方式，而不是反复重跑。
+- 本轮遗留：`tmp/pytest_basetemp/` 目录未清理（删除同样被守卫拦下）。
+  该路径已在 `.gitignore` 的 `tmp/` 下，不影响仓库状态。
+
+================================================================================
+记录人：AI（B5 批次）          记录日期：2026-09-23
+================================================================================

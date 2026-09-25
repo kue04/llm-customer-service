@@ -5,6 +5,12 @@ import unittest
 
 
 class ChatServiceDegradeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        """本类只验证检索、生成和规则失败时的降级语义。"""
+
+    def tearDown(self) -> None:
+        pass
+
     def _generation_result(self, text: str) -> dict:
         return {
             "text": text,
@@ -103,6 +109,7 @@ class ChatServiceDegradeTest(unittest.TestCase):
                 else:
                     sys.modules.pop(name, None)
 
+        chat_service.retrieve_chat_items = lambda query, auth=None, limit=3: retrieve_impl(query)
         return chat_service
 
     def test_retrieval_failure_degrades_to_fallback_prompt(self) -> None:

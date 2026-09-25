@@ -1,0 +1,305 @@
+================================================================================
+B5 任务级审查（任务 3.1 Chunk 配置 + 3.2 结构化切分器）
+================================================================================
+批次：B5
+审查日期：2026-09-23
+审查范围：`docs/RAG_EXECUTION_PLAN_DATA_INGESTION_CHUNKING_AUTH.md` 第 5 节
+          3.1 与 3.2 的每一条要求；以及与 `docs/RAG_NEXT_WINDOW_PROMPT.md`
+          「硬性约束」小节的逐条对照。
+审查方式：逐条对照计划原文 + 跑真库（SQLite，PRAGMA foreign_keys=ON）+ AST 守卫
+结论：**任务级 PASS**（阶段级结论不在此文件，见 stage3_review.txt，本批不写 PASS）
+
+
+一、自动检查结果（门禁四件套 + 起点对比）
+--------------------------------------------------------------------------------
+命令与证据文件（均在 reports/rag_ingestion_auth_review/ 下）：
+
+  1. pytest -q                     → B5_full_test-output.txt
+     790 passed, 5 warnings, 4 subtests passed in 14.08s
+     起点 555（B4 收尾）→ 790，本批新增 235 条，**零回归**；
+     warning 5 条，与 B4 完全一致，且逐条核对均为既有噪声
+     （fastapi/starlette 的 httpx 弃用提示 ×2、faiss SWIG 绑定 ×3），无新增。
+  2. pytest tests/test_chunking.py -q → B5_task3_2_test-output.txt
+     235 passed in 1.41s（本批交付的测试文件）
+  3. ruff check .                  → B5_ruff-output.txt
+     All checks passed!
+     （过程中真实拦下一次 F401：chunker.py 遗留了未使用的 render_table_text 导入）
+  4. compileall services routers schemas models alembic main.py scripts
+                                   → B5_compileall-output.txt（退出码 0）
+  5. scripts/check_repo_data_size.py → B5_data-size-output.txt（通过，无超标文件）
+
+范围核对（防止「顺手改了别的地方」）：
+
+  git status --short services/ingestion/parsers/ utils/vector_retriever.py
+  → 无改动（parsers/ 目录干净；routers/documents.py 的 ?? 是 B4 未提交文件，非本批改动）
+
+  本批改动清单：
+    新增 config/chunking_config.py
+    新增 services/ingestion/chunkers/{__init__,errors,tokenizer,models,cleaner,chunker}.py
+    新增 tests/test_chunking.py
+    修改 services/ingestion/__init__.py（仅登记 chunkers 模块 + 文档字符串）
+  **未新增任何依赖**（纯 stdlib + 项目内模块），因此 requirements*.txt 未动。
+
+
+二、3.1 定义 Chunk 配置 —— 逐条核对
+--------------------------------------------------------------------------------
+[√] 新增 config/chunking_config.py，初始默认值与计划逐值一致
+      target_tokens=450 / min_tokens=120 / max_tokens=700 / overlap_tokens=80 /
+      preserve_heading_path=True / parent_chunk_enabled=True
+      证据：tests/test_chunking.py::TestChunkConfigDefaults::test_defaults_match_plan_3_1
+[√] 允许知识库配置覆盖
+      `ChunkConfig.replace_overrides(mapping)` / `build_config(overrides)`：
+      以 base 为底只改传入项，未知键报字段错误；
+      证据：TestChunkConfigOverrides::test_knowledge_base_override_layers_on_top_of_base
+[√] 每个文档版本保存「实际生效配置 + tokenizer 标识」
+      `ChunkConfig.storage_payload()` → {"config_version", 全部字段, "tokenizer_id"}；
+      `ChunkingResult.config_payload` 直接可落
+      `document_versions.metadata_json["chunking"]`；
+      每个 chunk 的 metadata_json 里还冗余记了 tokenizer_id / chunker_version /
+      chunking_config_version（便于脱离版本记录解释单个 chunk）
+      证据：test_storage_payload_carries_tokenizer_and_version、
+            test_result_exposes_effective_config_for_version_storage
+[√] 配置越界时启动失败并给出字段错误（**不静默夹取**）
+      `ChunkConfig.__post_init__` 抛 `ChunkConfigError`，错误对象含逐字段
+      (field, message, value)；模块级 `CHUNK_CONFIG` 在 **import 期**构造并校验，
+      所以任何 import 本模块的进程都带着非法配置一起启动失败；
+      证据：TestChunkConfigValidation 共 22 条参数化用例（越界 / 类型 / 布尔子类陷阱 /
+            跨字段约束）；test_import_time_failure_on_bad_env 用**子进程**验证
+            「进程起不来」，stderr 里能看到 max_tokens 字段与出错的值。
+
+方向标注（3.1 有两处比计划更严，均为有意为之）：
+  * [更严] 未知配置键报错而不是忽略。计划只说「允许知识库配置覆盖」，
+    没说拼错的键怎么处理。若静默忽略，`{"max_token": 700}`（少一个 s）
+    会让配置看起来生效、实际用默认值跑完全程 —— 这类错误只能靠「不认识就报错」兜住。
+  * [更严] 布尔字段拒绝字符串 "false"。JSON 里写错类型时，
+    Python 的 `"false"` 是**真值**，静默接受会得到与直觉相反的行为。
+
+[计划外新增] 第 7 个配置项 `parent_max_tokens`（默认 2800 = 4 × max_tokens）
+  理由：一个 section 可能是一整章。让它整体当 parent，会产出一条几十万字符的记录，
+  它既不参与 embedding，也没有检索路径会用这么长的上下文，只是把库撑大。
+  计划 3.1 只给了 6 个「初始默认值」，这属于实现补的一个边界参数，
+  校验规则是 `parent_max_tokens >= max_tokens`。已在下方向表中登记。
+
+
+三、3.2 实现结构化切分器 —— 逐条核对（9 条要求）
+--------------------------------------------------------------------------------
+第 1 条 先按标题层级和页码分组，再按段落切分
+  [√] `_group_sections`：按 `(block.heading_path, block.page)` 切**连续**块。
+      标题块的 heading_path「包含自己」（B3 契约），所以「标题 + 它的正文」天然同组，
+      不重建层级。
+  [√] 同名标题出现在两个不相邻位置时**不合并**（否则 parent 会跨越无关内容）
+      证据：test_same_heading_in_two_places_is_not_merged、
+            test_same_heading_on_different_pages_splits_sections、
+            test_different_heading_paths_produce_separate_parents
+
+第 2 条 超过上限的段落依次按句号、问号、分号、换行切分
+  [√] `_split_overlong` 固定四级：句末标点 → 分号 → 换行 → 按 token 硬切
+      证据：test_splits_on_sentence_endings / test_falls_back_to_semicolons /
+            test_falls_back_to_newlines / test_hard_splits_when_there_is_no_punctuation_at_all /
+            test_hard_split_never_loses_characters
+  [补全] 计划只定义到「换行」，实现多了一级「按 token 硬切」：
+      无标点长串（OCR 产物常态）若不硬切，会变成 3000 token 的 chunk，
+      把 max_tokens 这条硬约束直接架空。硬切计入 stats.hard_split_units，
+      不静默发生。
+  [合并] 计划把「句号、问号」写成两级，实现合并为一级（同一类句末终止符 `。！？!?`）：
+      拆分结果与逐级拆完全一致，因此合并只是实现层面的简写。
+
+第 3 条 表格按行分块并重复表头；代码块不从内部截断
+  [√] `_table_units`：表头 + 成组行；每组首行都是表头
+      证据：test_header_is_repeated_in_every_chunk（4 块，每块首行都是表头）、
+            test_every_row_appears_exactly_once（每行恰好出现一次）、
+            test_table_content_is_rendered_from_table_json、test_header_only_table_keeps_header
+  [√] 代码块整块保留，绝不内部截断
+      证据：test_code_block_is_never_cut_internally（10 行代码 + max=5 → 仍是 1 块）、
+            test_oversize_code_gets_its_own_chunk、test_code_indentation_is_preserved
+  [取舍] 见下方「偏离」表第 1 条：代码块与 max_tokens 的冲突处理方式。
+
+第 4 条 列表项尽量保持完整
+  [√] `_list_units`：先按项边界切 item，再把 item 贪心装箱；
+      只有**单个 item 自己超限**时才进入项内拆分，并计入 stats.list_items_split
+      证据：test_markdown_list_items_stay_whole（每行都是完整项）、
+            test_oversize_list_item_is_split_inside_and_counted、
+            test_html_style_single_item_blocks（HTML 每项一块的形态）、
+            test_continuation_lines_stay_with_their_item、test_list_without_markers_is_treated_as_one_item
+
+第 5 条 相邻 child chunk 重叠 80 tokens，chunk 不超过 700 tokens
+  [√] `_pack_children` + `_take_overlap`
+      证据：test_every_child_respects_max_tokens、test_adjacent_children_overlap_by_target、
+            test_overlap_appears_verbatim_in_the_next_chunk、
+            test_overlap_never_pushes_chunk_over_max、
+            test_overlap_stays_within_twice_the_target、test_overlap_can_be_disabled、
+            test_default_config_overlap_is_applied（生产默认配置 + 默认 tokenizer）
+  [度量口径] 重叠按**单元边界**取整，因此实际重叠 ≥ 目标值（不是恰好 80），
+      且被限制在 2×目标以内（防止上一块尾部是一个巨大单元时把新块塞满重复内容）。
+      为验证这件事，测试里实现了「接缝共享文本」度量（字符级最长公共后缀/前缀 →
+      再按 tokenizer 计 token）。
+
+第 6 条 每组 child chunk 指向一个 parent chunk
+  [√] 每个 parent 组产出一行 parent + N 行 child；child.parent_chunk_id 指向该 parent
+      证据：test_parent_chunk_enabled_by_default、test_every_child_points_to_an_existing_parent_of_its_own_section、
+            test_child_body_is_a_contiguous_part_of_its_parent（child 正文是 parent 正文的连续片段）、
+            test_parents_come_before_their_children（父先于子）、
+            test_parent_max_tokens_splits_giant_sections、test_parent_can_be_disabled
+  [更严] 重叠**只在同一个 parent 内部**发生，不跨 parent。跨 parent 重叠会把上一节正文
+      带进下一节，检索时表现为「引用出处对不上」。
+
+第 7 条 标题路径可作为上下文前缀，但不得重复原文主体
+  [√] `_section_prefix` + `_prefix_would_duplicate`（三重判据：整段前缀出现在正文开头 /
+      正文首行等于最后一级标题 / 正文首行等于完整前缀）+ 前缀计入 token 预算
+      证据：test_prefix_is_the_flattened_heading_path、test_prefix_is_not_repeated_when_body_already_starts_with_heading、
+            test_prefix_is_not_repeated_for_last_heading_component_only、
+            test_prefix_can_be_disabled_but_heading_text_is_kept、
+            test_prefix_is_dropped_when_it_would_break_the_limit、
+            test_prefix_counts_towards_token_budget
+  [补全] `preserve_heading_path=False` 时，标题文本会以正文首行的形式保留 ——
+      否则关掉前缀就等于让标题从 chunk 里彻底消失，「按标题检索」整类失效。
+
+第 8 条 去除空白、重复页眉页脚和完全重复段落
+  [√] `cleaner.clean_blocks` 四道清洗，每道都计数并可断言删了几条
+      空白：test_strips_trailing_spaces_and_invisibles / test_collapses_blank_lines_and_trims_edges /
+            test_drops_empty_and_non_text_blocks_with_counters
+      页眉页脚：test_drops_running_header_repeated_on_three_pages /
+            test_does_not_drop_text_repeated_on_only_two_pages（**阈值边界**）/
+            test_long_repeated_text_is_not_a_running_header / test_headings_are_never_treated_as_running_headers
+      重复段落：test_drops_duplicate_paragraphs_keeping_first /
+            test_exact_duplicates_are_only_removed_for_paragraphs（刻意收窄）/
+            test_cleaning_is_idempotent
+  [计划外新增] 「纯页码行」删除规则：仅当该块位于**该页首块或末块**且形态是纯页码
+      （`12` / `- 12 -` / `12 / 30` / `第12页 共30页` / `Page 3 of 10`）才删。
+      证据：TestPageNumberDetection 的 13 条真值表用例 + test_drops_page_number_only_at_page_edges
+      （页中位置的裸 `2024` 必须保留）+ test_keeps_page_number_like_text_in_unpaged_documents
+      （md/html 无页码概念，`12` 是正文）。
+
+第 9 条 每块保存 token/字符数、页码、标题、来源、ACL 和租户信息
+  [√] Chunk 字段 + metadata_json 双通道（`document_chunks` 没有这些独立列，
+      必须能整体进 metadata_json —— 这是 B7 检索过滤的唯一来源）
+      证据：test_output_contains_every_required_field、test_acl_is_kept_in_metadata_json_because_there_is_no_column、
+            test_char_and_token_counts_match_the_text、test_content_hash_is_sha256_of_text、
+            test_metadata_records_tokenizer_and_versions、test_source_information_is_carried、
+            test_metadata_json_round_trips_through_the_database（真库读回）
+
+输出字段 12 项：chunk_id / parent_chunk_id / text / token_count / tenant_id /
+document_id / document_version / page_start / page_end / heading_path / acl /
+content_hash —— 全部具备（test_output_contains_every_required_field 逐字段断言），
+并额外提供 char_count / chunk_type / ordinal / document_version_id。
+
+测试覆盖清单（计划 3.2 末段明确要求）：长段落 ✓ 表格 ✓ 代码 ✓ 列表 ✓ 重叠 ✓
+边界长度 ✓ 空文档 ✓ 确定性 ID ✓ 权限元数据继承 ✓
+「tokenizer 用固定 mock，测试不下载模型」✓
+  —— 本批所有断言跑在 mock-word-v1 / mock-char-v1 上（手算边界值），
+     另有一组 TestProductionDefaults 用**生产默认配置 + heuristic-zh-v1** 复跑；
+     `tests/` 下零处下载模型、零处联网。
+
+
+四、偏离计划原文的取舍（方向标注，照 [D-8] 写法）
+--------------------------------------------------------------------------------
+| # | 计划原文 | 本实现 | 方向 |
+| --- | --- | --- | --- |
+| 1 | 3.2-3「代码块不从内部截断」 vs 3.2-5「chunk 不超过 700 tokens」，两条在「一个 800 token 的代码块」上直接冲突，计划未给优先级 | 代码块整块保留，标记 `oversize=True` 并计入 `stats.oversize_chunks`；正文段落仍受硬上限约束 | **更宽**（限 max_tokens 的例外）+ 可观测 |
+| 2 | 3.2-2 只定义到「换行」为止 | 补第 4 级「按 token 硬切」，计入 `hard_split_units` | **补全**（计划未定义的分支） |
+| 3 | 3.2-8「去除…完全重复段落」未限定块类型 | 只在 `paragraph` 上做整段去重；列表/表格/代码/引用块不参与 | **更窄**（更保守，避免误删结构块） |
+| 4 | 3.2-8「去除重复页眉页脚」未给阈值 | 需同一文本出现在 **>= 3 个不同页码**，且是「短块 + 非标题」 | **更严** |
+| 5 | 3.1 只列 6 个默认值 | 增加 `parent_max_tokens`（默认 2800） | **计划外新增**（边界参数） |
+| 6 | 3.2-5「相邻 child chunk 重叠」未说是否跨 parent | 只在同一 parent 内重叠 | **更严**（更窄的作用域） |
+| 7 | 3.2-5「重叠 80」未说粒度 | 按单元边界取整 → 实际 ≥ 80 且 ≤ 2×80 | **更宽**（重叠量可能超出目标）+ 有条件上限 |
+| 8 | 3.2-6「每组 child 指向一个 parent」 | 一个超大 section 会被 `parent_max_tokens` 切成多个 parent 组 | **补充**（计划未定义超大 section） |
+| 9 | 计划未提「只有标题没有正文」的组怎么办 | 兜底把标题文本作为一个单元，避免标题整体消失 | **补全** |
+| 10 | 计划未规定返回值形状（交接文档给的是 `-> list[Chunk]`） | 返回 `ChunkingResult`（含 chunks + stats + 生效配置），实现 `__iter__/__len__/__getitem__` 保持列表式用法 | **更宽**（多带可观测信息） |
+| 11 | 计划未规定 chunk 的 `acl` 形状 | `tuple[AclEntry, ...]`（subject_type / subject_id / permission，对齐 `document_acl`） | **计划外新增**（形状定义） |
+| 12 | 计划字段名只有 `document_version` | 同时保留 `document_version`（int 版本号）与 `document_version_id`（外键），因为 `insert_chunks` 需要的是后者 | **补全**（消歧） |
+
+标注的必要性同 [D-8]：若不写明，下一位执行者会把「代码块可以超上限」当成计划要求，
+进而把这个例外扩大到段落上，硬上限就名存实亡。
+
+
+五、测试盲区排查（枚举型契约用真值表，不抽样）
+--------------------------------------------------------------------------------
+[真值表] 块类型：`BLOCK_TYPE_TRUTH_TABLE` 覆盖 `BLOCK_TYPES` **全集**，
+  并断言「表 ⊇ 枚举且表 ⊆ 枚举」（新增块类型时本用例会立刻失败，提示需要做决策）
+  证据：TestBlockTypeTruthTable::test_truth_table_covers_every_block_type +
+  每个类型的「产出几个 child」与「不抛异常且正文不丢」各一条参数化用例。
+[真值表] ACL：`ACL_PERMISSIONS`（5 个）与 `ACL_SUBJECT_TYPES`（4 个）逐值参数化；
+  另加「未声明权限必被拒」4 例、「全部权限都能进 metadata」1 例。
+[字段全集] `ChunkingStats` 的 17 个字段用显式元组锁住，新增字段必须同步这里。
+[跨模块漂移] ACL 两份枚举镜像 + `chunk_models.ACL_* == models.ACL_*` 断言；
+  默认 tokenizer_id 在 config 与 chunkers 两处定义 + 「已注册」断言。
+[幂等] 清洗幂等、切分确定性（同输入两次调用 id/text 完全一致）、
+  同一版本内 chunk_id 唯一、跨租户/跨版本/相同文本不同序号 id 互不相同。
+
+已知**未覆盖**（诚实登记，见第七节遗留问题）：
+  * 图片块（`image_ref`）未进入 chunk —— 整块被跳过（本批有意为之，不是疏漏）；
+  * PDF 跨页表格的「表头重复」未覆盖：本批的重复表头只在**同一个表格块内**成立，
+    跨页拆分表格需要解析器侧配合（B3 范围）；
+  * 未经真实 BPE tokenizer 验证 token 数（本批用确定性启发式计数，是刻意选择）；
+  * PostgreSQL 上的行为未复验（本机无 Docker/psql，与 B1~B4 同样的限制）。
+
+
+六、硬性约束逐条核对（交接文档「硬性约束」小节）
+--------------------------------------------------------------------------------
+[√] 输入就是 B3 的 ParsedDocument，**未改 parsers/base.py**
+      git status 显示 parsers/ 目录无改动（无需走「三件套」）
+[√] heading_path 语义（标题块包含自己）被**用来分组**，未重新猜层级
+[√] 页面语义：从 `Block.page` 取；md/html/docx 的 None **没有**退化成 0 或 1
+      证据：test_unpaged_document_keeps_page_none、test_keeps_page_number_like_text_in_unpaged_documents
+[√] 列表两端形态都处理（HTML 每项一块 / Markdown 连续列表合成一块）
+      证据：test_html_style_single_item_blocks + test_markdown_list_items_stay_whole
+[√] 为 B6 预设的落库约束：**用真库验证**（临时 SQLite + alembic upgrade head +
+      `db.create_db_engine` 打开 PRAGMA foreign_keys=ON）
+      · 父先于子：test_parents_are_inserted_before_children（复合自引用外键真实生效）
+      · chunk_id 版本内唯一：test_duplicate_chunk_id_is_rejected_by_the_database（数据库报 IntegrityError）
+      · 必填字段齐全 + 可选字段形状：test_insert_plan_only_contains_declared_keys
+      · tenant_id / acl / 页码 / heading_path 能整体进 metadata_json 并原样读回：
+        test_metadata_json_round_trips_through_the_database
+      · 跨版本父 chunk 被拒：test_child_from_another_version_is_rejected
+      说明：计划要求「本批不调用 insert_chunks（生产路径）」，本批**生产代码零调用**，
+      只在测试里调用一次以证明产物兼容 —— 这属于对契约的独立验证，不是接线。
+[√] 切分器不写数据库、不接收裸 tenant_id（AST 守卫，不扫字符串 —— 踩坑 D1 的教训）
+      证据：test_chunker_modules_do_not_depend_on_database（4 个禁止模块参数化）、
+            test_chunker_modules_do_not_import_services_or_routers、
+            test_chunker_modules_do_not_use_dynamic_imports（挡住 importlib 绕过）、
+            test_no_chunker_function_takes_bare_tenant_parameters（逐个函数 AST 检查）、
+            test_chunk_document_signature_is_frozen（签名逐参数冻结）、
+            test_chunker_reads_no_files
+[√] tenant_id 从哪来 —— 已拍板并写决策记录 [D-9]（ChunkContext 不可变上下文对象）
+      实现：`chunk_document(document, *, context: ChunkContext, config: ChunkConfig)`
+
+
+七、回头看 B4（第 4 步要求「顺带回头看」）
+--------------------------------------------------------------------------------
+1. [正面确认] B4 的 `insert_chunks` docstring 声称「父 chunk 必须排在子 chunk 之前」
+   —— 本批用**真库**证明这条要求确实被数据库强制（复合自引用外键）。
+   B4 当时的说法成立，无需修正。
+2. [新发现，非缺陷但需登记] `repository.list_chunks` 的排序键是
+   `(created_at ASC, chunk_id ASC)`。同一批 flush 写入的 chunk
+   `created_at` 很可能同值，此时实际顺序由 **chunk_id（哈希）** 决定 ——
+   也就是说**读回顺序 ≠ 写入顺序**。
+   写入侧不受影响（父先于子由调用方保证），但 B6 若需要「按文档顺序」重建
+   （manifest 的 chunk 顺序、按 ordinal 续切），必须读 `metadata_json["ordinal"]`。
+   不修 B4 代码（不属于本批范围），登记到遗留问题。
+3. [一致性确认] B4 [D-6]「上传不建版本、版本由流水线创建」与本批无冲突：
+   本批完全不碰 `document_versions` 的创建，`Chunk` 只携带调用方给的版本信息。
+
+
+八、遗留问题（本批不做，登记备查）
+--------------------------------------------------------------------------------
+1. chunker 目前**没有生产调用点**（B6 的 pipeline 才是第一个调用方）。
+   按「每个新模块必须登记生产调用点」的纪律，已把它登记进台账第 4 节的
+   「已建未启用」清单 —— 这是有意的分批结果，不是漏接线。
+2. 「知识库配置覆盖」只提供了**机制**（mapping → 校验后的配置），
+   真正从 `knowledge_bases.chunking_config_json` 读出来、并写进
+   `document_versions.metadata_json["chunking"]` 的动作属于 B6 的流水线。
+3. 图片块不进 chunk（无图检索）。若以后要做「图文混合检索」，需要给 image 块
+   单独设计表示（不可见文本、图片描述或向量），属于独立批次。
+4. `list_chunks` 读回顺序不稳定（第七节第 2 条），B6 需按
+   `metadata_json["ordinal"]` 自行排序。
+5. heuristic tokenizer 与真实 BPE 的 token 数存在偏差（保守估计，不追求等同）。
+   换真实 tokenizer 时 `tokenizer_id` 变化会改变 chunk_id → 需要重建索引，
+   这是**设计预期**（否则无法识别「同一份文档的旧切分结果」）。
+6. 评测口径失真（F2，intent 命中率冒充 recall）不在本批范围，仍待独立小批次修正；
+   本批未触碰任何评测脚本。
+7. PostgreSQL 复验、真实 Redis 消费端、真实 OCR 引擎属 B6/B8 门禁范围。
+
+================================================================================
+审查人：AI（B5 批次）
+审查日期：2026-09-23
+================================================================================

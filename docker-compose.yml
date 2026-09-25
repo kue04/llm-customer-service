@@ -3,15 +3,88 @@ services:
     build: .
     env_file:
       - .env.example
+    environment:
+      # 容器内直连 compose 内的 PostgreSQL / Redis；
+      # 本机不用 Docker 时这两个变量留空，服务自动降级到 SQLite + 内存队列。
+      RAG_DATABASE_URL: postgresql+psycopg://rag:rag@postgres:5432/rag_metadata
+      RAG_REDIS_STREAM_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     volumes:
       - ./local_models:/app/local_models:ro
       - ./models:/app/models:ro
       - ./data/faiss_store:/app/data/faiss_store
+      - ./data/object_store:/app/data/object_store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # 接入任务消费者。**没有它，HTTP 上传的文档永远进不了索引**：
+  # 投递端在 api（routers/documents.py 的 queue.publish），消费端只有这个服务会跑。
+  # 此前 compose 编排了 api/postgres/redis 却漏了 worker，导致 job 卡在 pending/received
+  # （踩坑 F5：形态是「已实现、未部署」，比「未实现」更隐蔽）。
+  worker:
+    build: .
+    command: ["python", "-m", "services.ingestion.worker"]
+    env_file:
+      - .env.example
+    environment:
+      # 与 api 保持一致：同库、同 stream、同消费者组。
+      RAG_DATABASE_URL: postgresql+psycopg://rag:rag@postgres:5432/rag_metadata
+      RAG_REDIS_STREAM_URL: redis://redis:6379/0
+    volumes:
+      - ./local_models:/app/local_models:ro
+      - ./models:/app/models:ro
+      # 索引与对象存储必须和 api 共享同一份，否则两边各写各的。
+      - ./data/faiss_store:/app/data/faiss_store
+      - ./data/object_store:/app/data/object_store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 元数据库。本机没有 Docker 时不用启动这两个服务，
+  # 代码会按 RAG_DATABASE_URL 的默认值走 SQLite，迁移脚本两种后端都支持。
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: rag_metadata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag_metadata"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 异步任务队列（Redis Stream）。
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

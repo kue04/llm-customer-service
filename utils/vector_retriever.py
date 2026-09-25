@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 import hashlib
 import json
+import logging
+from pathlib import Path
 
 try:
     import faiss
@@ -15,7 +19,25 @@ except ModuleNotFoundError:
     SentenceTransformer = None
 
 from config.rag_config import get_rag_config
+from utils.retrieval_dedup import (  # noqa: F401  (B17：Top-K 内容级去重)
+    candidates_from_hits,
+    oversampled_top_k,
+    select_diverse_evidence,
+)
 from utils.retriever import iter_knowledge_items, is_similar_answer
+
+# 阶段 3.4：chunk 级索引的 manifest 由 ingestion 子系统定义（单一真源）。
+# 方向说明：这里出现 services → utils 的反向依赖是**刻意**的 ——
+# 索引产物的格式必须只有一份定义（构建方与检索方共用），
+# 否则「构建时这样写、检索时那样读」就是下一次静默错位的来源。
+# 该模块只依赖标准库，不会把 SQLAlchemy / 数据库会话拉进检索层。
+from services.ingestion.index_manifest import (
+    DEFAULT_INDEX_NAME,
+    IndexManifest,
+    IndexManifestError,
+    ManifestEntry,
+    load_active_manifest,
+)
 
 
 _TOY_VECTOR_INDEX: list[dict] | None = None
@@ -899,3 +921,382 @@ def calculate_keyword_bonus(query: str, source: dict) -> float:
                 bonus += field_weight * keyword_weight
 
     return bonus
+
+
+# ============================================================================
+# 阶段 3.4：chunk 级索引检索（manifest + 强制 tenant / ACL 过滤）
+# ============================================================================
+#
+# 与上面那套「种子 FAQ 索引」的关系
+# ---------------------------------
+# 上面 `retrieve_*` 系列读的是手工整理的 FAQ（A 轨），**签名里没有 tenant / acl** ——
+# 它不是"忘了加"，而是它的数据源本来就是单租户的种子语料。B6 不做"给它加过滤"，
+# 而是**另开一条 chunk 级检索路径**：数据来自 document_chunks → manifest，
+# 天然带租户与 ACL。B7 的 4.3 会把 API 层接到这条路径上（并补检索层的隔离测试）。
+#
+# 为什么过滤必须"前置"而不是"检索后再筛"
+# --------------------------------------
+# 后过滤（先全局 top-k 再按租户/ACL 筛）在本项目实测过：当目标租户只占语料 0.1% 时，
+# `top-50` 筛完**返回 0 条** —— 答案被其他租户挤出了全局 top-k，系统会对用户说
+# "没找到资料"，而证据其实就在库里。这类失败没有任何报错，只是"查不到"，
+# 因此这里用 FAISS 原生预过滤（`SearchParameters(sel=IDSelectorBatch(...))`），
+# 只在允许的 row_id 集合内检索。
+#
+# 为什么缺 filter 必须**报错**而不是默认全库
+# -----------------------------------------
+# 默认全库 = "少传一个参数就把所有租户的数据都检索出来"，而调用方在写代码时
+# 根本不会注意到 —— 这正是最容易被漏掉、后果又最严重的一种默认值。
+# 因此 `access` 是必填关键字参数，显式传 None 也会抛错（有负向测试）。
+
+
+logger = logging.getLogger(__name__)
+
+#: 默认索引名（与 index_builder 一致）
+CHUNK_INDEX_NAME = DEFAULT_INDEX_NAME
+
+ERROR_FILTER_REQUIRED = "chunk_filter_required"
+ERROR_FILTER_TENANT_MISSING = "chunk_filter_tenant_missing"
+ERROR_INDEX_UNAVAILABLE = "chunk_index_unavailable"
+ERROR_EMBEDDING_MODEL_MISMATCH = "embedding_model_mismatch"
+
+
+class ChunkRetrievalError(RuntimeError):
+    """chunk 级检索的错误（``error_code`` 稳定，供 API 层翻译成状态码）。"""
+
+    def __init__(self, error_code: str, message: str, *, detail: dict | None = None) -> None:
+        self.error_code = error_code
+        self.message = message
+        self.detail = dict(detail or {})
+        super().__init__(message)
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkAccessFilter:
+    """**服务端构造**的授权过滤器（不由客户端传入）。
+
+    ``allowed_chunk_ids`` 的含义：
+
+    * ``None`` —— 不额外限制（仍强制按 ``tenant_id`` 过滤）；
+      适用于"本租户公开知识库"这类没有资源级 ACL 的场景；
+    * 集合 —— 只允许这些 chunk 可见（B7 从 AuthContext + document ACL + 发布状态
+      算出来）。**空集合等价于"什么都看不到"**，而不是"不限" ——
+      这个方向的默认值选错一次就是全量泄漏。
+    """
+
+    tenant_id: str
+    allowed_chunk_ids: frozenset[str] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.tenant_id, str) or not self.tenant_id.strip():
+            raise ChunkRetrievalError(
+                ERROR_FILTER_TENANT_MISSING,
+                "access filter 必须带非空 tenant_id（租户是过滤的第一判据，不允许缺省）",
+            )
+        if self.allowed_chunk_ids is not None:
+            object.__setattr__(
+                self, "allowed_chunk_ids", frozenset(str(item) for item in self.allowed_chunk_ids)
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkHit:
+    """一条命中：chunk + document + version + tenant + ACL + 来源元数据（计划 3.4 要求）。"""
+
+    score: float
+    row_id: int
+    chunk_id: str
+    text: str
+    tenant_id: str
+    document_id: str
+    document_version: int
+    document_version_id: str
+    chunk_type: str
+    ordinal: int
+    heading_path: tuple[str, ...] = ()
+    page_start: int | None = None
+    page_end: int | None = None
+    acl: tuple[dict, ...] = ()
+    content_hash: str = ""
+    token_count: int = 0
+    source_uri: str = ""
+    filename: str = ""
+    document_title: str = ""
+    source_type: str = ""
+    oversize: bool = False
+
+    @property
+    def heading_text(self) -> str:
+        return self.heading_path[-1] if self.heading_path else ""
+
+    def to_dict(self) -> dict:
+        return {
+            "score": self.score,
+            "row_id": self.row_id,
+            "chunk_id": self.chunk_id,
+            "text": self.text,
+            "tenant_id": self.tenant_id,
+            "document_id": self.document_id,
+            "document_version": self.document_version,
+            "document_version_id": self.document_version_id,
+            "chunk_type": self.chunk_type,
+            "ordinal": self.ordinal,
+            "heading_path": list(self.heading_path),
+            "heading_text": self.heading_text,
+            "page_start": self.page_start,
+            "page_end": self.page_end,
+            "acl": [dict(item) for item in self.acl],
+            "content_hash": self.content_hash,
+            "token_count": self.token_count,
+            "source_uri": self.source_uri,
+            "filename": self.filename,
+            "document_title": self.document_title,
+            "source_type": self.source_type,
+            "oversize": self.oversize,
+        }
+
+
+def chunk_index_root() -> Path:
+    """chunk 索引根目录（与 ``index_builder`` 的默认根一致）。"""
+
+    return VECTOR_STORE_DIR
+
+
+def load_chunk_index(
+    *,
+    root: str | Path | None = None,
+    index_name: str = CHUNK_INDEX_NAME,
+) -> tuple[IndexManifest, faiss.IndexFlatIP]:
+    """按指针加载当前生效的 chunk 索引；没有生效索引时抛 ``chunk_index_unavailable``。"""
+
+    faiss_module = _require_faiss()
+    root_path = Path(root) if root is not None else chunk_index_root()
+    try:
+        manifest, _pointer, index_file = load_active_manifest(root_path, index_name)
+    except IndexManifestError as error:
+        raise ChunkRetrievalError(
+            ERROR_INDEX_UNAVAILABLE, f"没有可用的 chunk 索引：{error}", detail=error.detail
+        ) from error
+    if not index_file.exists():
+        raise ChunkRetrievalError(
+            ERROR_INDEX_UNAVAILABLE,
+            f"索引文件不存在：{index_file}",
+            detail={"path": str(index_file)},
+        )
+    return manifest, faiss_module.read_index(str(index_file))
+
+
+def search_chunk_index(
+    query: str,
+    *,
+    access: ChunkAccessFilter,
+    top_k: int = 10,
+    min_score: float | None = None,
+    embedder: Callable[[str], list[float]] | None = None,
+    embedding_model: str = "",
+    root: str | Path | None = None,
+    index_name: str = CHUNK_INDEX_NAME,
+) -> list[ChunkHit]:
+    """在**授权范围内**检索 chunk。
+
+    ``access`` 必填且必须是非空的 :class:`ChunkAccessFilter`；
+    显式传 ``None`` 会抛 :class:`ChunkRetrievalError`（有负向测试锁定）。
+    ``min_score`` 默认为 ``None``：分数阈值是**质量**取舍，
+    而权限过滤是**安全**要求，两者不应该共用一个"默认值" ——
+    给安全相关的分支设默认值，等于给未来的自己埋一个静默放宽。
+    """
+
+    if access is None:
+        raise ChunkRetrievalError(
+            ERROR_FILTER_REQUIRED,
+            "检索必须传入服务端构造的 access filter；缺失 filter 一律拒绝（不默认全库检索）",
+        )
+    if not isinstance(access, ChunkAccessFilter):
+        raise ChunkRetrievalError(
+            ERROR_FILTER_REQUIRED,
+            f"access filter 类型不对：{type(access).__name__}；必须由服务端构造 ChunkAccessFilter",
+        )
+
+    manifest, index = load_chunk_index(root=root, index_name=index_name)
+
+    if embedding_model and embedding_model != manifest.embedding_model:
+        # 模型不同 → 向量空间不可比 → 分数无意义（不报错的话会表现为"检索质量突然变差"）
+        raise ChunkRetrievalError(
+            ERROR_EMBEDDING_MODEL_MISMATCH,
+            "查询用的 embedding 模型与索引构建时不一致",
+            detail={"query_model": embedding_model, "index_model": manifest.embedding_model},
+        )
+    if not embedding_model:
+        logger.warning(
+            "search_chunk_index 未传 embedding_model，跳过模型一致性校验（索引用的是 %s）",
+            manifest.embedding_model,
+        )
+
+    allowed_entries = [
+        entry
+        for entry in manifest.entries
+        if entry.tenant_id == access.tenant_id
+        and (access.allowed_chunk_ids is None or entry.chunk_id in access.allowed_chunk_ids)
+    ]
+    if not allowed_entries:
+        # **fail closed**：授权范围内没有任何候选时直接返回空，
+        # 绝不"退化成不限租户"再检索一次。
+        return []
+
+    allowed_row_ids = np.asarray([entry.row_id for entry in allowed_entries], dtype="int64")
+    selector = faiss.IDSelectorBatch(allowed_row_ids)
+    params = faiss.SearchParameters(sel=selector)
+
+    embed = embedder or build_embedding
+    query_vector = np.array([embed(query)], dtype="float32")
+    scores, indices = index.search(query_vector, max(int(top_k), 1), params=params)
+
+    allowed_set = {int(row_id) for row_id in allowed_row_ids}
+    hits: list[ChunkHit] = []
+    for row_id, score in zip(indices[0], scores[0]):
+        position = int(row_id)
+        if position < 0:  # FAISS 用 -1 表示"没有更多候选"
+            continue
+        if position not in allowed_set:  # 双保险：预过滤之外的兜底断言
+            continue
+        if min_score is not None and float(score) < min_score:
+            continue
+        entry: ManifestEntry = manifest.entries[position]
+        hits.append(
+            ChunkHit(
+                score=float(score),
+                row_id=entry.row_id,
+                chunk_id=entry.chunk_id,
+                text=entry.text,
+                tenant_id=entry.tenant_id,
+                document_id=entry.document_id,
+                document_version=entry.document_version,
+                document_version_id=entry.document_version_id,
+                chunk_type=entry.chunk_type,
+                ordinal=entry.ordinal,
+                heading_path=entry.heading_path,
+                page_start=entry.page_start,
+                page_end=entry.page_end,
+                acl=entry.acl,
+                content_hash=entry.content_hash,
+                token_count=entry.token_count,
+                source_uri=entry.source_uri,
+                filename=entry.filename,
+                document_title=entry.document_title,
+                source_type=entry.source_type,
+                oversize=entry.oversize,
+            )
+        )
+    return hits
+
+
+def retrieve_chunk_items(
+    query: str,
+    *,
+    access: ChunkAccessFilter,
+    limit: int = 3,
+    min_score: float | None = None,
+    embedder: Callable[[str], list[float]] | None = None,
+    embedding_model: str = "",
+    root: str | Path | None = None,
+    index_name: str = CHUNK_INDEX_NAME,
+) -> list[dict]:
+    """chunk 级检索的「条目」形态（形状对齐 ``retrieve_rag_items``，便于下游替换）。
+
+    字段里同时给出 ``chunk_id`` / ``document_id`` / ``document_version`` / ``tenant_id``
+    / ``acl`` / ``heading_path`` / 页码 / 来源，命中即自证来源（3.4 的要求）。
+
+    **B17**：候选按 ``limit × 5``（下限 20）超额召回 → **内容级去重** → 再截断到 ``limit``。
+    去重在 :func:`~utils.vector_retriever.search_chunk_index` **之后**做，
+    因此它看到的所有命中都已通过服务端权限预过滤——"留下的那条一定是他有权看的"
+    （顺序颠倒会让无权副本挤掉有权副本，且**静默**）。详见 ``utils/retrieval_dedup.py``。
+    """
+
+    top_k = oversampled_top_k(limit)
+    hits = search_chunk_index(
+        query,
+        access=access,
+        top_k=top_k,
+        min_score=min_score,
+        embedder=embedder,
+        embedding_model=embedding_model,
+        root=root,
+        index_name=index_name,
+    )
+    selected = select_diverse_evidence(
+        candidates_from_hits(hits), limit=max(int(limit), 0)
+    )
+
+    items: list[dict] = []
+    for rank, candidate in enumerate(selected, start=1):
+        hit = candidate.payload
+        items.append(
+            {
+                "rank": rank,
+                "chunk_id": hit.chunk_id,
+                "document_id": hit.document_id,
+                "document_version": hit.document_version,
+                "document_version_id": hit.document_version_id,
+                "tenant_id": hit.tenant_id,
+                "title": hit.heading_text or hit.document_title or hit.chunk_id,
+                "document_title": hit.document_title,
+                "chunk_type": hit.chunk_type,
+                "heading_path": list(hit.heading_path),
+                "page_start": hit.page_start,
+                "page_end": hit.page_end,
+                "acl": [dict(item) for item in hit.acl],
+                "source_uri": hit.source_uri,
+                "filename": hit.filename,
+                "source_type": hit.source_type,
+                "content_hash": hit.content_hash,
+                "token_count": hit.token_count,
+                "text": hit.text,
+                "score": hit.score,
+                "retrieval_origin": "chunk-index",
+            }
+        )
+    return items
+
+
+def describe_chunk_index(
+    *,
+    root: str | Path | None = None,
+    index_name: str = CHUNK_INDEX_NAME,
+) -> dict:
+    """当前生效 chunk 索引的自我描述（**不加载向量**，B7 新增）。
+
+    API 层需要告诉调用方"你查的是哪一版索引"——尤其是**零命中**的时候：
+    零命中可能是"没权限"，也可能是"索引不存在/太旧"，两者对排障的意义完全不同。
+    这里只读 manifest（几 KB），不 ``read_index``，避免为了回一个元信息
+    把整个向量文件读进内存。
+
+    没有生效索引时抛 ``chunk_index_unavailable``（与检索路径同一个错误码）。
+    """
+
+    root_path = Path(root) if root is not None else chunk_index_root()
+    try:
+        manifest, pointer, _index_file = load_active_manifest(root_path, index_name)
+    except IndexManifestError as error:
+        raise ChunkRetrievalError(
+            ERROR_INDEX_UNAVAILABLE, f"没有可用的 chunk 索引：{error}", detail=error.detail
+        ) from error
+    return {
+        "index_name": manifest.index_name,
+        "index_version": int(pointer.index_version),
+        "embedding_model": manifest.embedding_model,
+        "embedding_dimension": int(manifest.embedding_dimension),
+        "built_at": manifest.built_at,
+        "chunk_count": int(manifest.chunk_count),
+        "tokenizer_id": manifest.tokenizer_id,
+        "scope": str(manifest.extra.get("scope", "")),
+        "tenants": [str(item) for item in (manifest.extra.get("tenants") or ())],
+        # B8：稀疏路可用性由 manifest 的 ``extra["sparse"]`` 声明决定。
+        # 这里**不需要**去碰文件系统 —— 声明与文件是否一致由
+        # ``verify_sparse_index`` 在构建/回滚时保证；查询期再 stat 一次
+        # 只会引入"声明有、文件没了"的第三种状态，而那种情况由
+        # ``utils.sparse_retriever.load_sparse_index`` 显式报错更合适。
+        "sparse_available": bool(manifest.extra.get("sparse")),
+        "sparse_index_file": str((manifest.extra.get("sparse") or {}).get("file", "")),
+        "sparse_gram_algorithm": str(
+            (manifest.extra.get("sparse") or {}).get("gram_algorithm", "")
+        ),
+    }
