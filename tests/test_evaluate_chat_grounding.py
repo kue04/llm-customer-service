@@ -27,6 +27,21 @@ from scripts.evaluate_chat_grounding import (
 
 
 class ChatGroundingEvaluationTest(unittest.TestCase):
+    def test_summary_includes_clarify_and_human_handoff_routes(self) -> None:
+        reports = [
+            {"trace": {}, "answer_mode": "clarify", "conversation_status": "awaiting_clarification", "manual_judgment": {}},
+            {"trace": {}, "answer_mode": "human_review", "conversation_status": "human_handoff", "manual_judgment": {}},
+            {"trace": {}, "answer_mode": "complete", "conversation_status": "completed", "manual_judgment": {}},
+        ]
+        summary = summarize_grounding_reports(reports)
+        self.assertEqual(summary["clarify_count"], 1)
+        self.assertEqual(summary["human_handoff_count"], 1)
+        self.assertEqual(summary["route_counts"]["complete"], 1)
+
+    def test_parse_args_requires_explicit_legacy_seed_flag_for_demo_runs(self) -> None:
+        args = parse_args(["--legacy-seed"])
+        self.assertTrue(args.legacy_seed)
+
     def test_calibrate_judge_result_relaxes_refund_time_without_fixed_number(self) -> None:
         report = {
             "query": "退款多久到账",

@@ -69,3 +69,12 @@
 - 将 retrieval 评测扩展到 100 条以上，并输出 recall@1、recall@3、MRR。
 - 增加一次本地压测，记录平均延迟和 P95 延迟。
 - 部署公网 Demo 后补充在线访问地址。
+
+
+## 2026-09-25 P1 链路口径
+
+正式检索评测入口是 `scripts/evaluate_hybrid_retrieval.py`。它直接调用 chunk-index 生产检索代码，使用 span gold 计算 Recall@k、MRR、NDCG，并在报告中记录 `retrieval_path=chunk-index`、数据集和 `index_version`。
+
+`scripts/evaluate_chat_grounding.py` 的现有用例仍以 seed FAQ 的 `expected_intent` 为金标，因此默认拒绝运行；只有显式传 `--legacy-seed` 才运行兼容 grounding。该报告必须标记 `retrieval_path=seed-faq-demo`，不得当作正式 chunk 质量。正式聊天 grounding 若要纳入 chunk 评测，需要提供带 tenant/ACL 身份上下文的固定评测索引和 chunk/span 金标。
+
+报告还应关注证据覆盖、citation/grounding 检查，以及 `clarify` 和 `human_handoff` 路由统计；聊天 grounding 汇总会输出 `route_counts`、`clarify_count`、`human_handoff_count`。

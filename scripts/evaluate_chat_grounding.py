@@ -342,6 +342,8 @@ def build_grounding_reports_from_rag(
         report["scenario"] = metadata.get("scenario", "")
         report["case_type"] = metadata.get("case_type", "")
         report["case_notes"] = metadata.get("notes", "")
+        report["answer_mode"] = answer.get("answer_mode", "")
+        report["conversation_status"] = answer.get("conversation_status", "")
         reports.append(report)
     return reports
 
@@ -1254,8 +1256,19 @@ def summarize_grounding_reports(reports: list[dict]) -> dict:
                 score = "empty"
             counts[score] += 1
 
+    route_counts = {"complete": 0, "partial": 0, "clarify": 0, "human_handoff": 0, "unknown": 0}
+    for report in reports:
+        trace = report.get("trace") or {}
+        mode = str(report.get("answer_mode") or trace.get("answer_mode") or "").strip()
+        status = str(report.get("conversation_status") or trace.get("conversation_status") or "").strip()
+        route = "human_handoff" if status == "human_handoff" or mode == "human_review" else mode
+        route_counts[route if route in route_counts else "unknown"] += 1
+
     return {
         "total": len(reports),
+        "route_counts": route_counts,
+        "clarify_count": route_counts["clarify"],
+        "human_handoff_count": route_counts["human_handoff"],
         "manual_review_count": sum(
             1 for report in reports if report.get("needs_manual_review")
         ),
@@ -1271,11 +1284,14 @@ def summarize_grounding_reports(reports: list[dict]) -> dict:
     }
 
 
-def build_report_run_config(use_local_judge: bool, composer_mode: str = "") -> dict:
+def build_report_run_config(use_local_judge: bool, composer_mode: str = "", *, retrieval_path: str = "chunk-index", data_source: str = "formal_chunk_corpus", index_version: int | None = None) -> dict:
     return {
         "rag_config": get_rag_config_dict(),
         "use_local_judge": use_local_judge,
         "composer_mode": composer_mode,
+        "retrieval_path": retrieval_path,
+        "data_source": data_source,
+        "index_version": index_version,
     }
 
 
@@ -1312,7 +1328,7 @@ def save_reports_to_file(
         "run_id": run_id,
         "created_at": created_at.isoformat(timespec="seconds"),
         "script": "scripts/evaluate_chat_grounding.py",
-        "run_config": build_report_run_config(use_local_judge, composer_mode),
+        "run_config": build_report_run_config(use_local_judge, composer_mode, retrieval_path="seed-faq-demo", data_source="data/takeout_customer_service_seed.jsonl"),
         "use_local_judge": use_local_judge,
         "composer_mode": composer_mode,
         "report_count": len(complete_reports),
@@ -1375,6 +1391,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--blind",
         action="store_true",
         help="Use data/chat_grounding_blind_cases.jsonl.",
+    )
+    parser.add_argument(
+        "--legacy-seed",
+        action="store_true",
+        help="显式运行 seed-faq-demo 兼容评测；不代表正式 chunk 语料质量。",
     )
     return parser.parse_args(argv)
 
@@ -1463,14 +1484,14 @@ def main() -> None:
         for case in evaluation_cases
     ]
 
-    # 本脚本的用例集带 ``expected_intent`` / ``expected_evidence_keywords``，
-    # 那是**种子 FAQ 的 intent 体系**（A 轨口径）。2026-09-25 聊天链路默认切到
-    # chunk 轨之后，这里若不锚定，就会以「无身份 + B 轨」运行 → 检索零命中 →
-    # 评测结果整片为空 —— 而"全空"看起来像"模型答不出来"，不像配置问题。
-    # 所以显式锚定，并允许外部用环境变量覆盖（但因 ``auth=None`` 会 fail closed，
-    # 覆盖成 chunk 目前拿不到结果）。
-    # ⚠️ 因此**本脚本的分数仍是 A 轨口径**，不能当作切轨后的检索质量（F2 同族缺口）。
-    os.environ.setdefault("RAG_CHAT_RETRIEVAL_PATH", "seed")
+    if not args.legacy_seed:
+        raise SystemExit(
+            "正式 chunk 语料的可复现检索评测请运行 scripts/evaluate_hybrid_retrieval.py；"
+            "本聊天 grounding 脚本使用 seed FAQ 意图金标，若需兼容调试请显式传 --legacy-seed。"
+        )
+
+    # seed FAQ 仅作为显式兼容评测，不得被误认为正式 chunk 质量。
+    os.environ["RAG_CHAT_RETRIEVAL_PATH"] = "seed"
 
     from services.chat_service import get_answer_from_rag
 

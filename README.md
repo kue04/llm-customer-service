@@ -139,8 +139,8 @@ $env:RAG_JWT_SECRET = "dev-only-secret-change-me-please-32-bytes"
 常用命令：
 
 ```powershell
-.venv/Scripts/python.exe scripts/evaluate_retrieval_metrics.py --limit 10 --save-report
-.venv/Scripts/python.exe scripts/evaluate_chat_grounding.py
+.venv/Scripts/python.exe scripts/evaluate_hybrid_retrieval.py --top-k 10
+.venv/Scripts/python.exe scripts/evaluate_chat_grounding.py --legacy-seed
 .venv/Scripts/python.exe scripts/check_repo_data_size.py
 .venv/Scripts/python.exe -m pytest -q
 ```
@@ -170,7 +170,7 @@ docs/                   API、评测、设计和运维文档
 - 生产环境必须使用独立 JWT 密钥、真实身份提供方和持久化数据库/对象存储。
 - `RAG_CHAT_RETRIEVAL_MODE` 可用于显式诊断模式；正式默认值为 `hybrid`，缺少稀疏索引时应显式失败，不静默降级。
 - 需要人工处理的请求不要只依赖前端标记；服务端会创建 handoff ticket，并在响应和会话状态中记录结果。
-- 评测数字必须注明数据集和检索路径。演示种子 FAQ 指标不能直接替代生产 chunk 语料指标。
+- 评测报告必须注明数据来源、索引版本和 `retrieval_path`。正式 chunk 语料使用 `scripts/evaluate_hybrid_retrieval.py`；seed FAQ 只能通过 `--legacy-seed` 显式运行，不能替代生产指标。
 
 ## 相关文档
 
