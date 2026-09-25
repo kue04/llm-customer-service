@@ -189,6 +189,29 @@ def _chunk_index_name() -> str:
     return CHUNK_INDEX_NAME
 
 
+def describe_chat_retrieval_source() -> dict:
+    """返回聊天本次使用的正式 chunk 来源元数据。
+
+    元数据探测失败不改变检索结果，只将版本标为未知，避免观测逻辑反过来
+    影响正式回答链路。
+    """
+    metadata = {
+        "retrieval_path": "chunk-index",
+        "data_source": "document_chunks",
+        "index_name": _chunk_index_name(),
+        "index_version": None,
+    }
+    try:
+        from utils.vector_retriever import describe_chunk_index
+
+        info = describe_chunk_index(root=_chunk_index_root(), index_name=_chunk_index_name())
+        metadata["index_name"] = str(info.get("index_name") or metadata["index_name"])
+        metadata["index_version"] = int(info["index_version"])
+    except Exception:
+        pass
+    return metadata
+
+
 def retrieve_chunk_items_for_chat(query: str, auth, limit: int = 3) -> list[dict]:
     """B 轨取数：服务端构造 access 过滤（**fail closed**）后查 chunk 索引。
 
@@ -770,6 +793,11 @@ def build_evidence_citations(prompt_context_items: list) -> list[dict]:
                 "evidence_role": getattr(item, "role", "supporting"),
                 "quote": quote,
                 "title": getattr(item, "title", "") or getattr(item, "display_title", ""),
+                "chunk_id": getattr(item, "chunk_id", ""),
+                "document_id": getattr(item, "document_id", ""),
+                "heading_path": list(getattr(item, "heading_path", ()) or ()),
+                "page_start": getattr(item, "page_start", None),
+                "page_end": getattr(item, "page_end", None),
             }
         )
     return citations
@@ -814,6 +842,11 @@ def build_prd_citations(evidence_citations: list[dict]) -> list[dict]:
                 "score": item.get("score", 0.0),
                 "updated_at": item.get("updated_at", ""),
                 "source": item.get("source", ""),
+                "chunk_id": item.get("chunk_id", ""),
+                "document_id": item.get("document_id", ""),
+                "heading_path": item.get("heading_path", []),
+                "page_start": item.get("page_start"),
+                "page_end": item.get("page_end"),
             }
         )
     return citations
@@ -984,6 +1017,12 @@ def complete_chat_response(
 ) -> dict:
     grounding_started_at = time.perf_counter()
     result = finalize_chat_result(result, query)
+    result.setdefault("trace", {}).update({
+        "retrieval_path": result.get("retrieval_path", "chunk-index"),
+        "data_source": result.get("data_source", "document_chunks"),
+        "index_name": result.get("index_name", ""),
+        "index_version": result.get("index_version"),
+    })
     full_trace.append(
         trace_step(
             "grounding_checked",
@@ -1304,7 +1343,8 @@ def get_answer_from_rag(request, auth=None):
     retrieval_query = query_plan["resolved_query"]
 
     retrieval_started_at = time.perf_counter()
-    retrieval_path = resolve_chat_retrieval_path()
+    retrieval_source = describe_chat_retrieval_source()
+    retrieval_path = retrieval_source["retrieval_path"]
     full_trace.append(
         trace_step(
             "retrieval_started",
@@ -1313,6 +1353,9 @@ def get_answer_from_rag(request, auth=None):
             # 走过的轨道要留痕：切轨后"怎么一条都没命中"的第一个排查点就是它
             metadata={
                 "retrieval_path": retrieval_path,
+                "data_source": retrieval_source["data_source"],
+                "index_name": retrieval_source["index_name"],
+                "index_version": retrieval_source["index_version"],
                 "retrieval_mode": resolve_chat_retrieval_mode(),
                 "original_query": mask_sensitive_text(query_plan["original_query"])[:160],
                 "resolved_query": mask_sensitive_text(query_plan["resolved_query"])[:160],
@@ -1480,6 +1523,10 @@ def get_answer_from_rag(request, auth=None):
         result = attach_runtime_fields({
             "reply": reply,
             "answer_mode": evidence_decision.get("mode", "complete"),
+            "retrieval_path": retrieval_source["retrieval_path"],
+            "data_source": retrieval_source["data_source"],
+            "index_name": retrieval_source["index_name"],
+            "index_version": retrieval_source["index_version"],
             "missing_subqueries": evidence_decision.get("missing_subqueries", []),
             "confidence_score": 0.2,
             "final_prompt": prompt,
@@ -1583,6 +1630,10 @@ def get_answer_from_rag(request, auth=None):
     result = attach_runtime_fields({
         "reply": reply,
         "answer_mode": evidence_decision.get("mode", "complete"),
+        "retrieval_path": retrieval_source["retrieval_path"],
+        "data_source": retrieval_source["data_source"],
+        "index_name": retrieval_source["index_name"],
+        "index_version": retrieval_source["index_version"],
         "missing_subqueries": evidence_decision.get("missing_subqueries", []),
         "confidence_score": confidence_score,
         "final_prompt": prompt,

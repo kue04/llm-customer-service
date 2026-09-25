@@ -250,6 +250,11 @@
             "title": "Answer Basis",
             "type": "string"
           },
+          "answer_mode": {
+            "default": "complete",
+            "title": "Answer Mode",
+            "type": "string"
+          },
           "citations": {
             "items": {
               "additionalProperties": true,
@@ -275,6 +280,11 @@
           "conversation_status": {
             "default": "pending_agent_review",
             "title": "Conversation Status",
+            "type": "string"
+          },
+          "data_source": {
+            "default": "document_chunks",
+            "title": "Data Source",
             "type": "string"
           },
           "decision_trace": {
@@ -349,6 +359,22 @@
             "default": "v1 默认客服确认后发送",
             "title": "Human Review Reason",
             "type": "string"
+          },
+          "index_name": {
+            "default": "",
+            "title": "Index Name",
+            "type": "string"
+          },
+          "index_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Version"
           },
           "intent_analysis": {
             "additionalProperties": true,
@@ -429,6 +455,11 @@
           "request_id": {
             "default": "",
             "title": "Request Id",
+            "type": "string"
+          },
+          "retrieval_path": {
+            "default": "chunk-index",
+            "title": "Retrieval Path",
             "type": "string"
           },
           "retrieved_documents": {
@@ -655,6 +686,11 @@
             "title": "Answer Source",
             "type": "string"
           },
+          "data_source": {
+            "default": "document_chunks",
+            "title": "Data Source",
+            "type": "string"
+          },
           "degraded": {
             "title": "Degraded",
             "type": "boolean"
@@ -667,6 +703,22 @@
           "fallback_reason": {
             "title": "Fallback Reason",
             "type": "string"
+          },
+          "index_name": {
+            "default": "",
+            "title": "Index Name",
+            "type": "string"
+          },
+          "index_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Version"
           },
           "latency_ms": {
             "default": 0.0,
@@ -696,6 +748,11 @@
           "retrieval_count": {
             "title": "Retrieval Count",
             "type": "integer"
+          },
+          "retrieval_path": {
+            "default": "chunk-index",
+            "title": "Retrieval Path",
+            "type": "string"
           },
           "session_id": {
             "default": "",
@@ -756,6 +813,21 @@
             "title": "Index Version",
             "type": "integer"
           },
+          "sparse_available": {
+            "default": false,
+            "title": "Sparse Available",
+            "type": "boolean"
+          },
+          "sparse_gram_algorithm": {
+            "default": "",
+            "title": "Sparse Gram Algorithm",
+            "type": "string"
+          },
+          "sparse_index_file": {
+            "default": "",
+            "title": "Sparse Index File",
+            "type": "string"
+          },
           "tokenizer_id": {
             "default": "",
             "title": "Tokenizer Id",
@@ -802,6 +874,17 @@
             "default": "",
             "title": "Content Hash",
             "type": "string"
+          },
+          "dense_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dense Rank"
           },
           "document_id": {
             "title": "Document Id",
@@ -863,6 +946,13 @@
             "title": "Retrieval Origin",
             "type": "string"
           },
+          "routes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Routes",
+            "type": "array"
+          },
           "score": {
             "default": 0.0,
             "title": "Score",
@@ -877,6 +967,17 @@
             "default": "",
             "title": "Source Uri",
             "type": "string"
+          },
+          "sparse_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sparse Rank"
           },
           "tenant_id": {
             "title": "Tenant Id",
@@ -936,6 +1037,22 @@
             "minLength": 1,
             "title": "Query",
             "type": "string"
+          },
+          "retrieval_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dense",
+                  "hybrid",
+                  "sparse"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Mode"
           }
         },
         "required": [
@@ -963,6 +1080,11 @@
             },
             "title": "Results",
             "type": "array"
+          },
+          "retrieval_mode": {
+            "default": "dense",
+            "title": "Retrieval Mode",
+            "type": "string"
           },
           "retrieval_path": {
             "default": "chunk-index",
@@ -1523,6 +1645,89 @@
           "chunk_count"
         ],
         "title": "IndexRebuildResponse",
+        "type": "object"
+      },
+      "IndexRollbackRequest": {
+        "description": "``POST /ingestion/indexes/rollback`` 的请求（B8 新增）。\n\n``index_version`` 必须是**磁盘上已存在且通过校验**的版本号 ——\n回滚只改指针、不重建，因此目标版本不可用时必须**当场失败**，\n而不是\"先切过去、等下一次检索才炸\"（理由见\n``services/ingestion/index_builder.py`` 里 ``rollback_index`` 的说明）。",
+        "properties": {
+          "index_version": {
+            "description": "要回滚到的索引版本号",
+            "minimum": 1.0,
+            "title": "Index Version",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index_version"
+        ],
+        "title": "IndexRollbackRequest",
+        "type": "object"
+      },
+      "IndexRollbackResponse": {
+        "description": "回滚结果。**只改生效指针，不重建、不删任何文件。**\n\n``previous_version`` 是回滚**前**生效的版本 —— 既用于确认\"确实切了\"，\n也便于运维决定要不要再切回去（取不到时为 ``None``）。\n``available_versions`` 是当前磁盘上可选的版本列表（倒序），\n让调用方在失败或想再切换时不必猜。",
+        "properties": {
+          "available_versions": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Available Versions",
+            "type": "array"
+          },
+          "chunk_count": {
+            "minimum": 0.0,
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "embedding_model": {
+            "default": "",
+            "title": "Embedding Model",
+            "type": "string"
+          },
+          "index_name": {
+            "title": "Index Name",
+            "type": "string"
+          },
+          "index_version": {
+            "description": "回滚后生效的版本",
+            "minimum": 0.0,
+            "title": "Index Version",
+            "type": "integer"
+          },
+          "manifest_uri": {
+            "default": "",
+            "title": "Manifest Uri",
+            "type": "string"
+          },
+          "previous_version": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Version"
+          },
+          "switched": {
+            "default": false,
+            "title": "Switched",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "index_name",
+          "index_version",
+          "chunk_count"
+        ],
+        "title": "IndexRollbackResponse",
         "type": "object"
       },
       "IngestionJobDetail": {
@@ -2329,9 +2534,19 @@
             "title": "Category",
             "type": "string"
           },
+          "chunk_id": {
+            "default": "",
+            "title": "Chunk Id",
+            "type": "string"
+          },
           "display_title": {
             "default": "",
             "title": "Display Title",
+            "type": "string"
+          },
+          "document_id": {
+            "default": "",
+            "title": "Document Id",
             "type": "string"
           },
           "evidence_strength": {
@@ -2343,6 +2558,13 @@
             "title": "Evidence Summary",
             "type": "string"
           },
+          "heading_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Heading Path",
+            "type": "array"
+          },
           "intent": {
             "title": "Intent",
             "type": "string"
@@ -2351,6 +2573,28 @@
             "default": "",
             "title": "Knowledge Id",
             "type": "string"
+          },
+          "page_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page End"
+          },
+          "page_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Start"
           },
           "prompt_instruction": {
             "default": "",
@@ -4804,6 +5048,114 @@
           }
         },
         "summary": "重建 chunk 索引（需要 index:rebuild）",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/ingestion/indexes/rollback": {
+      "post": {
+        "description": "把**生效指针**切回磁盘上已存在的旧版本：不重建、不删文件，只改指针。\n\n与**重建**分开授权（B8）：`index:rebuild` 是「建一份新的」，`index:rollback` 是「把线上切回旧的」—— 两者都影响所有租户的检索结果，但动作不同，因此各自成键（当前角色集合相同：supervisor / admin）。\n\n目标版本**必须已存在且通过校验**：回滚前会重新校验旧索引文件，宁可在回滚时就明确失败，也不让指针指向一份坏索引 ——后者要等下一次检索才炸，排查难度高得多。",
+        "operationId": "rollback_chunk_index_ingestion_indexes_rollback_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Request-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Operator-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Operator-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexRollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexRollbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "回滚索引到指定版本（需要 index:rollback）",
         "tags": [
           "documents"
         ]
@@ -7277,7 +7629,7 @@
     },
     "/retrieval/search": {
       "post": {
-        "description": "正式的检索接口：**先授权，再检索**。\n\n三个必须按顺序理解的点：\n\n1. ``access`` 过滤器在**服务端**构造（``build_chunk_access_filter``），\n   输入只有已校验的 ``AuthContext`` 与库里的 ACL / 版本状态；\n2. 过滤发生在**候选暴露之前**（FAISS ``IDSelectorBatch`` 预过滤），\n   不是\"先全局 top-k 再筛\" —— 后者在长尾租户上会静默返回 0 条；\n3. 零命中是**正常结果**（无权限 = 零命中，不返回 403），\n   因为返回 403 会泄漏\"这条文档存在但你没权限\"。",
+        "description": "正式的检索接口：**先授权，再检索**。\n\n三个必须按顺序理解的点：\n\n1. ``access`` 过滤器在**服务端**构造（``build_chunk_access_filter``），\n   输入只有已校验的 ``AuthContext`` 与库里的 ACL / 版本状态；\n2. 过滤发生在**候选暴露之前**（FAISS ``IDSelectorBatch`` 预过滤；\n   稀疏路是 FTS5 临时表 JOIN 预过滤）—— 不是\"先全局 top-k 再筛\"，\n   后者在长尾租户上会静默返回 0 条；\n3. 零命中是**正常结果**（无权限 = 零命中，不返回 403），\n   因为返回 403 会泄漏\"这条文档存在但你没权限\"。\n\n``retrieval_mode`` 决定走哪条召回路径（见 :data:`DEFAULT_RETRIEVAL_MODE`）。\n无论哪种模式，**权限过滤都在检索层内、候选暴露之前完成** —— 混合检索\n不是\"绕过隔离的第二条路\"，它复用的是同一个 :class:`ChunkAccessFilter`。",
         "operationId": "search_retrieval_chunks_retrieval_search_post",
         "parameters": [
           {

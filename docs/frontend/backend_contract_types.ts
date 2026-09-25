@@ -1,6 +1,6 @@
 // 后端接口类型（由 scripts/export_frontend_contract.py 自动生成，请勿手改）
 //
-// 生成时间：2026-09-23 21:59
+// 生成时间：2026-09-25 20:58
 // 来源：main.app.openapi() → docs/frontend/openapi.json
 //
 // 用法：整体复制到前端 src/types/backendContract.ts，
@@ -69,11 +69,13 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   answer_basis?: string;
+  answer_mode?: string;
   citations?: Record<string, unknown>[];
   confidence_level?: string;
   confidence_score: number;
   context_used?: Record<string, unknown>;
   conversation_status?: string;
+  data_source?: string;
   decision_trace?: Record<string, unknown>;
   evaluation_metrics?: Record<string, unknown>;
   evidence_citations?: Record<string, unknown>[];
@@ -85,6 +87,8 @@ export interface ChatResponse {
   full_trace?: Record<string, unknown>[];
   handoff_ticket?: Record<string, unknown> | null;
   human_review_reason?: string;
+  index_name?: string;
+  index_version?: number | null;
   intent_analysis?: Record<string, unknown>;
   issue_type?: string;
   manual_judgment?: Record<string, unknown>;
@@ -99,6 +103,7 @@ export interface ChatResponse {
   prompt_version?: string;
   reply: string;
   request_id?: string;
+  retrieval_path?: string;
   retrieved_documents: string[];
   retrieved_items?: Record<string, unknown>[];
   risk_level?: string;
@@ -139,14 +144,18 @@ export interface ChatReviewActionResponse {
 
 export interface ChatTrace {
   answer_source: string;
+  data_source?: string;
   degraded: boolean;
   failure_stage: string;
   fallback_reason: string;
+  index_name?: string;
+  index_version?: number | null;
   latency_ms?: number;
   order_id?: string | null;
   reply_rules_applied: boolean;
   request_id?: string;
   retrieval_count: number;
+  retrieval_path?: string;
   session_id?: string;
   top1_intent?: string;
   used_fallback_prompt: boolean;
@@ -160,6 +169,9 @@ export interface ChunkIndexInfo {
   embedding_model: string;
   index_name: string;
   index_version: number;
+  sparse_available?: boolean;
+  sparse_gram_algorithm?: string;
+  sparse_index_file?: string;
   tokenizer_id?: string;
   visible_chunk_count?: number;
 }
@@ -169,6 +181,7 @@ export interface ChunkRetrievalItem {
   chunk_id: string;
   chunk_type?: string;
   content_hash?: string;
+  dense_rank?: number | null;
   document_id: string;
   document_title?: string;
   document_version: number;
@@ -179,9 +192,11 @@ export interface ChunkRetrievalItem {
   page_start?: number | null;
   rank: number;
   retrieval_origin?: string;
+  routes?: string[];
   score?: number;
   source_type?: string;
   source_uri?: string;
+  sparse_rank?: number | null;
   tenant_id: string;
   text?: string;
   title?: string;
@@ -192,6 +207,7 @@ export interface ChunkRetrievalRequest {
   limit?: number;
   min_score?: number | null;
   query: string;
+  retrieval_mode?: "dense" | "hybrid" | "sparse" | null;
 }
 
 export interface ChunkRetrievalResponse {
@@ -199,6 +215,7 @@ export interface ChunkRetrievalResponse {
   index: ChunkIndexInfo;
   query: string;
   results: ChunkRetrievalItem[];
+  retrieval_mode?: string;
   retrieval_path?: "chunk-index" | "seed-faq-demo";
 }
 
@@ -320,6 +337,22 @@ export interface IndexRebuildResponse {
   skipped?: boolean;
   switched?: boolean;
   tenant_count?: number;
+}
+
+export interface IndexRollbackRequest {
+  index_version: number;
+  reason?: string;
+}
+
+export interface IndexRollbackResponse {
+  available_versions?: number[];
+  chunk_count: number;
+  embedding_model?: string;
+  index_name: string;
+  index_version: number;
+  manifest_uri?: string;
+  previous_version?: number | null;
+  switched?: boolean;
 }
 
 export interface IngestionJobDetail {
@@ -491,11 +524,16 @@ export interface ParseWarningItem {
 export interface PromptContextItemResponse {
   answer: string;
   category: string;
+  chunk_id?: string;
   display_title?: string;
+  document_id?: string;
   evidence_strength: string;
   evidence_summary?: string;
+  heading_path?: string[];
   intent: string;
   knowledge_id?: string;
+  page_end?: number | null;
+  page_start?: number | null;
   prompt_instruction?: string;
   question: string;
   rank: number;

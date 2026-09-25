@@ -14,6 +14,10 @@ class ChatRequest(BaseModel):
 
 class ChatTrace(BaseModel):
     retrieval_count: int
+    retrieval_path: str = "chunk-index"
+    data_source: str = "document_chunks"
+    index_name: str = ""
+    index_version: int | None = None
     request_id: str = ""
     user_id: str = ""
     session_id: str = ""
@@ -48,6 +52,11 @@ class PromptContextItemResponse(BaseModel):
     answer: str
     score: float
     rerank_score: float
+    chunk_id: str = ""
+    document_id: str = ""
+    heading_path: list[str] = Field(default_factory=list)
+    page_start: int | None = None
+    page_end: int | None = None
 
 
 class ChatResponse(BaseModel):
@@ -67,6 +76,11 @@ class ChatResponse(BaseModel):
     full_trace: list[dict] = Field(default_factory=list)
     handoff_ticket: dict | None = None
     token_usage: dict = Field(default_factory=dict)
+    answer_mode: str = "complete"
+    retrieval_path: str = "chunk-index"
+    data_source: str = "document_chunks"
+    index_name: str = ""
+    index_version: int | None = None
     confidence_score: float
     session_id: str = ""
     user_id: str = "demo_user"

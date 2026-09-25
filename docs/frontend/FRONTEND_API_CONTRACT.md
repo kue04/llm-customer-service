@@ -1,6 +1,6 @@
 # 后端接口与字段契约（前端对齐用）
 
-> 生成时间：2026-09-23 21:59　|　来源：`main.app.openapi()`　|　生成器：`scripts/export_frontend_contract.py`
+> 生成时间：2026-09-25 20:58　|　来源：`main.app.openapi()`　|　生成器：`scripts/export_frontend_contract.py`
 >
 > **本文件是机器生成的，不要手改。** 后端接口变了，重跑一次脚本即可：
 >
@@ -51,7 +51,7 @@
 
 ## 3. 端点总表
 
-共 **39** 条路径。鉴权列中的 scope 是**必须全部满足**的意思。
+共 **40** 条路径。鉴权列中的 scope 是**必须全部满足**的意思。
 
 | 方法 | 路径 | 鉴权（scope） | 角色 | 摘要 |
 | --- | --- | --- | --- | --- |
@@ -72,6 +72,7 @@
 | `GET` | `/health` | **无需鉴权** | - | Health Check |
 | `GET` | `/ingestion-jobs/{job_id}` | `read:knowledge_read` + `document:read` | `agent` / `supervisor` / `knowledge_ops` / `qa` / `admin` | 查询接入任务 |
 | `POST` | `/ingestion/indexes/rebuild` | `index:rebuild` | `supervisor` / `admin` | 重建 chunk 索引（需要 index:rebuild） |
+| `POST` | `/ingestion/indexes/rollback` | **未登记** | **未登记** | 回滚索引到指定版本（需要 index:rollback） |
 | `POST` | `/knowledge-bases/{knowledge_base_id}/documents` | `write:knowledge_create` + `document:upload` | `supervisor` / `knowledge_ops` / `admin` | 上传文档并创建异步解析任务 |
 | `GET` | `/knowledge/export-approved` | `read:knowledge_read` | `supervisor` / `knowledge_ops` / `qa` / `admin` | Export Approved |
 | `GET` | `/knowledge/items` | `read:knowledge_read` | `supervisor` / `knowledge_ops` / `qa` / `admin` | Knowledge Items |
@@ -97,6 +98,10 @@
 | `POST` | `/retrieval/prompt-preview` | `read:retrieval_read` | `agent` / `supervisor` / `qa` / `admin` | 【演示 / 兼容】拼装 RAG prompt（基于 A 轨种子 FAQ，无权限过滤） |
 | `POST` | `/retrieval/search` | `read:retrieval_read` | `agent` / `supervisor` / `qa` / `admin` | 检索文档 chunk（正式路径，按租户与 document ACL 过滤） |
 | `POST` | `/retrieval/search-demo` | `read:retrieval_read` | `agent` / `supervisor` / `qa` / `admin` | 【演示 / 兼容】检索种子 FAQ（A 轨，无权限过滤） |
+
+> ⚠️ 以下端点**未在生成器的 `ENDPOINT_AUTH` 里登记鉴权**，说明文档有缺口：
+>
+> - `POST /ingestion/indexes/rollback`
 
 ## 4. 逐端点详情
 
@@ -164,11 +169,13 @@
 | 字段 | 类型 | 必填 | 默认 | 约束 / 说明 |
 | --- | --- | --- | --- | --- |
 | `answer_basis` | string | 否 | "" | - |
+| `answer_mode` | string | 否 | "complete" | - |
 | `citations` | object[] | 否 | - | - |
 | `confidence_level` | string | 否 | "medium" | - |
 | `confidence_score` | number | 是 | - | - |
 | `context_used` | object | 否 | - | - |
 | `conversation_status` | string | 否 | "pending_agent_review" | - |
+| `data_source` | string | 否 | "document_chunks" | - |
 | `decision_trace` | object | 否 | - | - |
 | `evaluation_metrics` | object | 否 | - | - |
 | `evidence_citations` | object[] | 否 | - | - |
@@ -180,6 +187,8 @@
 | `full_trace` | object[] | 否 | - | - |
 | `handoff_ticket` | object \| null | 否 | - | - |
 | `human_review_reason` | string | 否 | "v1 默认客服确认后发送" | - |
+| `index_name` | string | 否 | "" | - |
+| `index_version` | integer \| null | 否 | - | - |
 | `intent_analysis` | object | 否 | - | - |
 | `issue_type` | string | 否 | "" | - |
 | `manual_judgment` | object | 否 | - | - |
@@ -194,6 +203,7 @@
 | `prompt_version` | string | 否 | "" | - |
 | `reply` | string | 是 | - | - |
 | `request_id` | string | 否 | "" | - |
+| `retrieval_path` | string | 否 | "chunk-index" | - |
 | `retrieved_documents` | string[] | 是 | - | - |
 | `retrieved_items` | object[] | 否 | - | - |
 | `risk_level` | string | 否 | "low" | - |
@@ -257,7 +267,7 @@
 
 **检索文档 chunk（正式路径，按租户与 document ACL 过滤）**
 
-> 正式的检索接口：**先授权，再检索**。  三个必须按顺序理解的点：  1. ``access`` 过滤器在**服务端**构造（``build_chunk_access_filter``），    输入只有已校验的 ``AuthContext`` 与库里的 ACL / 版本状态； 2. 过滤发生在**候选暴露之前**（FAISS ``IDSelectorBatch`` 预过滤），    不是"先全局 top-k 再筛" —— 后者在长尾租户上会静默返回 0 条； 3. 零命中是**正常结果**（无权限 = 零命中，不返回 403），    因为返回 403 会泄漏"这条文档存在但你没权限"。
+> 正式的检索接口：**先授权，再检索**。  三个必须按顺序理解的点：  1. ``access`` 过滤器在**服务端**构造（``build_chunk_access_filter``），    输入只有已校验的 ``AuthContext`` 与库里的 ACL / 版本状态； 2. 过滤发生在**候选暴露之前**（FAISS ``IDSelectorBatch`` 预过滤；    稀疏路是 FTS5 临时表 JOIN 预过滤）—— 不是"先全局 top-k 再筛"，    后者在长尾租户上会静默返回 0 条； 3. 零命中是**正常结果**（无权限 = 零命中，不返回 403），    因为返回 403 会泄漏"这条文档存在但你没权限"。  ``retrieval_mode`` 决定走哪条召回路径（见 :data:`DEFAULT_RETRIEVAL_MODE`）。 无论哪种模式，**权限过滤都在检索层内、候选暴露之前完成** —— 混合检索 不是"绕过隔离的第二条路"，它复用的是同一个 :class:`ChunkAccessFilter`。
 
 - 鉴权：`read:retrieval_read`　角色：`agent` / `supervisor` / `qa` / `admin`
 
@@ -270,6 +280,7 @@
 | `limit` | integer | 否 | 5 | >= 1.0；<= 20.0 |
 | `min_score` | number \| null | 否 | - | - |
 | `query` | string | 是 | - | 长度>= 1 |
+| `retrieval_mode` | `dense` \\| `hybrid` \\| `sparse` \| null | 否 | - | - |
 
 **响应**
 
@@ -286,6 +297,7 @@
 | `index` | ChunkIndexInfo | 是 | - | 当前生效索引的自我描述（便于排障"为什么零命中"）。；模型：ChunkIndexInfo |
 | `query` | string | 是 | - | - |
 | `results` | ChunkRetrievalItem[] | 是 | - | - |
+| `retrieval_mode` | string | 否 | "dense" | - |
 | `retrieval_path` | `chunk-index` \\| `seed-faq-demo` | 否 | "chunk-index" | 可选值：`chunk-index` / `seed-faq-demo` |
 
 ### 检索（演示路径 · 种子 FAQ）
@@ -1558,9 +1570,46 @@
 | --- | --- | --- |
 | `200` | Successful Response | - |
 
+#### `POST /ingestion/indexes/rollback`
+
+**回滚索引到指定版本（需要 index:rollback）**
+
+> 把**生效指针**切回磁盘上已存在的旧版本：不重建、不删文件，只改指针。  与**重建**分开授权（B8）：`index:rebuild` 是「建一份新的」，`index:rollback` 是「把线上切回旧的」—— 两者都影响所有租户的检索结果，但动作不同，因此各自成键（当前角色集合相同：supervisor / admin）。  目标版本**必须已存在且通过校验**：回滚前会重新校验旧索引文件，宁可在回滚时就明确失败，也不让指针指向一份坏索引 ——后者要等下一次检索才炸，排查难度高得多。
+
+- 鉴权：**未登记（文档缺口）**
+
+**请求体**（`application/json`）
+
+模型：`IndexRollbackRequest`（字段见第 5 节）
+
+| 字段 | 类型 | 必填 | 默认 | 约束 / 说明 |
+| --- | --- | --- | --- | --- |
+| `index_version` | integer | 是 | - | 要回滚到的索引版本号；>= 1.0 |
+| `reason` | string | 否 | "" | 长度<= 200 |
+
+**响应**
+
+| 状态码 | 说明 | 模型 |
+| --- | --- | --- |
+| `200` | Successful Response | `IndexRollbackResponse` |
+| `422` | Validation Error | `HTTPValidationError` |
+
+成功响应字段：
+
+| 字段 | 类型 | 必填 | 默认 | 约束 / 说明 |
+| --- | --- | --- | --- | --- |
+| `available_versions` | integer[] | 否 | - | - |
+| `chunk_count` | integer | 是 | - | >= 0.0 |
+| `embedding_model` | string | 否 | "" | - |
+| `index_name` | string | 是 | - | - |
+| `index_version` | integer | 是 | - | 回滚后生效的版本；>= 0.0 |
+| `manifest_uri` | string | 否 | "" | - |
+| `previous_version` | integer \| null | 否 | - | - |
+| `switched` | boolean | 否 | false | - |
+
 ## 5. 数据模型全量展开
 
-共 60 个模型，全部来自 `components.schemas`。
+共 62 个模型，全部来自 `components.schemas`。
 
 ### `AuditLogItem`
 
@@ -1634,11 +1683,13 @@
 | 字段 | 类型 | 必填 | 默认 | 约束 / 说明 |
 | --- | --- | --- | --- | --- |
 | `answer_basis` | string | 否 | "" | - |
+| `answer_mode` | string | 否 | "complete" | - |
 | `citations` | object[] | 否 | - | - |
 | `confidence_level` | string | 否 | "medium" | - |
 | `confidence_score` | number | 是 | - | - |
 | `context_used` | object | 否 | - | - |
 | `conversation_status` | string | 否 | "pending_agent_review" | - |
+| `data_source` | string | 否 | "document_chunks" | - |
 | `decision_trace` | object | 否 | - | - |
 | `evaluation_metrics` | object | 否 | - | - |
 | `evidence_citations` | object[] | 否 | - | - |
@@ -1650,6 +1701,8 @@
 | `full_trace` | object[] | 否 | - | - |
 | `handoff_ticket` | object \| null | 否 | - | - |
 | `human_review_reason` | string | 否 | "v1 默认客服确认后发送" | - |
+| `index_name` | string | 否 | "" | - |
+| `index_version` | integer \| null | 否 | - | - |
 | `intent_analysis` | object | 否 | - | - |
 | `issue_type` | string | 否 | "" | - |
 | `manual_judgment` | object | 否 | - | - |
@@ -1664,6 +1717,7 @@
 | `prompt_version` | string | 否 | "" | - |
 | `reply` | string | 是 | - | - |
 | `request_id` | string | 否 | "" | - |
+| `retrieval_path` | string | 否 | "chunk-index" | - |
 | `retrieved_documents` | string[] | 是 | - | - |
 | `retrieved_items` | object[] | 否 | - | - |
 | `risk_level` | string | 否 | "low" | - |
@@ -1710,14 +1764,18 @@
 | 字段 | 类型 | 必填 | 默认 | 约束 / 说明 |
 | --- | --- | --- | --- | --- |
 | `answer_source` | string | 是 | - | rag or fallback |
+| `data_source` | string | 否 | "document_chunks" | - |
 | `degraded` | boolean | 是 | - | - |
 | `failure_stage` | string | 是 | - | none, retrieval, generation, or reply_rules |
 | `fallback_reason` | string | 是 | - | - |
+| `index_name` | string | 否 | "" | - |
+| `index_version` | integer \| null | 否 | - | - |
 | `latency_ms` | number | 否 | 0.0 | - |
 | `order_id` | string \| null | 否 | - | - |
 | `reply_rules_applied` | boolean | 是 | - | - |
 | `request_id` | string | 否 | "" | - |
 | `retrieval_count` | integer | 是 | - | - |
+| `retrieval_path` | string | 否 | "chunk-index" | - |
 | `session_id` | string | 否 | "" | - |
 | `top1_intent` | string | 否 | "" | - |
 | `used_fallback_prompt` | boolean | 是 | - | - |
@@ -1735,6 +1793,9 @@
 | `embedding_model` | string | 是 | - | - |
 | `index_name` | string | 是 | - | - |
 | `index_version` | integer | 是 | - | - |
+| `sparse_available` | boolean | 否 | false | - |
+| `sparse_gram_algorithm` | string | 否 | "" | - |
+| `sparse_index_file` | string | 否 | "" | - |
 | `tokenizer_id` | string | 否 | "" | - |
 | `visible_chunk_count` | integer | 否 | 0 | - |
 
@@ -1748,6 +1809,7 @@
 | `chunk_id` | string | 是 | - | - |
 | `chunk_type` | string | 否 | "" | - |
 | `content_hash` | string | 否 | "" | - |
+| `dense_rank` | integer \| null | 否 | - | - |
 | `document_id` | string | 是 | - | - |
 | `document_title` | string | 否 | "" | - |
 | `document_version` | integer | 是 | - | - |
@@ -1758,9 +1820,11 @@
 | `page_start` | integer \| null | 否 | - | - |
 | `rank` | integer | 是 | - | - |
 | `retrieval_origin` | string | 否 | "chunk-index" | - |
+| `routes` | string[] | 否 | - | - |
 | `score` | number | 否 | 0.0 | - |
 | `source_type` | string | 否 | "" | - |
 | `source_uri` | string | 否 | "" | - |
+| `sparse_rank` | integer \| null | 否 | - | - |
 | `tenant_id` | string | 是 | - | - |
 | `text` | string | 否 | "" | - |
 | `title` | string | 否 | "" | - |
@@ -1775,6 +1839,7 @@
 | `limit` | integer | 否 | 5 | >= 1.0；<= 20.0 |
 | `min_score` | number \| null | 否 | - | - |
 | `query` | string | 是 | - | 长度>= 1 |
+| `retrieval_mode` | `dense` \\| `hybrid` \\| `sparse` \| null | 否 | - | - |
 
 ### `ChunkRetrievalResponse`
 
@@ -1784,6 +1849,7 @@
 | `index` | ChunkIndexInfo | 是 | - | 当前生效索引的自我描述（便于排障"为什么零命中"）。；模型：ChunkIndexInfo |
 | `query` | string | 是 | - | - |
 | `results` | ChunkRetrievalItem[] | 是 | - | - |
+| `retrieval_mode` | string | 否 | "dense" | - |
 | `retrieval_path` | `chunk-index` \\| `seed-faq-demo` | 否 | "chunk-index" | 可选值：`chunk-index` / `seed-faq-demo` |
 
 ### `DocumentDetail`
@@ -1943,6 +2009,30 @@
 | `skipped` | boolean | 否 | false | - |
 | `switched` | boolean | 否 | false | - |
 | `tenant_count` | integer | 否 | 0 | >= 0.0 |
+
+### `IndexRollbackRequest`
+
+> ``POST /ingestion/indexes/rollback`` 的请求（B8 新增）。  ``index_version`` 必须是**磁盘上已存在且通过校验**的版本号 —— 回滚只改指针、不重建，因此目标版本不可用时必须**当场失败**， 而不是"先切过去、等下一次检索才炸"（理由见 ``services/ingestion/index_builder.py`` 里 ``rollback_index`` 的说明）。
+
+| 字段 | 类型 | 必填 | 默认 | 约束 / 说明 |
+| --- | --- | --- | --- | --- |
+| `index_version` | integer | 是 | - | 要回滚到的索引版本号；>= 1.0 |
+| `reason` | string | 否 | "" | 长度<= 200 |
+
+### `IndexRollbackResponse`
+
+> 回滚结果。**只改生效指针，不重建、不删任何文件。**  ``previous_version`` 是回滚**前**生效的版本 —— 既用于确认"确实切了"， 也便于运维决定要不要再切回去（取不到时为 ``None``）。 ``available_versions`` 是当前磁盘上可选的版本列表（倒序）， 让调用方在失败或想再切换时不必猜。
+
+| 字段 | 类型 | 必填 | 默认 | 约束 / 说明 |
+| --- | --- | --- | --- | --- |
+| `available_versions` | integer[] | 否 | - | - |
+| `chunk_count` | integer | 是 | - | >= 0.0 |
+| `embedding_model` | string | 否 | "" | - |
+| `index_name` | string | 是 | - | - |
+| `index_version` | integer | 是 | - | 回滚后生效的版本；>= 0.0 |
+| `manifest_uri` | string | 否 | "" | - |
+| `previous_version` | integer \| null | 否 | - | - |
+| `switched` | boolean | 否 | false | - |
 
 ### `IngestionJobDetail`
 
@@ -2148,11 +2238,16 @@
 | --- | --- | --- | --- | --- |
 | `answer` | string | 是 | - | - |
 | `category` | string | 是 | - | - |
+| `chunk_id` | string | 否 | "" | - |
 | `display_title` | string | 否 | "" | - |
+| `document_id` | string | 否 | "" | - |
 | `evidence_strength` | string | 是 | - | - |
 | `evidence_summary` | string | 否 | "" | - |
+| `heading_path` | string[] | 否 | - | - |
 | `intent` | string | 是 | - | - |
 | `knowledge_id` | string | 否 | "" | - |
+| `page_end` | integer \| null | 否 | - | - |
+| `page_start` | integer \| null | 否 | - | - |
 | `prompt_instruction` | string | 否 | "" | - |
 | `question` | string | 是 | - | - |
 | `rank` | integer | 是 | - | - |

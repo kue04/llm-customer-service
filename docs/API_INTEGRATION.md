@@ -710,3 +710,17 @@ request
 ```
 
 对前端来说，`trace` 更适合作为调试面板或折叠开发者区域内容，而不是普通用户可见字段。
+
+
+## 2026-09-25 正式聊天检索来源字段
+
+`POST /chat/prompt` 的正式聊天响应会在顶层和 `trace` 中同时返回以下字段：
+
+| 字段 | 含义 | 正式值 |
+| --- | --- | --- |
+| `retrieval_path` | 实际检索路径 | `chunk-index` |
+| `data_source` | 数据来源 | `document_chunks` |
+| `index_name` | 生效索引名称 | 例如 `document_chunks` |
+| `index_version` | 生效索引版本 | 当前 active manifest 版本；索引不可用时为 `null` |
+
+这些字段与 `citations`、`evidence_citations` 配合使用：citation 记录具体证据，顶层元数据记录本次请求所使用的数据源和索引身份。`seed-faq-demo` 只出现在显式演示接口，不属于正式聊天响应。

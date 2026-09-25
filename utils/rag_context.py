@@ -26,6 +26,11 @@ class PromptContextItem:
     answer: str
     score: float
     rerank_score: float
+    chunk_id: str = ""
+    document_id: str = ""
+    heading_path: tuple[str, ...] = ()
+    page_start: int | None = None
+    page_end: int | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -111,6 +116,11 @@ def build_prompt_context_items(
                 answer=evidence_summary,
                 score=float(item.get("score", 0.0)),
                 rerank_score=float(item.get("rerank_score", 0.0)),
+                chunk_id=str(item.get("chunk_id", "")),
+                document_id=str(item.get("document_id", "")),
+                heading_path=tuple(str(value) for value in (item.get("heading_path") or [])),
+                page_start=item.get("page_start"),
+                page_end=item.get("page_end"),
             )
         )
 

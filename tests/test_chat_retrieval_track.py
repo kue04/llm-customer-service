@@ -128,6 +128,20 @@ class ChunkItemAdaptationTest(unittest.TestCase):
         self.assertEqual(adapted[0]["intent"], "")
         self.assertEqual(adapted[0]["title"], "chunk-001")
 
+    def test_chunk_provenance_survives_citation_conversion(self) -> None:
+        adapted = chat_service.adapt_chunk_items_for_prompt([sample_chunk_hit()])
+        context_items = build_prompt_context_items(adapted)
+        evidence = chat_service.build_evidence_citations(context_items)
+        citations = chat_service.build_prd_citations(evidence)
+
+        self.assertEqual(evidence[0]["chunk_id"], "chunk-001")
+        self.assertEqual(evidence[0]["document_id"], "doc-001")
+        self.assertEqual(evidence[0]["page_start"], 4)
+        self.assertEqual(evidence[0]["page_end"], 4)
+        self.assertEqual(citations[0]["chunk_id"], "chunk-001")
+        self.assertEqual(citations[0]["document_id"], "doc-001")
+        self.assertEqual(citations[0]["page_start"], 4)
+
     def test_raw_chunk_shape_would_be_dropped_by_downstream(self) -> None:
         """反证：不做适配直接喂下游 → 一条都组装不出来。
 

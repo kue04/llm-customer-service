@@ -26,6 +26,11 @@ class ChatPromptApiTest(unittest.TestCase):
             "human_review_reason": "v1 默认客服确认后发送",
             "citations": [{"knowledge_id": "kb_1", "snippet": "rule"}],
             "conversation_status": "pending_agent_review",
+            "answer_mode": "complete",
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 7,
             "answer_basis": "主证据：refund_progress",
             "evidence_citations": [{"evidence_id": "kb_1", "evidence_role": "primary"}],
             "tool_results": [],
@@ -66,6 +71,10 @@ class ChatPromptApiTest(unittest.TestCase):
             ],
             "trace": {
                 "retrieval_count": 1,
+                "retrieval_path": "chunk-index",
+                "data_source": "document_chunks",
+                "index_name": "document_chunks",
+                "index_version": 7,
                 "request_id": "req-test",
                 "user_id": getattr(request, "user_id", "demo_user"),
                 "session_id": getattr(request, "session_id", None) or "session-test",
@@ -113,6 +122,12 @@ class ChatPromptApiTest(unittest.TestCase):
         self.assertEqual(body["confidence_level"], "high")
         self.assertTrue(body["need_human_review"])
         self.assertEqual(body["conversation_status"], "pending_agent_review")
+        self.assertEqual(body["retrieval_path"], "chunk-index")
+        self.assertEqual(body["data_source"], "document_chunks")
+        self.assertEqual(body["index_name"], "document_chunks")
+        self.assertEqual(body["index_version"], 7)
+        self.assertEqual(body["trace"]["retrieval_path"], body["retrieval_path"])
+        self.assertEqual(body["trace"]["index_version"], body["index_version"])
         self.assertEqual(body["citations"][0]["knowledge_id"], "kb_1")
         self.assertEqual(body["user_id"], "demo_user")
         self.assertEqual(body["session_id"], "session-test")
