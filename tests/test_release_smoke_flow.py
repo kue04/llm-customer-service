@@ -11,6 +11,7 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from runtime_fixtures import runtime_database, scoped_call
 from auth_helpers import auth_headers
 
 
@@ -28,7 +29,7 @@ def build_fake_chat_service() -> types.ModuleType:
 
         request_id = "req-release-smoke-chat"
         session_id = getattr(request, "session_id", None) or "session-release-smoke"
-        user_id = getattr(request, "user_id", "demo_user")
+        user_id = auth.user_id
         order_id = getattr(request, "order_id", None)
         reply = "您好，退款进度请以订单售后页和平台审核结果为准。"
         trace = {
@@ -121,8 +122,11 @@ def build_fake_chat_service() -> types.ModuleType:
             ],
             "trace": trace,
         }
-        conversation_store.get_or_create_conversation(user_id, session_id, order_id)
-        conversation_store.save_turn_response(
+        scoped_call(
+            conversation_store.get_or_create_conversation, user_id, session_id, order_id, actor="release_smoke_admin"
+        )
+        scoped_call(
+            conversation_store.save_turn_response,
             request_id=request_id,
             session_id=session_id,
             user_id=user_id,
@@ -130,8 +134,11 @@ def build_fake_chat_service() -> types.ModuleType:
             query=request.message,
             reply=reply,
             response=response,
+            actor="release_smoke_admin",
         )
-        conversation_store.set_conversation_status(session_id, "pending_agent_review")
+        scoped_call(
+            conversation_store.set_conversation_status, session_id, "pending_agent_review", actor="release_smoke_admin"
+        )
         save_chat_session(
             query=request.message,
             reply=reply,
@@ -148,6 +155,7 @@ class ReleaseSmokeFlowTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
+        self.enterContext(runtime_database(Path(self.temp_dir.name) / "runtime.db"))
         self.feedback_service = importlib.import_module("services.feedback_service")
         self.conversation_store = importlib.import_module("services.conversation_store")
         self.order_state_store = importlib.import_module("services.order_state_store")
@@ -155,28 +163,15 @@ class ReleaseSmokeFlowTest(unittest.TestCase):
         self.knowledge_service = importlib.import_module("services.knowledge_service")
         self.release_check_service = importlib.import_module("services.release_check_service")
         self.previous_paths = {
-            "feedback_db": self.feedback_service.DB_PATH,
-            "conversation_db": self.conversation_store.DB_PATH,
-            "order_db": self.order_state_store.DB_PATH,
-            "prompt_db": self.prompt_service.DB_PATH,
-            "knowledge_db": self.knowledge_service.DB_PATH,
-            "knowledge_path": self.knowledge_service.KNOWLEDGE_DATA_PATH,
-            "backup_dir": self.knowledge_service.BACKUP_DIR,
             "grounding_report_dir": self.release_check_service.GROUNDING_REPORT_DIR,
             "release_report_dir": self.release_check_service.RELEASE_REPORT_DIR,
         }
         base_path = Path(self.temp_dir.name)
-        shared_db_path = base_path / "ops_feedback.db"
-        self.feedback_service.DB_PATH = shared_db_path
-        self.conversation_store.DB_PATH = shared_db_path
-        self.order_state_store.DB_PATH = shared_db_path
-        self.prompt_service.DB_PATH = base_path / "prompt_versions.db"
-        self.knowledge_service.DB_PATH = base_path / "knowledge_ops.db"
-        self.knowledge_service.KNOWLEDGE_DATA_PATH = base_path / "seed.jsonl"
-        self.knowledge_service.BACKUP_DIR = base_path / "backups"
+        self.legacy_seed_path = base_path / "seed.jsonl"
+        self.legacy_backup_dir = base_path / "backups"
         self.release_check_service.GROUNDING_REPORT_DIR = base_path / "reports"
         self.release_check_service.RELEASE_REPORT_DIR = base_path / "release_reports"
-        self.knowledge_service.KNOWLEDGE_DATA_PATH.write_text("", encoding="utf-8")
+        self.legacy_seed_path.write_text("", encoding="utf-8")
         self.addCleanup(self.restore_paths)
 
         self.previous_chat_service = sys.modules.get("services.chat_service")
@@ -200,13 +195,6 @@ class ReleaseSmokeFlowTest(unittest.TestCase):
         self.client.headers.update(ADMIN_HEADERS)
 
     def restore_paths(self) -> None:
-        self.feedback_service.DB_PATH = self.previous_paths["feedback_db"]
-        self.conversation_store.DB_PATH = self.previous_paths["conversation_db"]
-        self.order_state_store.DB_PATH = self.previous_paths["order_db"]
-        self.prompt_service.DB_PATH = self.previous_paths["prompt_db"]
-        self.knowledge_service.DB_PATH = self.previous_paths["knowledge_db"]
-        self.knowledge_service.KNOWLEDGE_DATA_PATH = self.previous_paths["knowledge_path"]
-        self.knowledge_service.BACKUP_DIR = self.previous_paths["backup_dir"]
         self.release_check_service.GROUNDING_REPORT_DIR = self.previous_paths["grounding_report_dir"]
         self.release_check_service.RELEASE_REPORT_DIR = self.previous_paths["release_report_dir"]
 
@@ -308,8 +296,7 @@ class ReleaseSmokeFlowTest(unittest.TestCase):
             ).status_code,
             200,
         )
-        with patch.object(self.knowledge_service, "rebuild_vector_store"):
-            self.assertEqual(self.client.post("/knowledge/publish-approved").status_code, 200)
+        self.assertEqual(self.client.post("/knowledge/publish-approved").status_code, 200)
 
         chat_response = self.client.post(
             "/chat/prompt",

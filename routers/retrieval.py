@@ -28,6 +28,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from config.rag_config import get_rag_config_dict
+from config.runtime_config import demo_endpoints_enabled
 from models.prompt import create_prompt
 from schemas.retrieval_schema import (
     ChunkIndexInfo,
@@ -44,6 +45,7 @@ from services.auth_service import AuthContext, get_auth_context, require_read_op
 from services.ingestion.db import session_scope
 from services.ingestion.pipeline import default_embedder, default_embedding_model, default_index_root
 from services.retrieval_access import build_chunk_access_filter
+from services.runtime_db import scoped_route
 from utils.hybrid_retriever import retrieve_hybrid_items
 from utils.rag_context import build_prompt_context_items
 from utils.sparse_retriever import ERROR_SPARSE_UNAVAILABLE
@@ -59,6 +61,14 @@ from utils.vector_retriever import (
 
 
 router = APIRouter()
+demo_router = APIRouter()
+
+
+def require_demo_access(auth: AuthContext) -> None:
+    if not demo_endpoints_enabled():
+        raise HTTPException(status_code=404, detail='Not Found')
+    if 'demo:read' not in auth.scopes:
+        raise HTTPException(status_code=403, detail='demo:read scope required')
 
 #: B 轨检索的**默认模式**。
 #: 默认使用 ``hybrid``：正式索引必须同时具备 dense 与 sparse 两路；旧索引不可用时显式失败，避免静默退回导致质量口径漂移。
@@ -259,7 +269,7 @@ def build_retrieval_result_item(rank: int, item: dict) -> RetrievalResultItem:
     )
 
 
-@router.post(
+@demo_router.post(
     "/search-demo",
     response_model=RetrievalSearchResponse,
     summary="【演示 / 兼容】检索种子 FAQ（A 轨，无权限过滤）",
@@ -271,6 +281,7 @@ def build_retrieval_result_item(rank: int, item: dict) -> RetrievalResultItem:
         "保留本端点只是为了演示检索分数构成与兼容旧调试台。"
     ),
 )
+@scoped_route
 def search_retrieval_demo(
     request: RetrievalSearchRequest,
     auth: AuthContext = Depends(get_auth_context),
@@ -282,6 +293,7 @@ def search_retrieval_demo(
     正式路径见 :func:`search_retrieval_chunks`。
     """
 
+    require_demo_access(auth)
     require_read_operation_role(READ_OPERATION, auth)
     candidates = retrieve_by_real_vector(
         request.query,
@@ -302,7 +314,7 @@ def search_retrieval_demo(
     )
 
 
-@router.post(
+@demo_router.post(
     "/prompt-preview",
     response_model=PromptPreviewResponse,
     summary="【演示 / 兼容】拼装 RAG prompt（基于 A 轨种子 FAQ，无权限过滤）",
@@ -312,12 +324,14 @@ def search_retrieval_demo(
         "正式检索路径是 `POST /retrieval/search`。"
     ),
 )
+@scoped_route
 def preview_demo_prompt(
     request: RetrievalSearchRequest,
     auth: AuthContext = Depends(get_auth_context),
 ) -> PromptPreviewResponse:
     """【演示 / 兼容】A 轨的 prompt 预览（无 tenant / ACL 过滤）。"""
 
+    require_demo_access(auth)
     require_read_operation_role(READ_OPERATION, auth)
     candidates = retrieve_by_real_vector(
         request.query,

@@ -9,53 +9,6 @@ TOOL_TIMEOUT_SECONDS = 3.0
 QUERY_ERROR_TYPE = "tool_unavailable"
 TIMEOUT_ERROR_TYPE = "tool_timeout"
 
-MOCK_ORDERS = {
-    "order_new": {
-        "order_id": "order_new",
-        "status": "created",
-        "status_label": "未接单",
-        "summary": "商家尚未接单，用户可在订单页尝试取消。",
-        "refund_status": "none",
-    },
-    "order_cooking": {
-        "order_id": "order_cooking",
-        "status": "merchant_preparing",
-        "status_label": "商家已制作",
-        "summary": "商家已开始制作，退款金额需以平台和商家核实结果为准。",
-        "refund_status": "pending_review",
-    },
-    "order_picked": {
-        "order_id": "order_picked",
-        "status": "rider_picked",
-        "status_label": "骑手已取餐",
-        "summary": "骑手已取餐，不应直接承诺全额退款，可引导用户走售后核实。",
-        "refund_status": "pending_review",
-    },
-    "order_delivered": {
-        "order_id": "order_delivered",
-        "status": "delivered",
-        "status_label": "已送达",
-        "summary": "订单显示已送达，未收到餐需提交未收到餐反馈并等待核实。",
-        "refund_status": "none",
-    },
-    "order_food_safety": {
-        "order_id": "order_food_safety",
-        "status": "delivered",
-        "status_label": "已送达/食品安全反馈",
-        "summary": "食品安全场景需保留餐品、包装、照片和订单信息，按高风险处理。",
-        "refund_status": "manual_review",
-    },
-    "__release_check_owner_order__": {
-        "user_id": "release_check_owner",
-        "order_id": "__release_check_owner_order__",
-        "status": "delivered",
-        "status_label": "已送达",
-        "summary": "release check owner-bound mock order",
-        "refund_status": "none",
-    },
-}
-
-
 def _tool_result(
     tool_name: str,
     started_at: float,
@@ -76,8 +29,10 @@ def _tool_result(
     }
 
 
-def _lookup_order(order_id: str | None) -> dict | None:
-    return get_order_state(order_id) or MOCK_ORDERS.get(order_id or "")
+def _lookup_order(order_id: str | None, *, user_id: str, tenant_id: str | None) -> dict | None:
+    if not user_id or not tenant_id:
+        return None
+    return get_order_state(order_id, user_id=user_id, tenant_id=tenant_id)
 
 
 def _failed_tool_result(
@@ -99,7 +54,8 @@ def _failed_tool_result(
 
 def _lookup_order_with_contract(tool_name: str, started_at: float, input_data: dict) -> tuple[dict | None, dict | None]:
     try:
-        order = _lookup_order(str(input_data.get("order_id") or ""))
+        order = _lookup_order(str(input_data.get("order_id") or ""),
+                              user_id=input_data['user_id'], tenant_id=input_data.get('tenant_id'))
     except Exception:
         return None, _failed_tool_result(
             tool_name,
@@ -121,14 +77,13 @@ def _lookup_order_with_contract(tool_name: str, started_at: float, input_data: d
     return order, None
 
 
-def _is_wrong_user(order: dict, user_id: str) -> bool:
-    stored_user_id = str(order.get("user_id") or "")
-    return bool(stored_user_id and user_id and stored_user_id != user_id)
+def _is_wrong_user(order: dict, user_id: str, tenant_id: str | None) -> bool:
+    return not user_id or not tenant_id or order.get('user_id') != user_id or order.get('tenant_id') != tenant_id
 
 
-def query_order_status(user_id: str, order_id: str | None) -> dict:
+def query_order_status(user_id: str, order_id: str | None, *, tenant_id: str | None = None) -> dict:
     started_at = time.perf_counter()
-    input_data = {"user_id": user_id, "order_id": order_id}
+    input_data = {"user_id": user_id, "order_id": order_id, 'tenant_id': tenant_id}
     if not order_id:
         return _tool_result(
             "query_order_status",
@@ -140,13 +95,13 @@ def query_order_status(user_id: str, order_id: str | None) -> dict:
     order, failure = _lookup_order_with_contract("query_order_status", started_at, input_data)
     if failure:
         return failure
-    if order and _is_wrong_user(order, user_id):
+    if order and _is_wrong_user(order, user_id, tenant_id):
         return _tool_result(
             "query_order_status",
             started_at,
             input_data,
             status="failed",
-            error_type="order_user_mismatch",
+            error_type="order_not_found",
             retryable=False,
         )
     if not order:
@@ -161,9 +116,9 @@ def query_order_status(user_id: str, order_id: str | None) -> dict:
     return _tool_result("query_order_status", started_at, input_data, order)
 
 
-def query_refund_status(user_id: str, order_id: str | None) -> dict:
+def query_refund_status(user_id: str, order_id: str | None, *, tenant_id: str | None = None) -> dict:
     started_at = time.perf_counter()
-    input_data = {"user_id": user_id, "order_id": order_id}
+    input_data = {"user_id": user_id, "order_id": order_id, 'tenant_id': tenant_id}
     if not order_id:
         return _tool_result(
             "query_refund_status",
@@ -175,13 +130,13 @@ def query_refund_status(user_id: str, order_id: str | None) -> dict:
     order, failure = _lookup_order_with_contract("query_refund_status", started_at, input_data)
     if failure:
         return failure
-    if order and _is_wrong_user(order, user_id):
+    if order and _is_wrong_user(order, user_id, tenant_id):
         return _tool_result(
             "query_refund_status",
             started_at,
             input_data,
             status="failed",
-            error_type="order_user_mismatch",
+            error_type="order_not_found",
             retryable=False,
         )
     if not order:

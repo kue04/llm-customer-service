@@ -25,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 import pytest
 
 from services.ingestion import db, models, repository
+from services.runtime_schema import metadata as runtime_metadata
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -91,15 +92,16 @@ def test_alembic_upgrade_is_idempotent(db_url):
 
 
 def test_migrated_schema_matches_model_metadata(db_url):
-    """迁移建出来的 schema 必须和 models.py 完全一致（含约束名）。"""
+    """迁移 schema 必须覆盖摄取和运行时两套模型（含约束名）。"""
 
     inspector = inspect(db.get_engine(db_url))
-    metadata = models.Base.metadata
+    tables = {**models.Base.metadata.tables, **runtime_metadata.tables}
+    assert not (set(models.Base.metadata.tables) & set(runtime_metadata.tables))
 
     db_tables = set(inspector.get_table_names()) - {"alembic_version"}
-    assert db_tables == set(metadata.tables)
+    assert db_tables == set(tables)
 
-    for name, table in metadata.tables.items():
+    for name, table in tables.items():
         assert sorted(col["name"] for col in inspector.get_columns(name)) == sorted(
             col.name for col in table.columns
         ), f"列名不一致: {name}"

@@ -1,3 +1,4 @@
+from services.runtime_db import scoped_route
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from schemas.feedback_schema import (
@@ -22,6 +23,7 @@ router = APIRouter()
 
 
 @router.post("", response_model=FeedbackResponse)
+@scoped_route
 def create_feedback(
     request: FeedbackRequest,
     auth: AuthContext = Depends(get_auth_context),
@@ -45,6 +47,7 @@ def create_feedback(
 
 
 @router.get("/recent", response_model=RecentFeedbackResponse)
+@scoped_route
 def recent_feedback(
     limit: int = Query(default=20, ge=1, le=100),
     helpful: bool | None = None,
@@ -58,6 +61,7 @@ def recent_feedback(
 
 
 @router.post("/export-eval-case", response_model=ExportEvalCaseResponse)
+@scoped_route
 def export_eval_case(
     request: ExportEvalCaseRequest,
     auth: AuthContext = Depends(get_auth_context),

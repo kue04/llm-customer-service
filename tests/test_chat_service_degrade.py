@@ -2,14 +2,19 @@ import importlib
 import sys
 import types
 import unittest
+import tempfile
+from pathlib import Path
+
+from auth_helpers import make_auth_context
+from runtime_fixtures import runtime_database
 
 
 class ChatServiceDegradeTest(unittest.TestCase):
     def setUp(self) -> None:
-        """本类只验证检索、生成和规则失败时的降级语义。"""
-
-    def tearDown(self) -> None:
-        pass
+        """使用正式迁移和已验证身份，隔离检索、生成和规则失败。"""
+        self.temp_dir = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(runtime_database(Path(self.temp_dir) / "runtime.db"))
+        self.auth = make_auth_context(user_id="degrade-user", tenant_id="degrade-tenant")
 
     def _generation_result(self, text: str) -> dict:
         return {
@@ -70,11 +75,9 @@ class ChatServiceDegradeTest(unittest.TestCase):
 
         fake_reply_rules = types.ModuleType("services.reply_rules")
         fake_reply_rules.apply_reply_rules = reply_rules_impl
-        fake_reply_rules.apply_reply_rules_with_trace = (
-            lambda query, reply, items: (
-                reply_rules_impl(query, reply, items),
-                {"matched": False},
-            )
+        fake_reply_rules.apply_reply_rules_with_trace = lambda query, reply, items: (
+            reply_rules_impl(query, reply, items),
+            {"matched": False},
         )
 
         fake_vector_retriever = types.ModuleType("utils.vector_retriever")
@@ -118,11 +121,11 @@ class ChatServiceDegradeTest(unittest.TestCase):
             generate_impl=None,
             reply_rules_impl=lambda query, reply, items: reply,
         )
-        chat_service.generate_reply_with_usage = (
-            lambda prompt, system_prompt=None: self._generation_result("fallback answer")
+        chat_service.generate_reply_with_usage = lambda prompt, system_prompt=None: self._generation_result(
+            "fallback answer"
         )
 
-        result = chat_service.get_answer_from_rag("refund")
+        result = chat_service.get_answer_from_rag("refund", self.auth)
 
         self.assertEqual(result["reply"], "fallback answer")
         self.assertEqual(result["trace"]["answer_source"], "fallback")
@@ -158,7 +161,7 @@ class ChatServiceDegradeTest(unittest.TestCase):
 
         chat_service.generate_reply_with_usage = raise_generation
 
-        result = chat_service.get_answer_from_rag("refund")
+        result = chat_service.get_answer_from_rag("refund", self.auth)
 
         self.assertEqual(result["trace"]["failure_stage"], "generation")
         self.assertTrue(result["trace"]["fallback_reason"].startswith("generation_failed:"))
@@ -185,11 +188,11 @@ class ChatServiceDegradeTest(unittest.TestCase):
             generate_impl=None,
             reply_rules_impl=lambda query, reply, items: (_ for _ in ()).throw(RuntimeError("rules boom")),
         )
-        chat_service.generate_reply_with_usage = (
-            lambda prompt, system_prompt=None: self._generation_result("model answer")
+        chat_service.generate_reply_with_usage = lambda prompt, system_prompt=None: self._generation_result(
+            "model answer"
         )
 
-        result = chat_service.get_answer_from_rag("refund")
+        result = chat_service.get_answer_from_rag("refund", self.auth)
 
         self.assertEqual(result["reply"], "doc。")
         self.assertEqual(result["trace"]["failure_stage"], "reply_rules")

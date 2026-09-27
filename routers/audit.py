@@ -1,3 +1,4 @@
+from services.runtime_db import scoped_route
 from fastapi import APIRouter, Depends, Query
 
 from schemas.audit_schema import AuditLogListResponse
@@ -8,6 +9,7 @@ router = APIRouter()
 
 
 @router.get("/logs", response_model=AuditLogListResponse)
+@scoped_route
 def audit_logs(
     limit: int = Query(default=50, ge=1, le=200),
     action_type: str = "",

@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class OrderStateRequest(BaseModel):
-    user_id: str = "demo_user"
+    user_id: str = Field(default='', description='Compatibility only; ownership is taken from JWT')
     order_id: str
     status: str
     status_label: str = ""
@@ -15,4 +15,5 @@ class OrderStateRequest(BaseModel):
 
 
 class OrderStateResponse(OrderStateRequest):
+    tenant_id: str
     updated_at: str = ""

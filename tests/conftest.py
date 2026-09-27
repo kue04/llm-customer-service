@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 import sys
 
+os.environ['RAG_ENV'] = 'test'
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = Path(__file__).resolve().parent

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from services.runtime_db import scoped_identity
 from services import conversation_store
 from services.privacy import mask_sensitive_text
 from services.redis_context_cache import get_redis_context_cache
@@ -47,20 +48,25 @@ def _load_facts(session_id: str) -> dict[str, str]:
     return conversation_store.get_facts(session_id, limit=FACT_LIMIT)
 
 
+@scoped_identity
 def get_or_create_context(
     user_id: str | None = None,
     session_id: str | None = None,
     order_id: str | None = None,
+    *,
+    tenant_id: str = '',
 ) -> dict:
     resolved_user_id = _normalize_user_id(user_id)
     conversation = conversation_store.get_or_create_conversation(
         user_id=resolved_user_id,
         session_id=session_id,
         order_id=order_id,
+        tenant_id=tenant_id,
     )
     resolved_session_id = conversation["session_id"]
     return {
         "user_id": resolved_user_id,
+        "tenant_id": tenant_id,
         "session_id": resolved_session_id,
         "order_id": conversation.get("order_id") or order_id,
         "summary": _shorten(_load_summary(resolved_session_id), SUMMARY_LIMIT),

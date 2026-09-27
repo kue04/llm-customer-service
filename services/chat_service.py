@@ -1,4 +1,5 @@
 # app/services/chat_service.py
+from services.runtime_db import scoped_route
 import logging
 import os
 from pathlib import Path
@@ -1109,6 +1110,7 @@ def complete_chat_response(
     memory_update_started_at = time.perf_counter()
     updated_user_memory = update_user_memory_from_turn(
         user_id=context.get("user_id", "demo_user"),
+        tenant_id=context.get('tenant_id', ''),
         query=query,
         reply=result.get("reply", ""),
         intent_analysis=intent_analysis,
@@ -1190,16 +1192,21 @@ def finalize_chat_result(result: dict, query: str) -> dict:
     return attach_grounding_diagnostics(result, query)
 
 
+@scoped_route
 def get_answer_from_rag(request, auth=None):
     """问答主入口。
 
     ``auth`` 是切轨（F1）新增的：B 轨（chunk 索引）的权限过滤必须由**服务端身份**
     构造，所以身份要一路传到检索层。缺省 ``None`` 仅用于向后兼容的调用方 ——
-    此时若轨道是 B 轨，检索结果是**零命中**（fail closed），
-    不会退回没有权限过滤的 A 轨。
+    数据层统一后所有调用必须提供可信 auth；缺省 None 将由入口装饰器拒绝。
+    不会退回没有权限过滤的 A 轨或匿名持久化。
     """
 
     request_data = normalize_chat_request(request)
+    # Session ownership always comes from the validated identity, never the body.
+    if auth is not None:
+        request_data['user_id'] = auth.user_id
+    tenant_id = auth.tenant_id if auth is not None else ''
     query = request_data["message"]
     request_id = uuid4().hex
     started_at = time.perf_counter()
@@ -1236,8 +1243,9 @@ def get_answer_from_rag(request, auth=None):
         user_id=request_data["user_id"],
         session_id=request_data["session_id"],
         order_id=request_data["order_id"],
+        tenant_id=tenant_id,
     )
-    user_memory = get_user_memory(context["user_id"])
+    user_memory = get_user_memory(context["user_id"], tenant_id=tenant_id)
     recent_messages = context.get("recent_messages", []) or []
     memory_metadata = {
         "session_id": context["session_id"],
@@ -1334,14 +1342,19 @@ def get_answer_from_rag(request, auth=None):
         user_id=context["user_id"],
         session_id=context["session_id"],
         order_id=context.get("order_id"),
+        tenant_id=tenant_id,
     )
     context["facts"] = facts or context.get("facts", {})
     context["summary"] = summary or context.get("summary", "")
     order_tool_started_at = time.perf_counter()
-    order_status_result = query_order_status(context.get("user_id", "demo_user"), context.get("order_id"))
+    order_status_result = query_order_status(
+        context["user_id"], context.get("order_id"), tenant_id=tenant_id or None,
+    )
     tool_results.append(order_status_result)
     if should_call_refund_tool(query, intent_analysis):
-        tool_results.append(query_refund_status(context.get("user_id", "demo_user"), context.get("order_id")))
+        tool_results.append(query_refund_status(
+            context["user_id"], context.get("order_id"), tenant_id=tenant_id or None,
+        ))
     order_context = build_order_context(tool_results)
     tool_summaries = []
     for result in tool_results:

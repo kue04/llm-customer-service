@@ -1,3 +1,4 @@
+from services.runtime_db import scoped_route
 from fastapi import APIRouter, Depends
 
 from schemas.ops_schema import OpsMetricsResponse
@@ -8,6 +9,7 @@ router = APIRouter()
 
 
 @router.get("/metrics", response_model=OpsMetricsResponse)
+@scoped_route
 def ops_metrics(auth: AuthContext = Depends(get_auth_context)):
     require_read_operation_role("ops_metrics_read", auth)
     return get_ops_metrics()

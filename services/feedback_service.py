@@ -1,84 +1,13 @@
 from __future__ import annotations
 
+from services.runtime_db import get_connection
+
 from datetime import datetime, timezone
 import json
-from pathlib import Path
-import sqlite3
 
 from services.privacy import mask_sensitive_payload, mask_sensitive_text
 
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "ops_feedback.db"
-
-
-def get_connection() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-    ensure_schema(connection)
-    return connection
-
-
-def ensure_schema(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            request_id TEXT PRIMARY KEY,
-            query TEXT NOT NULL,
-            reply TEXT NOT NULL,
-            trace_json TEXT NOT NULL,
-            top1_intent TEXT NOT NULL,
-            latency_ms REAL NOT NULL,
-            answer_source TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    _ensure_column(connection, "chat_sessions", "user_id", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(connection, "chat_sessions", "session_id", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(connection, "chat_sessions", "order_id", "TEXT")
-    _ensure_column(connection, "chat_sessions", "token_usage_json", "TEXT NOT NULL DEFAULT '{}'")
-    _ensure_column(connection, "chat_sessions", "prompt_tokens", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(connection, "chat_sessions", "completion_tokens", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(connection, "chat_sessions", "total_tokens", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(connection, "chat_sessions", "token_counting_method", "TEXT NOT NULL DEFAULT ''")
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS feedback (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request_id TEXT NOT NULL,
-            query TEXT NOT NULL,
-            reply TEXT NOT NULL,
-            helpful INTEGER NOT NULL,
-            reason TEXT NOT NULL,
-            expected_reply TEXT NOT NULL,
-            trace_json TEXT NOT NULL,
-            top1_intent TEXT NOT NULL,
-            latency_ms REAL NOT NULL,
-            answer_source TEXT NOT NULL,
-            failure_stage TEXT NOT NULL,
-            exported INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    connection.commit()
-
-
-def _ensure_column(
-    connection: sqlite3.Connection,
-    table_name: str,
-    column_name: str,
-    column_definition: str,
-) -> None:
-    existing_columns = {
-        row["name"]
-        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
-    }
-    if column_name not in existing_columns:
-        connection.execute(
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
-        )
 
 
 def utc_now() -> str:
@@ -105,12 +34,12 @@ def save_chat_session(query: str, reply: str, trace: dict, token_usage: dict | N
     try:
         connection.execute(
             """
-            INSERT OR REPLACE INTO chat_sessions
+            INSERT INTO runtime_chat_sessions
             (request_id, query, reply, trace_json, top1_intent, latency_ms,
              answer_source, user_id, session_id, order_id, token_usage_json,
-             prompt_tokens, completion_tokens, total_tokens, token_counting_method, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+             prompt_tokens, completion_tokens, total_tokens, token_counting_method, created_at, tenant_id, created_by, updated_at)
+            VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8, :p9, :p10, :p11, :p12, :p13, :p14, :p15, :_tenant, :_actor, :_now)
+             ON CONFLICT(tenant_id, request_id) DO UPDATE SET query = excluded.query, reply = excluded.reply, trace_json = excluded.trace_json, top1_intent = excluded.top1_intent, latency_ms = excluded.latency_ms, answer_source = excluded.answer_source, order_id = excluded.order_id, token_usage_json = excluded.token_usage_json, prompt_tokens = excluded.prompt_tokens, completion_tokens = excluded.completion_tokens, total_tokens = excluded.total_tokens, token_counting_method = excluded.token_counting_method, updated_at = :_now""",
             (
                 request_id,
                 mask_sensitive_text(query),
@@ -142,8 +71,8 @@ def get_latest_chat_token_tracking_summary() -> dict:
             """
             SELECT request_id, prompt_tokens, completion_tokens, total_tokens,
                    token_counting_method, created_at
-            FROM chat_sessions
-            ORDER BY created_at DESC
+            FROM runtime_chat_sessions
+             WHERE tenant_id = :_tenant AND deleted_at IS NULL ORDER BY created_at DESC
             LIMIT 1
             """
         ).fetchone()
@@ -186,11 +115,11 @@ def save_feedback(payload: dict) -> int:
     try:
         cursor = connection.execute(
             """
-            INSERT INTO feedback
+            INSERT INTO runtime_feedback
             (request_id, query, reply, helpful, reason, expected_reply, trace_json,
-             top1_intent, latency_ms, answer_source, failure_stage, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+             top1_intent, latency_ms, answer_source, failure_stage, created_at, tenant_id, created_by, updated_at)
+            VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8, :p9, :p10, :p11, :_tenant, :_actor, :_now)
+             RETURNING id""",
             (
                 payload["request_id"],
                 mask_sensitive_text(payload["query"]),
@@ -207,36 +136,31 @@ def save_feedback(payload: dict) -> int:
             ),
         )
         connection.commit()
-        return int(cursor.lastrowid)
+        return int(cursor.inserted_id)
     finally:
         connection.close()
 
 
-def list_recent_feedback(limit: int = 20, helpful: bool | None = None, intent: str = "", failure_stage: str = "") -> list[dict]:
-    clauses = []
-    params: list[object] = []
+def list_recent_feedback(
+    limit: int = 20, helpful: bool | None = None, intent: str = "", failure_stage: str = ""
+) -> list[dict]:
+    clauses = ["tenant_id = :_tenant", "deleted_at IS NULL"]
+    params: dict[str, object] = {}
     if helpful is not None:
-        clauses.append("helpful = ?")
-        params.append(1 if helpful else 0)
+        clauses.append("helpful = :helpful")
+        params["helpful"] = 1 if helpful else 0
     if intent:
-        clauses.append("top1_intent = ?")
-        params.append(intent)
+        clauses.append("top1_intent = :top1_intent")
+        params["top1_intent"] = intent
     if failure_stage:
-        clauses.append("failure_stage = ?")
-        params.append(failure_stage)
+        clauses.append("failure_stage = :failure_stage")
+        params["failure_stage"] = failure_stage
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    params.append(limit)
+    params["limit"] = limit
     connection = get_connection()
     try:
         rows = connection.execute(
-            f"""
-            SELECT id, request_id, query, reply, helpful, reason, expected_reply,
-                   top1_intent, latency_ms, answer_source, failure_stage, exported, created_at
-            FROM feedback
-            {where_sql}
-            ORDER BY created_at DESC, id DESC
-            LIMIT ?
-            """,
+            f"\n            SELECT id, request_id, query, reply, helpful, reason, expected_reply,\n                   top1_intent, latency_ms, answer_source, failure_stage, exported, created_at\n            FROM runtime_feedback\n            {where_sql}\n            ORDER BY created_at DESC, id DESC\n            LIMIT :limit\n            ",
             params,
         ).fetchall()
     finally:
@@ -247,10 +171,16 @@ def list_recent_feedback(limit: int = 20, helpful: bool | None = None, intent: s
 def build_eval_case_from_feedback(feedback_id: int) -> dict:
     connection = get_connection()
     try:
-        row = connection.execute("SELECT * FROM feedback WHERE id = ?", (feedback_id,)).fetchone()
+        row = connection.execute(
+            "SELECT * FROM runtime_feedback WHERE tenant_id = :_tenant AND deleted_at IS NULL AND id = :p0",
+            (feedback_id,),
+        ).fetchone()
         if row is None:
             raise KeyError(f"feedback not found: {feedback_id}")
-        connection.execute("UPDATE feedback SET exported = 1 WHERE id = ?", (feedback_id,))
+        connection.execute(
+            "UPDATE runtime_feedback SET updated_at = :_now, exported = 1 WHERE tenant_id = :_tenant AND deleted_at IS NULL AND id = :p0",
+            (feedback_id,),
+        )
         connection.commit()
     finally:
         connection.close()

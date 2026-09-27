@@ -1,5 +1,7 @@
 # RAG 改造执行进度台账
 
+> **最新进度（2026-09-27）**：两个 P0、非 Docker P1 和 5.1 数据层代码改造已完成；全量回归为 `1154 passed`、`4 subtests passed`，无跳过。旧数据导入与真实 Redis/模型的完整业务链路验收待完成，Docker 明确暂缓。详见文末“系统评审整改：P0 / 非 Docker P1 / 5.1”。以下早期环境基线保留为历史记录，不代表当前运行配置。
+
 > 本文件是 `docs/RAG_EXECUTION_PLAN_DATA_INGESTION_CHUNKING_AUTH.md` 的执行进度记录。
 > 每完成一个任务/批次就追加一条记录，不覆盖历史内容。
 > 记录格式遵循计划文档第 8 节的固定输出格式。
@@ -2977,3 +2979,44 @@ PowerShell 的 `Invoke-WebRequest` 做交叉验证。
 ### [本批门禁数字校正]（2026-09-25）
 
 在追加记录后完成测试导入与依赖规则校正，最终以 `tmp/progress_record_final_junit.xml` 为准：JUnit `1061 / 0F / 0E / 0S`，控制台 `1057 passed`、4 subtests。此前本批记录中的 `1058 / 1054` 为修正前数字，不再作为当前门禁口径。
+
+### [2026-09-27] 系统评审整改：P0 / 非 Docker P1 / 5.1
+
+任务范围：依据 `PROJECT_SYSTEM_REVIEW_2026-09-27.md` 修复两个 P0，完成非 Docker P1 与 5.1 运行时数据层统一。Dockerfile、Compose 和容器 CI 编排按用户要求暂缓。
+
+**当前状态**
+
+| 项目 | 状态 | 已交付内容或剩余事项 |
+| --- | --- | --- |
+| P0：聊天历史越权 | 已完成代码与回归 | JWT 用户/租户绑定、会话归属不可接管；复核入口及长期记忆旁路同步封堵 |
+| P0：订单越权与归属伪造 | 已完成代码与回归 | HTTP 与聊天工具均校验归属；补充幂等、状态迁移校验、事务内审计 |
+| P1：演示检索隔离 | 已完成 | 生产不注册 demo router；开发显式启用并要求服务端 `demo:read` 权限 |
+| P1：就绪检查及非容器启动 | 已完成 | live/ready/dependencies；数据库、迁移、Redis、worker、索引、模型及鉴权检查；迁移失败阻止启动 |
+| 5.1：统一运行时业务存储 | 已完成代码、迁移工具与集成验证 | 15 张业务表迁移至统一 PostgreSQL，Alembic 0002 管理结构，请求不建表；保留租户/用户隔离与软删除策略 |
+| 旧 SQLite 业务数据导入 | 待可信映射及目标环境 | 只读规划共 8775 条记录，未自动认领或导入，原文件保留 |
+| 非 Docker 完整业务链路验收 | 下一步 | 实际 Redis、worker、索引与模型的上传→发布→问答验收；确认运营知识与正式索引的发布衔接 |
+| 5.2 / 5.3 / 5.4 | 本轮未实施 | 后续按解析质量门禁、真实问法检索评测、稳定性与成本控制推进 |
+| Docker / Compose / 容器 CI | 明确暂缓 | 本轮未修改，不计为已完成部署验证 |
+
+**主要交付物**
+
+- 安全边界：聊天、订单、反馈、提示词、知识、审计路由及对应服务；`services/runtime_db.py` 提供可信身份作用域和共享事务。
+- 数据结构与迁移：`services/runtime_schema.py`、`alembic/versions/0002_runtime_business_data.py`；历史导入、归档入口为 `scripts/runtime_data.py`。
+- 运行检查：`config/runtime_config.py`、`services/health_service.py`、`routers/health.py`、`services/ingestion/worker_health.py`、`scripts/start_runtime.py`。
+- 说明文档：`P0_SECURITY_FIXES_2026-09-27.md`、`ORDER_STATE_SECURITY.md`、`P1_RUNTIME_OPERATIONS_2026-09-27.md`、`RUNTIME_DATA_MIGRATION_2026-09-27.md`。
+
+**验证记录（此前整改轮次实际执行，本次进度更新不重复运行）**
+
+- 完整后端测试：`1154 passed`、`4 subtests passed`，0 failed、0 skipped，耗时 87.51 秒；仅有依赖弃用警告。
+- 真实 PostgreSQL 验证使用仅监听本机回环地址的临时实例，覆盖升级/降级/重启、并发幂等、事务回滚、独立进程共享和两个 API 实例的 JWT 隔离，没有使用 Docker。
+- 最后移除旧知识路径常量后，三个受影响测试模块补充复验：`24 passed`。
+- 改动 Python 文件 Ruff 检查通过，`git diff --check` 通过。临时 PostgreSQL 已停止，测试集群、下载包及本轮专用临时文件已清理。
+
+**重要运行变化与限制**
+
+1. 开发/生产必须配置 PostgreSQL；SQLite 仅可用于显式 `RAG_ENV=test`。FAISS/FTS5 继续作为可重建检索制品，不是业务数据库回退。
+2. `publish-approved` 现在只发布 PostgreSQL 内的运营知识快照，不代表正式 RAG 索引生效；正式发布继续走 ingestion/release 流程。
+3. 旧文件只读规划数量为 `ops_feedback.db: 8768`、`knowledge_ops.db: 5`、`prompt_versions.db: 2`。需逐记录可信 tenant/creator 映射，不能默认分配给当前用户。
+4. 本轮没有执行生产部署、历史数据正式导入或生产备份恢复演练，不能将代码完成和集成测试通过等同于已上线。
+
+下一步任务：完成非 Docker 端到端验收，修复运营知识发布到正式检索中实际发现的断点，再推进 5.2 解析质量门禁。

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from threading import Lock
 
 
@@ -36,7 +35,13 @@ def record_chat_metrics(trace: dict) -> None:
         )
         bucket = _dimension_metrics.setdefault(
             dimension_key,
-            {"request_count": 0, "failure_count": 0, "empty_retrieval_count": 0, "fallback_count": 0, "citation_missing_count": 0},
+            {
+                "request_count": 0,
+                "failure_count": 0,
+                "empty_retrieval_count": 0,
+                "fallback_count": 0,
+                "citation_missing_count": 0,
+            },
         )
         bucket["request_count"] += 1
         _metrics["request_count"] += 1
@@ -121,14 +126,6 @@ def _empty_metrics(source: str = "") -> dict:
     return metrics
 
 
-def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
-    row = connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (table_name,),
-    ).fetchone()
-    return row is not None
-
-
 def _safe_json_loads(payload: str) -> dict:
     try:
         value = json.loads(payload or "{}")
@@ -139,6 +136,7 @@ def _safe_json_loads(payload: str) -> dict:
 
 def get_persisted_ops_metrics() -> dict:
     from services import feedback_service
+    from services.runtime_db import identity
 
     connection = feedback_service.get_connection()
     try:
@@ -146,27 +144,56 @@ def get_persisted_ops_metrics() -> dict:
             """
             SELECT trace_json, latency_ms, answer_source,
                    prompt_tokens, completion_tokens, total_tokens
-            FROM chat_sessions
+            FROM runtime_chat_sessions WHERE tenant_id = :_tenant AND deleted_at IS NULL
             """
         ).fetchall()
 
         metrics = _empty_metrics(source="persisted_chat_sessions")
         latencies: list[float] = []
+        dimensions = {}
         for row in rows:
             trace = _safe_json_loads(str(row["trace_json"] or "{}"))
             metrics["request_count"] += 1
+            dimension_key = "|".join(
+                [
+                    str(trace.get("retrieval_path") or "unknown"),
+                    str(trace.get("index_version") or "unknown"),
+                    identity()[0],
+                    str(trace.get("answer_mode") or "unknown"),
+                ]
+            )
+            bucket = dimensions.setdefault(
+                dimension_key,
+                {
+                    "request_count": 0,
+                    "failure_count": 0,
+                    "empty_retrieval_count": 0,
+                    "fallback_count": 0,
+                    "citation_missing_count": 0,
+                },
+            )
+            bucket["request_count"] += 1
 
             failure_stage = str(trace.get("failure_stage") or "")
             if trace.get("degraded") or failure_stage not in {"", "none"}:
                 metrics["failure_count"] += 1
+                bucket["failure_count"] += 1
             if int(trace.get("retrieval_count") or 0) == 0:
                 metrics["empty_retrieval_count"] += 1
+                bucket["empty_retrieval_count"] += 1
             if trace.get("reply_rules_applied"):
                 metrics["reply_rules_hit_count"] += 1
 
             answer_source = str(trace.get("answer_source") or row["answer_source"] or "")
             if trace.get("used_fallback_prompt") or answer_source == "fallback":
                 metrics["fallback_count"] += 1
+                bucket["fallback_count"] += 1
+            if str(trace.get("answer_mode") or "") == "clarify":
+                metrics["clarify_count"] += 1
+            if str(trace.get("conversation_status") or "") == "human_handoff":
+                metrics["human_handoff_route_count"] += 1
+            if not (trace.get("citation_quality") or {}).get("passed", True):
+                bucket["citation_missing_count"] += 1
 
             latencies.append(float(row["latency_ms"] or 0.0))
             prompt_tokens = int(row["prompt_tokens"] or 0)
@@ -178,24 +205,23 @@ def get_persisted_ops_metrics() -> dict:
             metrics["total_completion_tokens"] += completion_tokens
             metrics["total_tokens"] += total_tokens
 
-        if _table_exists(connection, "conversation_review_actions"):
-            review_rows = connection.execute(
-                """
-                SELECT action, COUNT(*) AS count
-                FROM conversation_review_actions
-                GROUP BY action
-                """
-            ).fetchall()
-            metric_by_action = {
-                "accepted": "accepted_count",
-                "edited_and_sent": "edited_sent_count",
-                "human_handoff": "human_handoff_count",
-                "marked_bad_case": "bad_case_count",
-            }
-            for row in review_rows:
-                metric_name = metric_by_action.get(str(row["action"]))
-                if metric_name:
-                    metrics[metric_name] = int(row["count"] or 0)
+        review_rows = connection.execute(
+            """
+            SELECT action, COUNT(*) AS count
+            FROM runtime_conversation_review_actions WHERE tenant_id = :_tenant AND deleted_at IS NULL
+            GROUP BY action
+            """
+        ).fetchall()
+        metric_by_action = {
+            "accepted": "accepted_count",
+            "edited_and_sent": "edited_sent_count",
+            "human_handoff": "human_handoff_count",
+            "marked_bad_case": "bad_case_count",
+        }
+        for row in review_rows:
+            metric_name = metric_by_action.get(str(row["action"]))
+            if metric_name:
+                metrics[metric_name] = int(row["count"] or 0)
     finally:
         connection.close()
 
@@ -218,48 +244,23 @@ def get_persisted_ops_metrics() -> dict:
             "bad_case_rate": _rate(int(metrics["bad_case_count"]), request_count),
             "token_record_rate": _rate(int(metrics["token_recorded_count"]), request_count),
             "average_tokens_per_request": (
-                round(int(metrics["total_tokens"]) / request_count, 2)
-                if request_count
-                else 0.0
+                round(int(metrics["total_tokens"]) / request_count, 2) if request_count else 0.0
             ),
         }
     )
+    metrics["dimensions"] = {
+        key: {
+            **bucket,
+            "failure_rate": _rate(bucket["failure_count"], bucket["request_count"]),
+            "empty_retrieval_rate": _rate(bucket["empty_retrieval_count"], bucket["request_count"]),
+            "fallback_rate": _rate(bucket["fallback_count"], bucket["request_count"]),
+            "citation_missing_rate": _rate(bucket["citation_missing_count"], bucket["request_count"]),
+        }
+        for key, bucket in dimensions.items()
+    }
     return metrics
 
 
 def get_ops_metrics() -> dict:
-    persisted_metrics = get_persisted_ops_metrics()
-    if (
-        int(persisted_metrics.get("request_count") or 0) > 0
-        or int(persisted_metrics.get("reviewed_count") or 0) > 0
-    ):
-        return persisted_metrics
-
-    with _lock:
-        average, p95 = _latency_summary(_latencies)
-        request_count = int(_metrics["request_count"])
-        reviewed_count = (
-            int(_metrics["accepted_count"])
-            + int(_metrics["edited_sent_count"])
-            + int(_metrics["human_handoff_count"])
-            + int(_metrics["bad_case_count"])
-        )
-        return {
-            **_metrics,
-            "average_latency_ms": average,
-            "p95_latency_ms": p95,
-            "reviewed_count": reviewed_count,
-            "accepted_rate": _rate(int(_metrics["accepted_count"]), request_count),
-            "edited_sent_rate": _rate(int(_metrics["edited_sent_count"]), request_count),
-            "human_handoff_rate": _rate(int(_metrics["human_handoff_count"]), request_count),
-            "bad_case_rate": _rate(int(_metrics["bad_case_count"]), request_count),
-            "token_record_rate": _rate(int(_metrics["token_recorded_count"]), request_count),
-            "average_tokens_per_request": round(
-                int(_metrics["total_tokens"]) / request_count,
-                2,
-            ) if request_count else 0.0,
-            "dimensions": {
-                key: {**value, "failure_rate": _rate(value["failure_count"], value["request_count"]), "empty_retrieval_rate": _rate(value["empty_retrieval_count"], value["request_count"]), "fallback_rate": _rate(value["fallback_count"], value["request_count"]), "citation_missing_rate": _rate(value["citation_missing_count"], value["request_count"])}
-                for key, value in _dimension_metrics.items()
-            },
-        }
+    # Process-local counters cannot represent a multi-replica tenant view.
+    return get_persisted_ops_metrics()

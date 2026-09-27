@@ -238,11 +238,11 @@ def _failed_tool_result_is_safe(result: dict) -> bool:
 def build_tool_failure_fallback_status(tool_results: list[dict] | None = None) -> dict:
     tool_results = tool_results or [
         query_order_status("release_check_user", None),
-        query_order_status("release_check_user", "__release_check_missing_order__"),
-        query_order_status("release_check_intruder", "__release_check_owner_order__"),
+        query_order_status("release_check_user", "__release_check_missing_order__", tenant_id='release_check'),
+        query_order_status("release_check_user", "__release_check_missing_tenant__"),
         query_refund_status("release_check_user", None),
-        query_refund_status("release_check_user", "__release_check_missing_order__"),
-        query_refund_status("release_check_intruder", "__release_check_owner_order__"),
+        query_refund_status("release_check_user", "__release_check_missing_order__", tenant_id='release_check'),
+        query_refund_status("release_check_user", "__release_check_missing_tenant__"),
         {
             "tool_name": "query_order_status",
             "status": "failed",

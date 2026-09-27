@@ -1,3 +1,4 @@
+from runtime_fixtures import runtime_database, scoped_call
 import importlib
 import sys
 import tempfile
@@ -161,47 +162,49 @@ class ChatPromptApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_review_action_updates_chat_turn_status(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            feedback_service = importlib.import_module("services.feedback_service")
+        with tempfile.TemporaryDirectory() as temp_dir, runtime_database(Path(temp_dir) / "runtime.db"):
             conversation_store = importlib.import_module("services.conversation_store")
-            previous_feedback_db_path = feedback_service.DB_PATH
-            previous_db_path = conversation_store.DB_PATH
-            feedback_service.DB_PATH = Path(temp_dir) / "ops_feedback.db"
-            conversation_store.DB_PATH = feedback_service.DB_PATH
 
-            try:
-                chat_router = importlib.import_module("routers.chat")
-                app = FastAPI()
-                app.include_router(chat_router.router, prefix="/chat")
-                client = TestClient(app)
+            chat_router = importlib.import_module("routers.chat")
+            app = FastAPI()
+            app.include_router(chat_router.router, prefix="/chat")
+            client = TestClient(app)
 
-                conversation_store.get_or_create_conversation("u1", "s1", "o1")
-                conversation_store.save_turn_response(
-                    request_id="req-review",
-                    session_id="s1",
-                    user_id="u1",
-                    order_id="o1",
-                    query="退款多久到账",
-                    reply="请查看订单页。",
-                    response={
-                        "reply": "请查看订单页。",
-                        "conversation_status": "pending_agent_review",
-                    },
-                )
+            scoped_call(
+                conversation_store.get_or_create_conversation,
+                "agent_1",
+                "s1",
+                "o1",
+                tenant_id="tenant-1",
+                actor="agent_1",
+                tenant="tenant-1",
+            )
+            scoped_call(
+                conversation_store.save_turn_response,
+                request_id="req-review",
+                session_id="s1",
+                user_id="agent_1",
+                order_id="o1",
+                query="退款多久到账",
+                reply="请查看订单页。",
+                response={
+                    "reply": "请查看订单页。",
+                    "conversation_status": "pending_agent_review",
+                },
+                actor="agent_1",
+                tenant="tenant-1",
+            )
 
-                response = client.post(
-                    "/chat/review-action",
-                    headers=auth_headers(roles=["agent"], user_id="agent_1"),
-                    json={
-                        "request_id": "req-review",
-                        "action": "accepted",
-                        "operator_id": "agent_1",
-                        "operator_role": "agent",
-                    },
-                )
-            finally:
-                feedback_service.DB_PATH = previous_feedback_db_path
-                conversation_store.DB_PATH = previous_db_path
+            response = client.post(
+                "/chat/review-action",
+                headers=auth_headers(roles=["agent"], user_id="agent_1"),
+                json={
+                    "request_id": "req-review",
+                    "action": "accepted",
+                    "operator_id": "agent_1",
+                    "operator_role": "agent",
+                },
+            )
 
         body = response.json()
         self.assertEqual(response.status_code, 200)
@@ -212,86 +215,90 @@ class ChatPromptApiTest(unittest.TestCase):
         self.assertIsInstance(body["audit_id"], int)
 
     def test_review_action_rejects_unauthorized_role(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            feedback_service = importlib.import_module("services.feedback_service")
+        with tempfile.TemporaryDirectory() as temp_dir, runtime_database(Path(temp_dir) / "runtime.db"):
             conversation_store = importlib.import_module("services.conversation_store")
-            previous_feedback_db_path = feedback_service.DB_PATH
-            previous_store_db_path = conversation_store.DB_PATH
-            feedback_service.DB_PATH = Path(temp_dir) / "ops_feedback.db"
-            conversation_store.DB_PATH = feedback_service.DB_PATH
 
-            try:
-                chat_router = importlib.import_module("routers.chat")
-                app = FastAPI()
-                app.include_router(chat_router.router, prefix="/chat")
-                client = TestClient(app)
+            chat_router = importlib.import_module("routers.chat")
+            app = FastAPI()
+            app.include_router(chat_router.router, prefix="/chat")
+            client = TestClient(app)
 
-                conversation_store.get_or_create_conversation("u1", "s1", "o1")
-                conversation_store.save_turn_response(
-                    request_id="req-forbid",
-                    session_id="s1",
-                    user_id="u1",
-                    order_id="o1",
-                    query="退款多久到账",
-                    reply="请查看订单页。",
-                    response={"reply": "请查看订单页。"},
-                )
+            scoped_call(
+                conversation_store.get_or_create_conversation,
+                "agent_1",
+                "s1",
+                "o1",
+                tenant_id="tenant-1",
+                actor="agent_1",
+                tenant="tenant-1",
+            )
+            scoped_call(
+                conversation_store.save_turn_response,
+                request_id="req-forbid",
+                session_id="s1",
+                user_id="agent_1",
+                order_id="o1",
+                query="退款多久到账",
+                reply="请查看订单页。",
+                response={"reply": "请查看订单页。"},
+                actor="agent_1",
+                tenant="tenant-1",
+            )
 
-                response = client.post(
-                    "/chat/review-action",
-                    headers=auth_headers(roles=["knowledge_ops"], user_id="ops_1"),
-                    json={"request_id": "req-forbid", "action": "accepted"},
-                )
-            finally:
-                feedback_service.DB_PATH = previous_feedback_db_path
-                conversation_store.DB_PATH = previous_store_db_path
+            response = client.post(
+                "/chat/review-action",
+                headers=auth_headers(roles=["knowledge_ops"], user_id="ops_1"),
+                json={"request_id": "req-forbid", "action": "accepted"},
+            )
 
         self.assertEqual(response.status_code, 403)
 
     def test_human_handoff_action_creates_ticket_after_confirmation(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            feedback_service = importlib.import_module("services.feedback_service")
+        with tempfile.TemporaryDirectory() as temp_dir, runtime_database(Path(temp_dir) / "runtime.db"):
             conversation_store = importlib.import_module("services.conversation_store")
-            previous_feedback_db_path = feedback_service.DB_PATH
-            previous_store_db_path = conversation_store.DB_PATH
-            feedback_service.DB_PATH = Path(temp_dir) / "ops_feedback.db"
-            conversation_store.DB_PATH = feedback_service.DB_PATH
 
-            try:
-                chat_router = importlib.import_module("routers.chat")
-                app = FastAPI()
-                app.include_router(chat_router.router, prefix="/chat")
-                client = TestClient(app)
+            chat_router = importlib.import_module("routers.chat")
+            app = FastAPI()
+            app.include_router(chat_router.router, prefix="/chat")
+            client = TestClient(app)
 
-                conversation_store.get_or_create_conversation("u1", "s1", "o1")
-                conversation_store.save_turn_response(
-                    request_id="req-handoff",
-                    session_id="s1",
-                    user_id="u1",
-                    order_id="o1",
-                    query="我要人工",
-                    reply="建议转人工。",
-                    response={
-                        "reply": "建议转人工。",
-                        "handoff_recommendation": {
-                            "recommended": True,
-                            "reason": "用户明确要求人工",
-                        },
-                    },
-                )
-
-                response = client.post(
-                    "/chat/review-action",
-                    headers=auth_headers(roles=["agent"], user_id="agent_1"),
-                    json={
-                        "request_id": "req-handoff",
-                        "action": "human_handoff",
+            scoped_call(
+                conversation_store.get_or_create_conversation,
+                "agent_1",
+                "s1",
+                "o1",
+                tenant_id="tenant-1",
+                actor="agent_1",
+                tenant="tenant-1",
+            )
+            scoped_call(
+                conversation_store.save_turn_response,
+                request_id="req-handoff",
+                session_id="s1",
+                user_id="agent_1",
+                order_id="o1",
+                query="我要人工",
+                reply="建议转人工。",
+                response={
+                    "reply": "建议转人工。",
+                    "handoff_recommendation": {
+                        "recommended": True,
                         "reason": "用户明确要求人工",
                     },
-                )
-            finally:
-                feedback_service.DB_PATH = previous_feedback_db_path
-                conversation_store.DB_PATH = previous_store_db_path
+                },
+                actor="agent_1",
+                tenant="tenant-1",
+            )
+
+            response = client.post(
+                "/chat/review-action",
+                headers=auth_headers(roles=["agent"], user_id="agent_1"),
+                json={
+                    "request_id": "req-handoff",
+                    "action": "human_handoff",
+                    "reason": "用户明确要求人工",
+                },
+            )
 
         body = response.json()
         self.assertEqual(response.status_code, 200)

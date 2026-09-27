@@ -3,9 +3,8 @@
 设计要点
 --------
 1. 连接串**只从环境变量** ``RAG_DATABASE_URL`` 读取，代码里没有任何硬编码凭据。
-   默认值指向本地 SQLite 文件，便于在没有 Docker / PostgreSQL 的机器上开发；
-   生产环境把该变量设为 ``postgresql+psycopg://user:pass@host:5432/db`` 即可切换，
-   业务代码与迁移脚本不需要改动（迁移按方言无关写法编写）。
+   开发与生产必须显式配置 PostgreSQL，缺失时拒绝启动；
+   SQLite 仅在显式 ``RAG_ENV=test`` 时可用，不作为运行时降级路径。
 2. SQLite 默认**不启用外键约束**，这会让「跨租户外键约束」这类测试形同虚设。
    因此这里为 SQLite 连接统一打开 ``PRAGMA foreign_keys=ON``。
 3. 会话用完即关，不在模块级持有 Session，避免测试之间互相污染。
@@ -21,6 +20,9 @@ from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.engine import make_url
+
+from config.runtime_config import runtime_environment
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +35,20 @@ def get_database_url() -> str:
     """返回当前生效的连接串（环境变量优先）。"""
 
     value = (os.getenv(DATABASE_URL_ENV) or "").strip()
-    return value or DEFAULT_DATABASE_URL
+    if not value:
+        if runtime_environment() == 'test':
+            return DEFAULT_DATABASE_URL
+        raise ValueError('RAG_DATABASE_URL is required; runtime storage requires PostgreSQL')
+    validate_database_url(value)
+    return value
+
+
+def validate_database_url(url: str) -> None:
+    backend = make_url(url).get_backend_name()
+    if backend == 'sqlite' and runtime_environment() == 'test':
+        return
+    if backend != 'postgresql':
+        raise ValueError('Runtime storage requires PostgreSQL; SQLite is allowed only with RAG_ENV=test')
 
 
 def is_sqlite(url: str) -> bool:
@@ -54,6 +69,7 @@ def create_db_engine(url: str | None = None, *, echo: bool = False) -> Engine:
     """按连接串创建引擎，并挂上 SQLite 外键补丁。"""
 
     resolved = (url or get_database_url()).strip()
+    validate_database_url(resolved)
     if is_sqlite(resolved):
         # 提前建目录，否则 sqlite 会因为父目录不存在而报 unable to open database file
         prefix = "sqlite:///"
@@ -65,8 +81,14 @@ def create_db_engine(url: str | None = None, *, echo: bool = False) -> Engine:
     connect_args: dict = {}
     if is_sqlite(resolved):
         connect_args["check_same_thread"] = False
+    else:
+        connect_args['connect_timeout'] = 3
+        inherited_options = str(make_url(resolved).query.get('options', ''))
+        connect_args['options'] = (inherited_options + ' -c statement_timeout=5000').strip()
 
-    engine = create_engine(resolved, echo=echo, future=True, connect_args=connect_args)
+    pool_options = {} if is_sqlite(resolved) else {'pool_timeout': 3}
+    engine = create_engine(resolved, echo=echo, future=True, connect_args=connect_args,
+                           pool_pre_ping=True, **pool_options)
     if is_sqlite(resolved):
         event.listen(engine, "connect", _enable_sqlite_foreign_keys)
     return engine
@@ -80,6 +102,7 @@ def get_engine(url: str | None = None) -> Engine:
     """按连接串缓存引擎，避免每次调用重复建连接池。"""
 
     resolved = (url or get_database_url()).strip()
+    validate_database_url(resolved)
     engine = _ENGINE_CACHE.get(resolved)
     if engine is None:
         engine = create_db_engine(resolved)
@@ -89,6 +112,7 @@ def get_engine(url: str | None = None) -> Engine:
 
 def get_session_factory(url: str | None = None) -> sessionmaker[Session]:
     resolved = (url or get_database_url()).strip()
+    validate_database_url(resolved)
     factory = _SESSION_FACTORY_CACHE.get(resolved)
     if factory is None:
         factory = sessionmaker(bind=get_engine(resolved), expire_on_commit=False, future=True)

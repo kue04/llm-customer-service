@@ -4,11 +4,16 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import logging
+import os
+
+from starlette.concurrency import run_in_threadpool
+from config.runtime_config import demo_endpoints_enabled, runtime_environment
+from services.health_service import require_database_ready, warm_models
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from routers import audit, chat, documents, example, feedback, info, knowledge, ops, order, prompt, release, retrieval
+from routers import health, audit, chat, documents, example, feedback, info, knowledge, ops, order, prompt, release, retrieval
 
 from services.auth_context import AuthConfigError, load_auth_config
 from services.ingestion.queue import get_queue
@@ -74,39 +79,18 @@ def _check_ingestion_queue() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    require_database_ready()
     _check_auth_configuration()
     _check_ingestion_queue()
+    if runtime_environment() != 'test' and os.getenv('RAG_WARM_MODELS_ON_STARTUP', 'true').lower() == 'true':
+        try:
+            await run_in_threadpool(warm_models)
+        except Exception:
+            logger.error('model warmup failed; readiness will remain unavailable')
     yield
 
 
-app = FastAPI(title="LLM Customer Service API", version="0.2.0", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=r"^http://(127\.0\.0\.1|localhost):\d+$",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 注册路由
-app.include_router(chat.router, prefix="/chat", tags=["chat"])
-app.include_router(audit.router, prefix="/audit", tags=["audit"])
-app.include_router(example.router, prefix="/examples", tags=["examples"])
-app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
-app.include_router(info.router, prefix="/model", tags=["info"])
-app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
-# 文档上传与任务查询的路径天然带两个前缀（/knowledge-bases/... 与 /documents/...），
-# 因此在 router 内部写全路径，这里不再加 prefix。
-app.include_router(documents.router, tags=["documents"])
-app.include_router(ops.router, prefix="/ops", tags=["ops"])
-app.include_router(order.router, prefix="/orders", tags=["orders"])
-app.include_router(prompt.router, prefix="/prompt", tags=["prompt"])
-app.include_router(release.router, prefix="/release", tags=["release"])
-app.include_router(retrieval.router, prefix="/retrieval", tags=["retrieval"])
-
-
-def _custom_openapi() -> dict:
+def _custom_openapi(app: FastAPI) -> dict:
     """在 OpenAPI 里声明 Bearer 认证方案。
 
     目的是让 /docs 能直接粘贴 JWT 调试，同时把「身份只来自 Authorization JWT」
@@ -132,18 +116,50 @@ def _custom_openapi() -> dict:
         ),
     }
     schema["security"] = [{"bearerAuth": []}]
+    for path in ('/', '/health', '/health/live', '/health/ready'):
+        for operation in schema.get('paths', {}).get(path, {}).values():
+            if isinstance(operation, dict):
+                operation['security'] = []
     app.openapi_schema = schema
     return schema
 
 
-app.openapi = _custom_openapi
-
-
-@app.get("/")
 def read_root():
     return {"message": "Welcome to the customer service API"}
 
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
+def create_app() -> FastAPI:
+    app = FastAPI(title="LLM Customer Service API", version="0.2.0", lifespan=lifespan)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^http://(127\.0\.0\.1|localhost):\d+$",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # 注册路由
+    app.include_router(chat.router, prefix="/chat", tags=["chat"])
+    app.include_router(audit.router, prefix="/audit", tags=["audit"])
+    app.include_router(example.router, prefix="/examples", tags=["examples"])
+    app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
+    app.include_router(info.router, prefix="/model", tags=["info"])
+    app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
+    # 文档上传与任务查询的路径天然带两个前缀（/knowledge-bases/... 与 /documents/...），
+    # 因此在 router 内部写全路径，这里不再加 prefix。
+    app.include_router(documents.router, tags=["documents"])
+    app.include_router(ops.router, prefix="/ops", tags=["ops"])
+    app.include_router(order.router, prefix="/orders", tags=["orders"])
+    app.include_router(prompt.router, prefix="/prompt", tags=["prompt"])
+    app.include_router(release.router, prefix="/release", tags=["release"])
+    app.include_router(retrieval.router, prefix="/retrieval", tags=["retrieval"])
+    app.include_router(health.router, tags=['health'])
+    if demo_endpoints_enabled():
+        app.include_router(retrieval.demo_router, prefix='/retrieval', tags=['demo'])
+    app.openapi = lambda: _custom_openapi(app)
+    app.get('/')(read_root)
+    return app
+
+
+app = create_app()

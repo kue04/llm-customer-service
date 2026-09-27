@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 from typing import Any
 
 
@@ -31,7 +32,11 @@ class RedisContextCache:
         return self.client is not None
 
     def _key(self, template: str, value: str) -> str:
-        return template.format(value)
+        from services.runtime_db import identity
+
+        tenant_id, user_id = identity()
+        namespace = hashlib.sha256(json.dumps([tenant_id, user_id]).encode()).hexdigest()
+        return f"runtime:{namespace}:{template.format(value)}"
 
     def push_recent_message(self, session_id: str, message: dict[str, Any]) -> None:
         if not self.client:

@@ -1,3 +1,4 @@
+from services.runtime_db import scoped_route
 from fastapi import APIRouter, Depends
 
 from schemas.release_schema import ReleaseChecklistResponse
@@ -8,6 +9,7 @@ router = APIRouter()
 
 
 @router.get("/checklist", response_model=ReleaseChecklistResponse)
+@scoped_route
 def release_checklist(auth: AuthContext = Depends(get_auth_context)):
     require_read_operation_role("release_read", auth)
     return build_release_checklist()

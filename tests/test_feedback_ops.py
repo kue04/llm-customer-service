@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from runtime_fixtures import runtime_database, scoped_call
 from auth_helpers import auth_headers
 
 
@@ -13,10 +14,8 @@ class FeedbackOpsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
+        self.enterContext(runtime_database(Path(self.temp_dir.name) / "runtime.db"))
         self.feedback_service = importlib.import_module("services.feedback_service")
-        self.previous_db_path = self.feedback_service.DB_PATH
-        self.feedback_service.DB_PATH = Path(self.temp_dir.name) / "ops_feedback.db"
-        self.addCleanup(self.restore_db_path)
 
         feedback_router = importlib.import_module("routers.feedback")
         ops_router = importlib.import_module("routers.ops")
@@ -27,8 +26,24 @@ class FeedbackOpsTest(unittest.TestCase):
         self.client = TestClient(app)
         self.client.headers.update(auth_headers(roles=["admin"], user_id="admin_1"))
 
-    def restore_db_path(self) -> None:
-        self.feedback_service.DB_PATH = self.previous_db_path
+    def seed_review(self, request_id, action):
+        from services import conversation_store
+
+        scoped_call(conversation_store.get_or_create_conversation, "admin_1", request_id)
+        scoped_call(
+            conversation_store.save_turn_response,
+            request_id,
+            request_id,
+            "admin_1",
+            None,
+            "question",
+            "reply",
+            {"reply": "reply"},
+        )
+        scoped_call(
+            conversation_store.save_review_action,
+            {"request_id": request_id, "action": action, "final_reply": "reviewed"},
+        )
 
     def test_feedback_save_recent_and_export_eval_case(self) -> None:
         payload = {
@@ -96,23 +111,25 @@ class FeedbackOpsTest(unittest.TestCase):
 
     def test_ops_metrics_records_review_actions_and_token_usage(self) -> None:
         ops_metrics = importlib.import_module("services.ops_metrics")
-        before = ops_metrics.get_ops_metrics()
+        before = scoped_call(ops_metrics.get_ops_metrics)
 
-        ops_metrics.record_chat_metrics(
-            {
+        scoped_call(
+            self.feedback_service.save_chat_session,
+            query="hello",
+            reply="reply",
+            trace={
+                "request_id": "metrics-1",
                 "retrieval_count": 1,
                 "failure_stage": "none",
                 "latency_ms": 20,
                 "answer_source": "rag",
-            }
+            },
+            token_usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
         )
-        ops_metrics.record_token_usage(
-            {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
-        ops_metrics.record_review_action_metrics("accepted")
-        ops_metrics.record_review_action_metrics("human_handoff")
+        self.seed_review("metrics-1", "accepted")
+        self.seed_review("metrics-2", "human_handoff")
 
-        after = ops_metrics.get_ops_metrics()
+        after = scoped_call(ops_metrics.get_ops_metrics)
         self.assertEqual(after["request_count"], before["request_count"] + 1)
         self.assertEqual(after["accepted_count"], before["accepted_count"] + 1)
         self.assertEqual(after["human_handoff_count"], before["human_handoff_count"] + 1)
@@ -123,7 +140,8 @@ class FeedbackOpsTest(unittest.TestCase):
 
     def test_ops_metrics_reads_persisted_chat_and_review_metrics(self) -> None:
         ops_metrics = importlib.import_module("services.ops_metrics")
-        self.feedback_service.save_chat_session(
+        scoped_call(
+            self.feedback_service.save_chat_session,
             query="refund status",
             reply="checking refund",
             trace={
@@ -135,8 +153,10 @@ class FeedbackOpsTest(unittest.TestCase):
                 "failure_stage": "none",
             },
             token_usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            actor="admin_1",
         )
-        self.feedback_service.save_chat_session(
+        scoped_call(
+            self.feedback_service.save_chat_session,
             query="refund failed",
             reply="fallback reply",
             trace={
@@ -149,21 +169,12 @@ class FeedbackOpsTest(unittest.TestCase):
                 "failure_stage": "model_error",
             },
             token_usage={"prompt_tokens": 6, "completion_tokens": 3, "total_tokens": 9},
+            actor="admin_1",
         )
-        connection = self.feedback_service.get_connection()
-        try:
-            connection.execute(
-                "CREATE TABLE conversation_review_actions (action TEXT NOT NULL)"
-            )
-            connection.executemany(
-                "INSERT INTO conversation_review_actions (action) VALUES (?)",
-                [("accepted",), ("edited_and_sent",)],
-            )
-            connection.commit()
-        finally:
-            connection.close()
+        self.seed_review("req-persisted-1", "accepted")
+        self.seed_review("req-persisted-2", "edited_and_sent")
 
-        metrics = ops_metrics.get_ops_metrics()
+        metrics = scoped_call(ops_metrics.get_ops_metrics)
 
         self.assertEqual(metrics["source"], "persisted_chat_sessions")
         self.assertEqual(metrics["request_count"], 2)
@@ -240,7 +251,8 @@ class FeedbackOpsTest(unittest.TestCase):
         self.assertEqual(payload["items"][0]["dish_name"], "鱼香肉丝")
 
     def test_feedback_and_chat_session_mask_sensitive_text_before_persisting(self) -> None:
-        self.feedback_service.save_chat_session(
+        scoped_call(
+            self.feedback_service.save_chat_session,
             query="我的手机号13812345678，订单号202606061234567890",
             reply="请提供验证码123456",
             trace={
@@ -251,8 +263,10 @@ class FeedbackOpsTest(unittest.TestCase):
                 "user_input": "13812345678",
             },
             token_usage={"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12, "counting_method": "test"},
+            actor="admin_1",
         )
-        self.feedback_service.save_feedback(
+        scoped_call(
+            self.feedback_service.save_feedback,
             {
                 "request_id": "req-feedback-sensitive",
                 "query": "手机号13812345678",
@@ -261,23 +275,24 @@ class FeedbackOpsTest(unittest.TestCase):
                 "reason": "订单号202606061234567890",
                 "expected_reply": "联系13812345678",
                 "trace": {"top1_intent": "隐私", "raw": "13812345678"},
-            }
+            },
+            actor="admin_1",
         )
 
-        connection = self.feedback_service.get_connection()
+        connection = scoped_call(self.feedback_service.get_connection, actor="admin_1")
         try:
             chat_row = connection.execute(
-                "SELECT query, reply, trace_json, total_tokens FROM chat_sessions WHERE request_id = ?",
+                "SELECT query, reply, trace_json, total_tokens FROM runtime_chat_sessions WHERE request_id = :p0",
                 ("req-sensitive",),
             ).fetchone()
             feedback_row = connection.execute(
-                "SELECT query, reply, reason, expected_reply, trace_json FROM feedback WHERE request_id = ?",
+                "SELECT query, reply, reason, expected_reply, trace_json FROM runtime_feedback WHERE request_id = :p0",
                 ("req-feedback-sensitive",),
             ).fetchone()
         finally:
             connection.close()
 
-        persisted_text = " ".join(str(value) for value in [*chat_row, *feedback_row])
+        persisted_text = " ".join(str(value) for value in [*chat_row.values(), *feedback_row.values()])
         self.assertNotIn("13812345678", persisted_text)
         self.assertNotIn("123456", persisted_text)
         self.assertNotIn("202606061234567890", persisted_text)
@@ -285,7 +300,8 @@ class FeedbackOpsTest(unittest.TestCase):
         self.assertEqual(chat_row["total_tokens"], 12)
 
     def test_latest_chat_token_tracking_summary_reads_persisted_usage(self) -> None:
-        self.feedback_service.save_chat_session(
+        scoped_call(
+            self.feedback_service.save_chat_session,
             query="退款多久到账",
             reply="请查看订单详情页。",
             trace={
@@ -300,9 +316,10 @@ class FeedbackOpsTest(unittest.TestCase):
                 "total_tokens": 27,
                 "counting_method": "test_counter",
             },
+            actor="admin_1",
         )
 
-        summary = self.feedback_service.get_latest_chat_token_tracking_summary()
+        summary = scoped_call(self.feedback_service.get_latest_chat_token_tracking_summary, actor="admin_1")
 
         self.assertEqual(summary["request_count"], 1)
         self.assertEqual(summary["token_recorded_count"], 1)

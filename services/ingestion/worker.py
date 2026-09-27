@@ -307,15 +307,21 @@ def main(argv: list[str] | None = None) -> int:
         stream=sys.stderr,
     )
     logger.info("[worker] 启动 consumer=%s chunk_config=%s", args.consumer_name, CHUNK_CONFIG.summary())
+    from services.health_service import require_database_ready
+    from services.ingestion.worker_health import worker_heartbeat
+
+    require_database_ready()
 
     worker = build_worker(consumer_name=args.consumer_name, batch=args.batch)
     if args.once:
-        outcomes = worker.run_once()
+        with worker_heartbeat():
+            outcomes = worker.run_once()
         for outcome in outcomes:
             logger.info("[worker] outcome=%s", outcome.to_dict())
         return 0 if not any(item.failed for item in outcomes) else 1
 
-    stats = worker.run_forever(poll_interval=args.poll_interval, install_signal_handlers=True)
+    with worker_heartbeat():
+        stats = worker.run_forever(poll_interval=args.poll_interval, install_signal_handlers=True)
     logger.info("[worker] 退出 stats=%s", stats.to_dict())
     return 0
 

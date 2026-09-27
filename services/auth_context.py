@@ -124,6 +124,7 @@ REVIEW_ACTION_ROLES: dict[str, frozenset[str]] = {
 #:   或单独授予某个角色时，不必改动已有授权。授权的单元是**动作**，不是资源类别。
 #: * ``audit:read`` 只给安全/质量角色，``document:delete`` 不给 knowledge_ops。
 RESOURCE_SCOPE_ROLES: dict[str, frozenset[str]] = {
+    "demo:read": frozenset({"admin"}),
     "knowledge_base:read": frozenset({"agent", "supervisor", "knowledge_ops", "qa", "admin"}),
     "knowledge_base:write": frozenset({"supervisor", "knowledge_ops", "admin"}),
     "document:upload": frozenset({"supervisor", "knowledge_ops", "admin"}),

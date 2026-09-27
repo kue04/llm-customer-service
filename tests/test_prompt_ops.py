@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from runtime_fixtures import runtime_database
 from auth_helpers import auth_headers
 
 
@@ -13,13 +14,9 @@ class PromptOpsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
+        self.enterContext(runtime_database(Path(self.temp_dir.name) / "runtime.db"))
         self.prompt_service = importlib.import_module("services.prompt_service")
         self.feedback_service = importlib.import_module("services.feedback_service")
-        self.previous_prompt_db_path = self.prompt_service.DB_PATH
-        self.previous_feedback_db_path = self.feedback_service.DB_PATH
-        self.prompt_service.DB_PATH = Path(self.temp_dir.name) / "prompt_versions.db"
-        self.feedback_service.DB_PATH = Path(self.temp_dir.name) / "ops_feedback.db"
-        self.addCleanup(self.restore_paths)
 
         prompt_router = importlib.import_module("routers.prompt")
         app = FastAPI()
@@ -28,14 +25,21 @@ class PromptOpsTest(unittest.TestCase):
         self.client = TestClient(app)
         self.client.headers.update(auth_headers(roles=["admin"], user_id="admin_1"))
 
-    def restore_paths(self) -> None:
-        self.prompt_service.DB_PATH = self.previous_prompt_db_path
-        self.feedback_service.DB_PATH = self.previous_feedback_db_path
-
     def test_prompt_version_lifecycle_and_rollback(self) -> None:
         active_response = self.client.get("/prompt/active")
         self.assertEqual(active_response.status_code, 200)
-        self.assertEqual(active_response.json()["version"], "prompt_v1")
+        self.assertEqual(active_response.json()["version"], "builtin_v1")
+        self.assertEqual(active_response.json()["id"], 0)
+        baseline = self.client.post(
+            "/prompt/versions", json={"version": "prompt_v1", "system_prompt": "baseline", "evaluation_result": "pass"}
+        ).json()
+        self.assertEqual(
+            self.client.post(
+                f"/prompt/versions/{baseline['id']}/status", json={"status": "approved", "evaluation_result": "pass"}
+            ).status_code,
+            200,
+        )
+        self.assertEqual(self.client.post(f"/prompt/versions/{baseline['id']}/activate").status_code, 200)
 
         create_response = self.client.post(
             "/prompt/versions",

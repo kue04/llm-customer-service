@@ -1,3 +1,4 @@
+from services.runtime_db import scoped_route
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from schemas.knowledge_schema import (
@@ -57,6 +58,7 @@ def _audit_knowledge_action(
 
 
 @router.get("/items", response_model=KnowledgeListResponse)
+@scoped_route
 def knowledge_items(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -78,6 +80,7 @@ def knowledge_items(
 
 
 @router.post("/items", response_model=KnowledgeItem)
+@scoped_route
 def create_item(
     request: KnowledgeItemPayload,
     auth: AuthContext = Depends(get_auth_context),
@@ -97,6 +100,7 @@ def create_item(
 
 
 @router.put("/items/{item_id}", response_model=KnowledgeItem)
+@scoped_route
 def update_item(
     item_id: int,
     request: KnowledgeItemPayload,
@@ -121,6 +125,7 @@ def update_item(
 
 
 @router.post("/items/{item_id}/archive", response_model=KnowledgeItem)
+@scoped_route
 def archive_item(
     item_id: int,
     auth: AuthContext = Depends(get_auth_context),
@@ -142,6 +147,7 @@ def archive_item(
 
 
 @router.post("/items/{item_id}/review", response_model=KnowledgeItem)
+@scoped_route
 def review_item(
     item_id: int,
     request: KnowledgeReviewRequest,
@@ -166,12 +172,14 @@ def review_item(
 
 
 @router.get("/export-approved", response_model=KnowledgeExportResponse)
+@scoped_route
 def export_approved(auth: AuthContext = Depends(get_auth_context)):
     require_read_operation_role("knowledge_read", auth)
     return export_approved_jsonl()
 
 
 @router.post("/publish-approved", response_model=KnowledgePublishResponse)
+@scoped_route
 def publish_approved(
     auth: AuthContext = Depends(get_auth_context),
     meta: RequestMeta = Depends(get_request_meta),
@@ -194,6 +202,7 @@ def publish_approved(
 
 
 @router.get("/publish-history", response_model=KnowledgePublishHistoryResponse)
+@scoped_route
 def publish_history(
     limit: int = Query(default=20, ge=1, le=100),
     auth: AuthContext = Depends(get_auth_context),
@@ -203,6 +212,7 @@ def publish_history(
 
 
 @router.post("/rollback-latest", response_model=KnowledgePublishResponse)
+@scoped_route
 def rollback_latest(
     auth: AuthContext = Depends(get_auth_context),
     meta: RequestMeta = Depends(get_request_meta),

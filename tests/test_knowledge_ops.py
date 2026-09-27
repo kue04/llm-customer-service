@@ -2,11 +2,11 @@ import importlib
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from runtime_fixtures import runtime_database
 from auth_helpers import auth_headers
 
 
@@ -14,21 +14,15 @@ class KnowledgeOpsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
+        self.enterContext(runtime_database(Path(self.temp_dir.name) / "runtime.db"))
         self.knowledge_service = importlib.import_module("services.knowledge_service")
         self.feedback_service = importlib.import_module("services.feedback_service")
-        self.previous_db_path = self.knowledge_service.DB_PATH
-        self.previous_feedback_db_path = self.feedback_service.DB_PATH
-        self.previous_knowledge_path = self.knowledge_service.KNOWLEDGE_DATA_PATH
-        self.previous_backup_dir = self.knowledge_service.BACKUP_DIR
-        self.knowledge_service.DB_PATH = Path(self.temp_dir.name) / "knowledge_ops.db"
-        self.feedback_service.DB_PATH = Path(self.temp_dir.name) / "ops_feedback.db"
-        self.knowledge_service.KNOWLEDGE_DATA_PATH = Path(self.temp_dir.name) / "seed.jsonl"
-        self.knowledge_service.BACKUP_DIR = Path(self.temp_dir.name) / "backups"
-        self.knowledge_service.KNOWLEDGE_DATA_PATH.write_text(
+        self.legacy_seed_path = Path(self.temp_dir.name) / "seed.jsonl"
+        self.legacy_backup_dir = Path(self.temp_dir.name) / "backups"
+        self.legacy_seed_path.write_text(
             '{"id":"seed","question":"old","answer":"old"}\n',
             encoding="utf-8",
         )
-        self.addCleanup(self.restore_paths)
 
         knowledge_router = importlib.import_module("routers.knowledge")
         app = FastAPI()
@@ -36,12 +30,6 @@ class KnowledgeOpsTest(unittest.TestCase):
         self.app = app
         self.client = TestClient(app)
         self.client.headers.update(auth_headers(roles=["knowledge_ops"], user_id="knowledge_ops_1"))
-
-    def restore_paths(self) -> None:
-        self.knowledge_service.DB_PATH = self.previous_db_path
-        self.feedback_service.DB_PATH = self.previous_feedback_db_path
-        self.knowledge_service.KNOWLEDGE_DATA_PATH = self.previous_knowledge_path
-        self.knowledge_service.BACKUP_DIR = self.previous_backup_dir
 
     def create_item(self, question: str = "优惠券不能用怎么办") -> dict:
         response = self.client.post(
@@ -153,69 +141,59 @@ class KnowledgeOpsTest(unittest.TestCase):
         self.assertIn('"version": "v1"', export_body["jsonl"])
         self.assertIn('"question": "退款失败怎么办"', export_body["jsonl"])
 
-    def test_publish_approved_writes_jsonl_and_marks_published(self) -> None:
+    def test_publish_approved_persists_snapshot_and_marks_published(self) -> None:
         item = self.create_item("publish me")
         self.client.post(f"/knowledge/items/{item['id']}/review", json={"status": "approved"})
 
-        with patch.object(self.knowledge_service, "rebuild_vector_store") as rebuild:
-            response = self.client.post("/knowledge/publish-approved")
+        response = self.client.post("/knowledge/publish-approved")
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["status"], "succeeded")
         self.assertEqual(body["merged_count"], 1)
-        self.assertTrue(Path(body["backup_path"]).exists())
-        self.assertIn(
-            '"question": "publish me"',
-            self.knowledge_service.KNOWLEDGE_DATA_PATH.read_text(encoding="utf-8"),
-        )
+        self.assertEqual(body["item_ids"], [item["id"]])
+        history = self.client.get("/knowledge/publish-history").json()["items"]
+        self.assertEqual(history[0]["publish_id"], body["publish_id"])
+        self.assertEqual(history[0]["item_ids"], [item["id"]])
         self.assertEqual(self.client.get("/knowledge/items?status=published").json()["total"], 1)
-        rebuild.assert_called_once()
 
     def test_publish_without_approved_is_noop(self) -> None:
-        before = self.knowledge_service.KNOWLEDGE_DATA_PATH.read_text(encoding="utf-8")
+        before = self.legacy_seed_path.read_text(encoding="utf-8")
 
-        with patch.object(self.knowledge_service, "rebuild_vector_store") as rebuild:
-            response = self.client.post("/knowledge/publish-approved")
+        response = self.client.post("/knowledge/publish-approved")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["merged_count"], 0)
         self.assertEqual(response.json()["status"], "skipped")
-        self.assertEqual(before, self.knowledge_service.KNOWLEDGE_DATA_PATH.read_text(encoding="utf-8"))
-        rebuild.assert_not_called()
+        self.assertEqual(before, self.legacy_seed_path.read_text(encoding="utf-8"))
 
-    def test_rollback_latest_publish_restores_backup(self) -> None:
+    def test_rollback_latest_publish_restores_database_status(self) -> None:
         item = self.create_item("rollback me")
         self.client.post(f"/knowledge/items/{item['id']}/review", json={"status": "approved"})
-        with patch.object(self.knowledge_service, "rebuild_vector_store"):
-            self.client.post("/knowledge/publish-approved")
-        self.knowledge_service.KNOWLEDGE_DATA_PATH.write_text("broken\n", encoding="utf-8")
+        self.client.post("/knowledge/publish-approved")
 
-        with patch.object(self.knowledge_service, "rebuild_vector_store") as rebuild:
-            response = self.client.post(
-                "/knowledge/rollback-latest",
-                headers=auth_headers(roles=["admin"], user_id="admin_1"),
-            )
+        response = self.client.post(
+            "/knowledge/rollback-latest",
+            headers=auth_headers(roles=["admin"], user_id="admin_1"),
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["action"], "rollback")
         self.assertEqual(
-            self.knowledge_service.KNOWLEDGE_DATA_PATH.read_text(encoding="utf-8"),
+            self.legacy_seed_path.read_text(encoding="utf-8"),
             '{"id":"seed","question":"old","answer":"old"}\n',
         )
         self.assertEqual(self.client.get("/knowledge/items?status=rollback").json()["total"], 1)
-        rebuild.assert_called_once()
 
     def test_publish_history_returns_publish_and_rollback(self) -> None:
         item = self.create_item("history me")
         self.client.post(f"/knowledge/items/{item['id']}/review", json={"status": "approved"})
 
-        with patch.object(self.knowledge_service, "rebuild_vector_store"):
-            self.client.post("/knowledge/publish-approved")
-            self.client.post(
-                "/knowledge/rollback-latest",
-                headers=auth_headers(roles=["admin"], user_id="admin_1"),
-            )
+        self.client.post("/knowledge/publish-approved")
+        self.client.post(
+            "/knowledge/rollback-latest",
+            headers=auth_headers(roles=["admin"], user_id="admin_1"),
+        )
 
         response = self.client.get("/knowledge/publish-history")
         self.assertEqual(response.status_code, 200)

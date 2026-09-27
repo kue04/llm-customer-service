@@ -1,3 +1,4 @@
+from runtime_fixtures import runtime_database
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,16 +8,8 @@ from unittest.mock import patch
 class OrderStateStoreTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = Path(self.temp_dir.name) / "test_feedback.db"
-        self.feedback_db_patch = patch("services.feedback_service.DB_PATH", self.db_path)
-        self.order_db_patch = patch("services.order_state_store.DB_PATH", self.db_path)
-        self.feedback_db_patch.start()
-        self.order_db_patch.start()
-
-    def tearDown(self) -> None:
-        self.order_db_patch.stop()
-        self.feedback_db_patch.stop()
-        self.temp_dir.cleanup()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.enterContext(runtime_database(Path(self.temp_dir.name) / "runtime.db"))
 
     def test_order_tool_reads_persisted_order_state(self) -> None:
         from services.order_state_store import upsert_order_state
@@ -34,10 +27,12 @@ class OrderStateStoreTest(unittest.TestCase):
                 "store_name": "青禾轻食",
                 "items": [{"name": "鸡胸能量碗", "quantity": 1}],
                 "total": 35,
-            }
+            },
+            user_id="u1",
+            tenant_id="tenant-a",
         )
 
-        result = query_order_status("u1", "wm1")
+        result = query_order_status("u1", "wm1", tenant_id="tenant-a")
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["output"]["order_id"], "wm1")
@@ -56,16 +51,18 @@ class OrderStateStoreTest(unittest.TestCase):
                 "delivery_status": "已送达",
                 "summary": "订单已送达。",
                 "refund_status": "none",
-            }
+            },
+            user_id="owner_user",
+            tenant_id="tenant-a",
         )
 
-        order_result = query_order_status("other_user", "wm-private")
-        refund_result = query_refund_status("other_user", "wm-private")
+        order_result = query_order_status("other_user", "wm-private", tenant_id="tenant-a")
+        refund_result = query_refund_status("other_user", "wm-private", tenant_id="tenant-a")
 
         self.assertEqual(order_result["status"], "failed")
-        self.assertEqual(order_result["error_type"], "order_user_mismatch")
+        self.assertEqual(order_result["error_type"], "order_not_found")
         self.assertEqual(refund_result["status"], "failed")
-        self.assertEqual(refund_result["error_type"], "order_user_mismatch")
+        self.assertEqual(refund_result["error_type"], "order_not_found")
 
     def test_order_tool_rejects_owner_bound_mock_order_for_wrong_user(self) -> None:
         from services.order_tool_service import query_order_status, query_refund_status
@@ -74,10 +71,10 @@ class OrderStateStoreTest(unittest.TestCase):
         refund_result = query_refund_status("other_user", "__release_check_owner_order__")
 
         self.assertEqual(order_result["status"], "failed")
-        self.assertEqual(order_result["error_type"], "order_user_mismatch")
+        self.assertEqual(order_result["error_type"], "order_not_found")
         self.assertEqual(order_result["output"], {})
         self.assertEqual(refund_result["status"], "failed")
-        self.assertEqual(refund_result["error_type"], "order_user_mismatch")
+        self.assertEqual(refund_result["error_type"], "order_not_found")
         self.assertEqual(refund_result["output"], {})
 
     def test_order_and_refund_tools_skip_when_order_id_is_missing(self) -> None:

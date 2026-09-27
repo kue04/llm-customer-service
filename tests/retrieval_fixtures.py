@@ -216,6 +216,9 @@ def build_retrieval_app() -> FastAPI:
 
     app = FastAPI()
     app.include_router(retrieval.router, prefix="/retrieval")
+    from config.runtime_config import demo_endpoints_enabled
+    if demo_endpoints_enabled():
+        app.include_router(retrieval.demo_router, prefix="/retrieval")
     return app
 
 

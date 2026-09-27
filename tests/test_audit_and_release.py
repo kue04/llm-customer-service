@@ -8,6 +8,7 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from runtime_fixtures import runtime_database, scoped_call
 from auth_helpers import auth_headers
 
 
@@ -15,25 +16,18 @@ class AuditAndReleaseTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
+        self.enterContext(runtime_database(Path(self.temp_dir.name) / "runtime.db"))
         self.feedback_service = importlib.import_module("services.feedback_service")
         self.prompt_service = importlib.import_module("services.prompt_service")
         self.knowledge_service = importlib.import_module("services.knowledge_service")
         self.release_check_service = importlib.import_module("services.release_check_service")
-        self.previous_feedback_db_path = self.feedback_service.DB_PATH
-        self.previous_prompt_db_path = self.prompt_service.DB_PATH
-        self.previous_knowledge_db_path = self.knowledge_service.DB_PATH
-        self.previous_knowledge_path = self.knowledge_service.KNOWLEDGE_DATA_PATH
-        self.previous_backup_dir = self.knowledge_service.BACKUP_DIR
         self.previous_grounding_report_dir = self.release_check_service.GROUNDING_REPORT_DIR
         self.previous_release_report_dir = self.release_check_service.RELEASE_REPORT_DIR
-        self.feedback_service.DB_PATH = Path(self.temp_dir.name) / "ops_feedback.db"
-        self.prompt_service.DB_PATH = Path(self.temp_dir.name) / "prompt_versions.db"
-        self.knowledge_service.DB_PATH = Path(self.temp_dir.name) / "knowledge_ops.db"
-        self.knowledge_service.KNOWLEDGE_DATA_PATH = Path(self.temp_dir.name) / "seed.jsonl"
-        self.knowledge_service.BACKUP_DIR = Path(self.temp_dir.name) / "backups"
+        self.legacy_seed_path = Path(self.temp_dir.name) / "seed.jsonl"
+        self.legacy_backup_dir = Path(self.temp_dir.name) / "backups"
         self.release_check_service.GROUNDING_REPORT_DIR = Path(self.temp_dir.name) / "reports"
         self.release_check_service.RELEASE_REPORT_DIR = Path(self.temp_dir.name) / "release_reports"
-        self.knowledge_service.KNOWLEDGE_DATA_PATH.write_text("", encoding="utf-8")
+        self.legacy_seed_path.write_text("", encoding="utf-8")
         self.addCleanup(self.restore_paths)
 
         audit_router = importlib.import_module("routers.audit")
@@ -46,11 +40,6 @@ class AuditAndReleaseTest(unittest.TestCase):
         self.client.headers.update(auth_headers(roles=["admin"], user_id="admin_1"))
 
     def restore_paths(self) -> None:
-        self.feedback_service.DB_PATH = self.previous_feedback_db_path
-        self.prompt_service.DB_PATH = self.previous_prompt_db_path
-        self.knowledge_service.DB_PATH = self.previous_knowledge_db_path
-        self.knowledge_service.KNOWLEDGE_DATA_PATH = self.previous_knowledge_path
-        self.knowledge_service.BACKUP_DIR = self.previous_backup_dir
         self.release_check_service.GROUNDING_REPORT_DIR = self.previous_grounding_report_dir
         self.release_check_service.RELEASE_REPORT_DIR = self.previous_release_report_dir
 
@@ -92,7 +81,8 @@ class AuditAndReleaseTest(unittest.TestCase):
     def record_audit_actions(self, action_types: list[str] | tuple[str, ...]) -> None:
         audit_service = importlib.import_module("services.audit_service")
         for action_type in action_types:
-            audit_service.record_audit_log(
+            scoped_call(
+                audit_service.record_audit_log,
                 operator_id="release_smoke",
                 operator_role="admin",
                 action_type=action_type,
@@ -100,11 +90,14 @@ class AuditAndReleaseTest(unittest.TestCase):
                 object_id=action_type,
                 request_id=f"req-{action_type}",
                 after_summary="ok",
+                actor="admin_1",
+                tenant="tenant-1",
             )
 
     def test_audit_logs_can_be_listed_and_filtered(self) -> None:
         audit_service = importlib.import_module("services.audit_service")
-        audit_service.record_audit_log(
+        scoped_call(
+            audit_service.record_audit_log,
             operator_id="agent_1",
             operator_role="agent",
             action_type="chat_review_accepted",
@@ -112,6 +105,8 @@ class AuditAndReleaseTest(unittest.TestCase):
             object_id="req-1",
             request_id="req-1",
             after_summary="手机号13812345678",
+            actor="admin_1",
+            tenant="tenant-1",
         )
 
         response = self.client.get("/audit/logs?action_type=chat_review_accepted")
@@ -152,7 +147,7 @@ class AuditAndReleaseTest(unittest.TestCase):
         required_actions = self.release_check_service.REQUIRED_AUDIT_ACTION_TYPES
         self.record_audit_actions(required_actions)
 
-        result = self.release_check_service.build_audit_coverage_status()
+        result = scoped_call(self.release_check_service.build_audit_coverage_status, actor="admin_1")
 
         self.assertEqual(result["status"], "pass")
         self.assertIn(f"covered={len(required_actions)}/{len(required_actions)}", result["evidence"])
@@ -163,7 +158,7 @@ class AuditAndReleaseTest(unittest.TestCase):
         actions = [action for action in required_actions if action != "knowledge_publish"]
         self.record_audit_actions(actions)
 
-        result = self.release_check_service.build_audit_coverage_status()
+        result = scoped_call(self.release_check_service.build_audit_coverage_status, actor="admin_1")
 
         self.assertEqual(result["status"], "fail")
         self.assertIn("missing=knowledge_publish", result["evidence"])
@@ -172,7 +167,7 @@ class AuditAndReleaseTest(unittest.TestCase):
     def test_auto_evaluation_report_gate_passes_when_release_metrics_are_met(self) -> None:
         self.write_grounding_report(100)
 
-        result = self.release_check_service.build_auto_evaluation_report_status()
+        result = scoped_call(self.release_check_service.build_auto_evaluation_report_status, actor="admin_1")
 
         self.assertEqual(result["status"], "pass")
         self.assertIn("cases=100", result["evidence"])
@@ -180,18 +175,19 @@ class AuditAndReleaseTest(unittest.TestCase):
         self.assertEqual(result["next_step"], "")
 
     def test_tool_failure_fallback_gate_passes_for_empty_failed_tool_outputs(self) -> None:
-        result = self.release_check_service.build_tool_failure_fallback_status()
+        result = scoped_call(self.release_check_service.build_tool_failure_fallback_status, actor="admin_1")
 
         self.assertEqual(result["status"], "pass")
         self.assertIn("cases=8", result["evidence"])
         self.assertIn("missing_order_id", result["evidence"])
         self.assertIn("order_not_found", result["evidence"])
-        self.assertIn("order_user_mismatch", result["evidence"])
+        self.assertNotIn("order_user_mismatch", result["evidence"])
         self.assertIn("tool_timeout", result["evidence"])
         self.assertIn("tool_unavailable", result["evidence"])
 
     def test_tool_failure_fallback_gate_fails_when_failed_tool_returns_business_fact(self) -> None:
-        result = self.release_check_service.build_tool_failure_fallback_status(
+        result = scoped_call(
+            self.release_check_service.build_tool_failure_fallback_status,
             [
                 {
                     "tool_name": "query_order_status",
@@ -199,53 +195,61 @@ class AuditAndReleaseTest(unittest.TestCase):
                     "error_type": "order_not_found",
                     "output": {"status_label": "已送达"},
                 }
-            ]
+            ],
+            actor="admin_1",
         )
 
         self.assertEqual(result["status"], "fail")
         self.assertIn("unsafe=query_order_status:order_not_found", result["evidence"])
 
     def test_token_tracking_warns_without_runtime_sample(self) -> None:
-        result = self.release_check_service.build_token_tracking_status(
+        result = scoped_call(
+            self.release_check_service.build_token_tracking_status,
             {
                 "request_count": 0,
                 "token_recorded_count": 0,
                 "total_tokens": 0,
                 "average_tokens_per_request": 0.0,
-            }
+            },
+            actor="admin_1",
         )
 
         self.assertEqual(result["status"], "warn")
         self.assertIn("执行一次 chat 请求", result["next_step"])
 
     def test_token_tracking_fails_when_request_has_no_token_record(self) -> None:
-        result = self.release_check_service.build_token_tracking_status(
+        result = scoped_call(
+            self.release_check_service.build_token_tracking_status,
             {
                 "request_count": 2,
                 "token_recorded_count": 1,
                 "total_tokens": 80,
                 "average_tokens_per_request": 40.0,
-            }
+            },
+            actor="admin_1",
         )
 
         self.assertEqual(result["status"], "fail")
         self.assertIn("未记录 token usage", result["next_step"])
 
     def test_token_tracking_passes_when_all_requests_have_nonzero_tokens(self) -> None:
-        result = self.release_check_service.build_token_tracking_status(
+        result = scoped_call(
+            self.release_check_service.build_token_tracking_status,
             {
                 "request_count": 2,
                 "token_recorded_count": 2,
                 "total_tokens": 80,
                 "average_tokens_per_request": 40.0,
-            }
+            },
+            actor="admin_1",
         )
 
         self.assertEqual(result["status"], "pass")
         self.assertEqual(result["next_step"], "")
 
     def test_token_tracking_uses_persisted_chat_sample_after_restart(self) -> None:
-        self.feedback_service.save_chat_session(
+        scoped_call(
+            self.feedback_service.save_chat_session,
             query="退款多久到账",
             reply="请查看订单详情页。",
             trace={
@@ -260,6 +264,7 @@ class AuditAndReleaseTest(unittest.TestCase):
                 "total_tokens": 42,
                 "counting_method": "test_counter",
             },
+            actor="admin_1",
         )
 
         with patch.object(
@@ -272,14 +277,15 @@ class AuditAndReleaseTest(unittest.TestCase):
                 "average_tokens_per_request": 0.0,
             },
         ):
-            result = self.release_check_service.build_token_tracking_status()
+            result = scoped_call(self.release_check_service.build_token_tracking_status, actor="admin_1")
 
         self.assertEqual(result["status"], "pass")
         self.assertIn("source=persisted_chat_sessions", result["evidence"])
         self.assertIn("latest_request_id=req-persisted-token", result["evidence"])
 
     def test_token_tracking_uses_latest_persisted_sample_when_history_is_partial(self) -> None:
-        self.feedback_service.save_chat_session(
+        scoped_call(
+            self.feedback_service.save_chat_session,
             query="token check",
             reply="token tracked",
             trace={
@@ -294,6 +300,7 @@ class AuditAndReleaseTest(unittest.TestCase):
                 "total_tokens": 15,
                 "counting_method": "test_counter",
             },
+            actor="admin_1",
         )
 
         with patch.object(
@@ -307,7 +314,7 @@ class AuditAndReleaseTest(unittest.TestCase):
                 "source": "persisted_chat_sessions",
             },
         ):
-            result = self.release_check_service.build_token_tracking_status()
+            result = scoped_call(self.release_check_service.build_token_tracking_status, actor="admin_1")
 
         self.assertEqual(result["status"], "pass")
         self.assertIn("source=persisted_chat_sessions", result["evidence"])

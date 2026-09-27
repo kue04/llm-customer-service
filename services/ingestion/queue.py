@@ -40,6 +40,8 @@ import os
 from threading import Lock
 import uuid
 
+from config.runtime_config import runtime_environment, development_degradation_enabled
+
 
 STREAM_URL_ENV = "RAG_REDIS_STREAM_URL"
 STREAM_KEY_ENV = "RAG_INGESTION_STREAM_KEY"
@@ -192,7 +194,8 @@ class RedisStreamIngestionQueue(IngestionQueue):
             raise QueueUnavailableError(
                 "已配置 RAG_REDIS_STREAM_URL，但缺少 redis 客户端；请安装 requirements.txt 里的 redis"
             ) from error
-        self._client = redis.Redis.from_url(self.url, decode_responses=True)
+        self._client = redis.Redis.from_url(self.url, decode_responses=True,
+                                            socket_connect_timeout=2, socket_timeout=5)
         return self._client
 
     def publish(self, job_id: str) -> str:
@@ -325,6 +328,8 @@ def build_queue(env: Mapping[str, str] | None = None) -> IngestionQueue:
     source = os.environ if env is None else env
     url = (source.get(STREAM_URL_ENV) or "").strip()
     if not url:
+        if runtime_environment() != 'test' and not development_degradation_enabled():
+            raise QueueUnavailableError('RAG_REDIS_STREAM_URL is required for a separate worker')
         return InMemoryIngestionQueue()
     return RedisStreamIngestionQueue(
         url,

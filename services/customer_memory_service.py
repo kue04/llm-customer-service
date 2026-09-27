@@ -3,8 +3,8 @@ from __future__ import annotations
 from services import conversation_store
 
 
-def get_user_memory(user_id: str) -> dict:
-    return conversation_store.get_user_memory(user_id)
+def get_user_memory(user_id: str, *, tenant_id: str = '') -> dict:
+    return conversation_store.get_user_memory(user_id, tenant_id=tenant_id)
 
 
 def update_user_memory_from_turn(
@@ -12,6 +12,8 @@ def update_user_memory_from_turn(
     query: str,
     reply: str,
     intent_analysis: dict,
+    *,
+    tenant_id: str = '',
 ) -> dict:
     updates: dict[str, str] = {}
     primary_intent = str(intent_analysis.get("primary_intent", ""))
@@ -29,8 +31,8 @@ def update_user_memory_from_turn(
         updates["address_preference"] = "地址相关问题需以订单页为准"
 
     if updates:
-        conversation_store.upsert_user_memory(user_id, updates)
+        conversation_store.upsert_user_memory(user_id, updates, tenant_id=tenant_id)
 
-    memory = conversation_store.get_user_memory(user_id)
+    memory = conversation_store.get_user_memory(user_id, tenant_id=tenant_id)
     memory["last_reply_summary"] = reply[:120]
     return memory

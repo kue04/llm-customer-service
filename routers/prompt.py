@@ -1,3 +1,4 @@
+from services.runtime_db import scoped_route
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from schemas.prompt_schema import (
@@ -49,6 +50,7 @@ def _audit_prompt_action(
 
 
 @router.get("/versions", response_model=PromptVersionListResponse)
+@scoped_route
 def prompt_versions(
     limit: int = Query(default=20, ge=1, le=100),
     auth: AuthContext = Depends(get_auth_context),
@@ -58,12 +60,14 @@ def prompt_versions(
 
 
 @router.get("/active", response_model=PromptVersionItem)
+@scoped_route
 def active_prompt(auth: AuthContext = Depends(get_auth_context)):
     require_read_operation_role("prompt_read", auth)
     return get_active_prompt_config()
 
 
 @router.post("/versions", response_model=PromptVersionItem)
+@scoped_route
 def create_version(
     request: PromptVersionPayload,
     auth: AuthContext = Depends(get_auth_context),
@@ -80,6 +84,7 @@ def create_version(
 
 
 @router.post("/versions/{version_id}/status", response_model=PromptVersionItem)
+@scoped_route
 def update_status(
     version_id: int,
     request: PromptVersionStatusRequest,
@@ -98,6 +103,7 @@ def update_status(
 
 
 @router.post("/versions/{version_id}/activate", response_model=PromptVersionItem)
+@scoped_route
 def activate_version(
     version_id: int,
     auth: AuthContext = Depends(get_auth_context),
@@ -115,6 +121,7 @@ def activate_version(
 
 
 @router.post("/rollback-latest", response_model=PromptVersionItem)
+@scoped_route
 def rollback_latest(
     auth: AuthContext = Depends(get_auth_context),
     meta: RequestMeta = Depends(get_request_meta),

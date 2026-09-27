@@ -310,7 +310,7 @@ def test_resource_scopes_follow_the_plan_enumeration() -> None:
         "audit:read",
     }
     #: 计划之外、经显式决策新增的权限（B8 索引回滚）
-    added_beyond_plan = {"index:rollback"}
+    added_beyond_plan = {"index:rollback", "demo:read"}
 
     assert set(RESOURCE_SCOPE_ROLES) == plan_permissions | added_beyond_plan
     for permission in plan_permissions | added_beyond_plan:

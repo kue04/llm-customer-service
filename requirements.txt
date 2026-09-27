@@ -35,6 +35,5 @@ python-multipart==0.0.32
 redis==6.4.0
 # 扫描件 OCR：默认不装（会拖进 onnxruntime 与模型权重）。
 # 需要时执行 pip install rapidocr-onnxruntime 即可生效，代码无需改动（见 parsers/ocr.py）。
-# PostgreSQL 驱动：本机不装也能跑（默认 SQLite），
-# 部署到 PostgreSQL 时取消下面一行的注释并按需改版本
-# psycopg[binary]==3.2.3
+# Unified PostgreSQL runtime driver (SQLite is a test backend only).
+psycopg[binary]==3.2.3

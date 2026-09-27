@@ -1,22 +1,14 @@
+from runtime_fixtures import runtime_database, scoped_call
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 
 class ConversationServiceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = Path(self.temp_dir.name) / "test_feedback.db"
-        self.db_patch = patch("services.feedback_service.DB_PATH", self.db_path)
-        self.store_db_patch = patch("services.conversation_store.DB_PATH", self.db_path)
-        self.db_patch.start()
-        self.store_db_patch.start()
-
-    def tearDown(self) -> None:
-        self.store_db_patch.stop()
-        self.db_patch.stop()
-        self.temp_dir.cleanup()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.enterContext(runtime_database(Path(self.temp_dir.name) / "runtime.db"))
 
     def test_context_keeps_recent_messages_and_facts(self) -> None:
         from services.conversation_service import (
@@ -26,13 +18,13 @@ class ConversationServiceTest(unittest.TestCase):
         )
         from services.intent_service import analyze_intents
 
-        context = get_or_create_context(user_id="u1", session_id="s1", order_id="o1")
+        context = scoped_call(get_or_create_context, user_id="u1", session_id="s1", order_id="o1", actor="u1")
         for index in range(7):
-            save_message("s1", "user", f"第{index}轮问题")
+            scoped_call(save_message, "s1", "user", f"第{index}轮问题", actor="u1")
 
         intent = analyze_intents("餐品酸了，我想退款")
-        update_facts("s1", "餐品酸了，我想退款", intent)
-        context = get_or_create_context(user_id="u1", session_id="s1", order_id="o1")
+        scoped_call(update_facts, "s1", "餐品酸了，我想退款", intent, actor="u1")
+        context = scoped_call(get_or_create_context, user_id="u1", session_id="s1", order_id="o1", actor="u1")
 
         self.assertEqual(context["user_id"], "u1")
         self.assertEqual(context["session_id"], "s1")
@@ -44,10 +36,11 @@ class ConversationServiceTest(unittest.TestCase):
     def test_history_can_reload_messages_and_latest_response(self) -> None:
         from services import conversation_store
 
-        conversation_store.get_or_create_conversation("u1", "s1", "o1")
-        conversation_store.append_message("s1", "user", "订单怎么还没到")
-        conversation_store.append_message("s1", "assistant", "我帮您看一下订单状态")
-        conversation_store.save_turn_response(
+        scoped_call(conversation_store.get_or_create_conversation, "u1", "s1", "o1", actor="u1")
+        scoped_call(conversation_store.append_message, "s1", "user", "订单怎么还没到", actor="u1")
+        scoped_call(conversation_store.append_message, "s1", "assistant", "我帮您看一下订单状态", actor="u1")
+        scoped_call(
+            conversation_store.save_turn_response,
             request_id="req1",
             session_id="s1",
             user_id="u1",
@@ -55,12 +48,13 @@ class ConversationServiceTest(unittest.TestCase):
             query="订单怎么还没到",
             reply="我帮您看一下订单状态",
             response={"reply": "我帮您看一下订单状态", "trace": {"request_id": "req1"}},
+            actor="u1",
         )
 
-        conversation = conversation_store.find_conversation("u1", order_id="o1")
+        conversation = scoped_call(conversation_store.find_conversation, "u1", order_id="o1", actor="u1")
         self.assertIsNotNone(conversation)
-        messages = conversation_store.list_messages("s1")
-        latest_response = conversation_store.get_latest_turn_response("s1")
+        messages = scoped_call(conversation_store.list_messages, "s1", actor="u1")
+        latest_response = scoped_call(conversation_store.get_latest_turn_response, "s1", actor="u1")
 
         self.assertEqual(len(messages), 2)
         self.assertEqual(messages[0]["role"], "user")
@@ -69,9 +63,10 @@ class ConversationServiceTest(unittest.TestCase):
     def test_conversation_store_masks_sensitive_text_before_persisting(self) -> None:
         from services import conversation_store
 
-        conversation_store.get_or_create_conversation("u1", "s-sensitive", "o1")
-        conversation_store.append_message("s-sensitive", "user", "手机号13812345678")
-        conversation_store.save_turn_response(
+        scoped_call(conversation_store.get_or_create_conversation, "u1", "s-sensitive", "o1", actor="u1")
+        scoped_call(conversation_store.append_message, "s-sensitive", "user", "手机号13812345678", actor="u1")
+        scoped_call(
+            conversation_store.save_turn_response,
             request_id="req-sensitive",
             session_id="s-sensitive",
             user_id="u1",
@@ -82,18 +77,21 @@ class ConversationServiceTest(unittest.TestCase):
                 "reply": "验证码123456",
                 "trace": {"request_id": "req-sensitive", "raw": "13812345678"},
             },
+            actor="u1",
         )
-        review = conversation_store.save_review_action(
+        review = scoped_call(
+            conversation_store.save_review_action,
             {
                 "request_id": "req-sensitive",
                 "action": "edited_and_sent",
                 "final_reply": "请联系13812345678",
                 "reason": "订单号202606061234567890",
-            }
+            },
+            actor="u1",
         )
 
-        messages = conversation_store.list_messages("s-sensitive")
-        turn = conversation_store.get_turn_response("req-sensitive")
+        messages = scoped_call(conversation_store.list_messages, "s-sensitive", actor="u1")
+        turn = scoped_call(conversation_store.get_turn_response, "req-sensitive", actor="u1")
 
         self.assertEqual(messages[0]["content"], "手机号[手机号已脱敏]")
         self.assertNotIn("13812345678", turn["query"])

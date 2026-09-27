@@ -1,16 +1,12 @@
 from __future__ import annotations
 
+from services.runtime_db import RuntimeConnection, get_connection
+
 from datetime import datetime, timezone
 import json
-from pathlib import Path
-import shutil
-import sqlite3
 from uuid import uuid4
 
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "knowledge_ops.db"
-KNOWLEDGE_DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "takeout_customer_service_seed.jsonl"
-BACKUP_DIR = Path(__file__).resolve().parents[1] / "data" / "knowledge_backups"
 VALID_REVIEW_STATUSES = {"pending_review", "approved", "rejected"}
 
 
@@ -18,80 +14,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def get_connection() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-    ensure_schema(connection)
-    return connection
-
-
-def ensure_schema(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS knowledge_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            base_id TEXT NOT NULL,
-            version INTEGER NOT NULL,
-            title TEXT NOT NULL DEFAULT '',
-            question TEXT NOT NULL,
-            answer TEXT NOT NULL,
-            category TEXT NOT NULL,
-            intent TEXT NOT NULL,
-            status TEXT NOT NULL,
-            owner TEXT NOT NULL DEFAULT 'knowledge_ops',
-            source TEXT NOT NULL DEFAULT 'knowledge_ops',
-            effective_at TEXT NOT NULL DEFAULT '',
-            expired_at TEXT NOT NULL DEFAULT '',
-            review_note TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            reviewed_at TEXT NOT NULL DEFAULT ''
-        )
-        """
-    )
-    _ensure_column(connection, "knowledge_items", "title", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(connection, "knowledge_items", "owner", "TEXT NOT NULL DEFAULT 'knowledge_ops'")
-    _ensure_column(connection, "knowledge_items", "source", "TEXT NOT NULL DEFAULT 'knowledge_ops'")
-    _ensure_column(connection, "knowledge_items", "effective_at", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(connection, "knowledge_items", "expired_at", "TEXT NOT NULL DEFAULT ''")
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS knowledge_publish_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            publish_id TEXT NOT NULL,
-            action TEXT NOT NULL,
-            status TEXT NOT NULL,
-            merged_count INTEGER NOT NULL DEFAULT 0,
-            item_ids TEXT NOT NULL DEFAULT '[]',
-            backup_path TEXT NOT NULL DEFAULT '',
-            knowledge_path TEXT NOT NULL DEFAULT '',
-            faiss_index_path TEXT NOT NULL DEFAULT '',
-            note TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    connection.commit()
-
-
-def _ensure_column(
-    connection: sqlite3.Connection,
-    table_name: str,
-    column_name: str,
-    column_definition: str,
-) -> None:
-    existing_columns = {
-        row["name"]
-        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
-    }
-    if column_name not in existing_columns:
-        connection.execute(
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
-        )
-
-
-def row_to_item(row: sqlite3.Row) -> dict:
+def row_to_item(row: dict) -> dict:
     item = dict(row)
     item["title"] = item.get("title") or item.get("question", "")
     item["owner"] = item.get("owner") or "knowledge_ops"
@@ -107,11 +30,11 @@ def create_knowledge_item(payload: dict) -> dict:
     try:
         cursor = connection.execute(
             """
-            INSERT INTO knowledge_items
+            INSERT INTO runtime_knowledge_items
             (base_id, version, title, question, answer, category, intent, status,
-             owner, source, effective_at, expired_at, created_at, updated_at)
-            VALUES (?, 1, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
-            """,
+             owner, source, effective_at, expired_at, created_at, updated_at, tenant_id, created_by)
+            VALUES (:p0, 1, :p1, :p2, :p3, :p4, :p5, 'draft', :p6, :p7, :p8, :p9, :p10, :p11, :_tenant, :_actor)
+             RETURNING id""",
             (
                 f"kb_{uuid4().hex[:12]}",
                 payload.get("title", "") or payload["question"],
@@ -128,7 +51,7 @@ def create_knowledge_item(payload: dict) -> dict:
             ),
         )
         connection.commit()
-        return get_knowledge_item(int(cursor.lastrowid))
+        return get_knowledge_item(int(cursor.inserted_id))
     finally:
         connection.close()
 
@@ -136,7 +59,10 @@ def create_knowledge_item(payload: dict) -> dict:
 def get_knowledge_item(item_id: int) -> dict:
     connection = get_connection()
     try:
-        row = connection.execute("SELECT * FROM knowledge_items WHERE id = ?", (item_id,)).fetchone()
+        row = connection.execute(
+            "SELECT * FROM runtime_knowledge_items WHERE tenant_id = :_tenant AND deleted_at IS NULL AND id = :p0",
+            (item_id,),
+        ).fetchone()
         if row is None:
             raise KeyError(f"knowledge item not found: {item_id}")
         return row_to_item(row)
@@ -150,16 +76,16 @@ def update_knowledge_item(item_id: int, payload: dict) -> dict:
     connection = get_connection()
     try:
         latest_version = connection.execute(
-            "SELECT MAX(version) AS version FROM knowledge_items WHERE base_id = ?",
+            "SELECT MAX(version) AS version FROM runtime_knowledge_items WHERE tenant_id = :_tenant AND deleted_at IS NULL AND base_id = :p0",
             (original["base_id"],),
         ).fetchone()["version"]
         cursor = connection.execute(
             """
-            INSERT INTO knowledge_items
+            INSERT INTO runtime_knowledge_items
             (base_id, version, title, question, answer, category, intent, status,
-             owner, source, effective_at, expired_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
-            """,
+             owner, source, effective_at, expired_at, created_at, updated_at, tenant_id, created_by)
+            VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, 'draft', :p7, :p8, :p9, :p10, :p11, :p12, :_tenant, :_actor)
+             RETURNING id""",
             (
                 original["base_id"],
                 int(latest_version) + 1,
@@ -177,7 +103,7 @@ def update_knowledge_item(item_id: int, payload: dict) -> dict:
             ),
         )
         connection.commit()
-        return get_knowledge_item(int(cursor.lastrowid))
+        return get_knowledge_item(int(cursor.inserted_id))
     finally:
         connection.close()
 
@@ -187,7 +113,7 @@ def archive_knowledge_item(item_id: int) -> dict:
     connection = get_connection()
     try:
         cursor = connection.execute(
-            "UPDATE knowledge_items SET status = 'archived', updated_at = ? WHERE id = ?",
+            "UPDATE runtime_knowledge_items SET status = 'archived', updated_at = :p0 WHERE tenant_id = :_tenant AND deleted_at IS NULL AND id = :p1",
             (now, item_id),
         )
         if cursor.rowcount == 0:
@@ -206,9 +132,9 @@ def review_knowledge_item(item_id: int, status: str, review_note: str = "") -> d
     try:
         cursor = connection.execute(
             """
-            UPDATE knowledge_items
-            SET status = ?, review_note = ?, reviewed_at = ?, updated_at = ?
-            WHERE id = ?
+            UPDATE runtime_knowledge_items
+            SET status = :p0, review_note = :p1, reviewed_at = :p2, updated_at = :p3
+            WHERE tenant_id = :_tenant AND deleted_at IS NULL AND id = :p4
             """,
             (status, review_note, now, now, item_id),
         )
@@ -228,36 +154,31 @@ def list_knowledge_items(
     status: str = "",
     keyword: str = "",
 ) -> dict:
-    clauses = []
-    params: list[object] = []
+    clauses = ["tenant_id = :_tenant", "deleted_at IS NULL"]
+    params: dict[str, object] = {}
     if category:
-        clauses.append("category = ?")
-        params.append(category)
+        clauses.append("category = :category")
+        params["category"] = category
     if intent:
-        clauses.append("intent = ?")
-        params.append(intent)
+        clauses.append("intent = :intent")
+        params["intent"] = intent
     if status:
-        clauses.append("status = ?")
-        params.append(status)
+        clauses.append("status = :status")
+        params["status"] = status
     if keyword:
-        clauses.append("(question LIKE ? OR answer LIKE ?)")
-        params.extend([f"%{keyword}%", f"%{keyword}%"])
+        clauses.append("(question LIKE :keyword OR answer LIKE :keyword)")
+        params["keyword"] = f"%{keyword}%"
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
     connection = get_connection()
     try:
         total = connection.execute(
-            f"SELECT COUNT(*) AS total FROM knowledge_items {where_sql}",
+            f"SELECT COUNT(*) AS total FROM runtime_knowledge_items {where_sql}",
             params,
         ).fetchone()["total"]
         rows = connection.execute(
-            f"""
-            SELECT * FROM knowledge_items
-            {where_sql}
-            ORDER BY updated_at DESC, id DESC
-            LIMIT ? OFFSET ?
-            """,
-            [*params, limit, offset],
+            f"\n            SELECT * FROM runtime_knowledge_items\n            {where_sql}\n            ORDER BY updated_at DESC, id DESC\n            LIMIT :limit OFFSET :offset\n            ",
+            {**params, "limit": limit, "offset": offset},
         ).fetchall()
         return {
             "total": int(total),
@@ -274,8 +195,8 @@ def export_approved_jsonl() -> dict:
     try:
         rows = connection.execute(
             """
-            SELECT * FROM knowledge_items
-            WHERE status = 'approved'
+            SELECT * FROM runtime_knowledge_items
+            WHERE tenant_id = :_tenant AND deleted_at IS NULL AND status = 'approved'
             ORDER BY base_id, version
             """
         ).fetchall()
@@ -288,7 +209,7 @@ def export_approved_jsonl() -> dict:
     return {"count": len(lines), "jsonl": "\n".join(lines)}
 
 
-def build_jsonl_payload(row: sqlite3.Row) -> dict:
+def build_jsonl_payload(row: dict) -> dict:
     return {
         "id": f"{row['base_id']}_v{row['version']}",
         "title": row["title"] or row["question"],
@@ -310,38 +231,8 @@ def build_jsonl_payload(row: sqlite3.Row) -> dict:
     }
 
 
-def rebuild_vector_store() -> None:
-    from utils.vector_retriever import reset_vector_store_cache, save_real_vector_store
-
-    reset_vector_store_cache()
-    save_real_vector_store()
-    reset_vector_store_cache()
-
-
-def reset_runtime_vector_cache() -> None:
-    from utils.vector_retriever import reset_vector_store_cache
-
-    reset_vector_store_cache()
-
-
-def get_faiss_index_path() -> Path:
-    from config.rag_config import get_rag_config
-
-    return get_rag_config().faiss_index_path
-
-
-def create_backup(publish_id: str) -> Path:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    backup_path = BACKUP_DIR / f"{publish_id}.jsonl"
-    if KNOWLEDGE_DATA_PATH.exists():
-        shutil.copy2(KNOWLEDGE_DATA_PATH, backup_path)
-    else:
-        backup_path.write_text("", encoding="utf-8")
-    return backup_path
-
-
 def insert_publish_history(
-    connection: sqlite3.Connection,
+    connection: RuntimeConnection,
     *,
     publish_id: str,
     action: str,
@@ -354,10 +245,10 @@ def insert_publish_history(
     now = utc_now()
     cursor = connection.execute(
         """
-        INSERT INTO knowledge_publish_history
-        (publish_id, action, status, merged_count, item_ids, backup_path, knowledge_path, faiss_index_path, note, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        INSERT INTO runtime_knowledge_publish_history
+        (publish_id, action, status, merged_count, item_ids, backup_path, knowledge_path, faiss_index_path, note, created_at, tenant_id, created_by, updated_at)
+        VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8, :p9, :_tenant, :_actor, :_now)
+         RETURNING id""",
         (
             publish_id,
             action,
@@ -365,21 +256,20 @@ def insert_publish_history(
             merged_count,
             json.dumps(item_ids or []),
             backup_path,
-            str(KNOWLEDGE_DATA_PATH),
-            str(get_faiss_index_path()),
+            "postgresql:runtime_knowledge_items",
+            "",
             note,
             now,
         ),
     )
-    connection.commit()
     row = connection.execute(
-        "SELECT * FROM knowledge_publish_history WHERE id = ?",
-        (int(cursor.lastrowid),),
+        "SELECT * FROM runtime_knowledge_publish_history WHERE tenant_id = :_tenant AND deleted_at IS NULL AND id = :p0",
+        (int(cursor.inserted_id),),
     ).fetchone()
     return row_to_publish_history(row)
 
 
-def row_to_publish_history(row: sqlite3.Row) -> dict:
+def row_to_publish_history(row: dict) -> dict:
     item_ids = json.loads(row["item_ids"] or "[]")
     return {
         "id": int(row["id"]),
@@ -396,141 +286,88 @@ def row_to_publish_history(row: sqlite3.Row) -> dict:
     }
 
 
-def publish_approved_knowledge() -> dict:
+def list_publish_history(limit: int = 20) -> dict:
     connection = get_connection()
-    publish_id = f"pub_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid4().hex[:8]}"
-    backup_path: Path | None = None
     try:
         rows = connection.execute(
             """
-            SELECT * FROM knowledge_items
-            WHERE status = 'approved'
-            ORDER BY base_id, version
-            """
+            SELECT * FROM runtime_knowledge_publish_history
+             WHERE tenant_id = :_tenant AND deleted_at IS NULL ORDER BY id DESC
+            LIMIT :p0
+            """,
+            (limit,),
         ).fetchall()
-        if not rows:
-            return insert_publish_history(
-                connection,
-                publish_id=publish_id,
-                action="publish",
-                status="skipped",
-                note="no approved knowledge",
-            )
+        return {"count": len(rows), "items": [row_to_publish_history(row) for row in rows]}
+    finally:
+        connection.close()
 
-        backup_path = create_backup(publish_id)
-        KNOWLEDGE_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-        needs_leading_newline = KNOWLEDGE_DATA_PATH.exists() and KNOWLEDGE_DATA_PATH.stat().st_size > 0
-        if needs_leading_newline:
-            tail = KNOWLEDGE_DATA_PATH.read_bytes()[-1:]
-            needs_leading_newline = tail not in {b"\n", b"\r"}
 
-        lines = [json.dumps(build_jsonl_payload(row), ensure_ascii=False) for row in rows]
-        with KNOWLEDGE_DATA_PATH.open("a", encoding="utf-8") as file:
-            if needs_leading_newline:
-                file.write("\n")
-            file.write("\n".join(lines))
-            file.write("\n")
+def publish_approved_knowledge() -> dict:
+    """Publish tenant knowledge and a durable snapshot atomically in PostgreSQL.
 
-        rebuild_vector_store()
-
+    Formal retrieval indexing is managed by the ingestion release pipeline.
+    This operation never mutates a process-local or global seed index.
+    """
+    connection = get_connection()
+    try:
+        rows = connection.execute(
+            "SELECT * FROM runtime_knowledge_items WHERE tenant_id = :_tenant "
+            "AND deleted_at IS NULL AND status = 'approved' ORDER BY base_id, version"
+        ).fetchall()
         item_ids = [int(row["id"]) for row in rows]
-        now = utc_now()
-        connection.executemany(
-            "UPDATE knowledge_items SET status = 'published', updated_at = ? WHERE id = ?",
-            [(now, item_id) for item_id in item_ids],
-        )
-        connection.commit()
-        return insert_publish_history(
+        for item_id in item_ids:
+            connection.execute(
+                "UPDATE runtime_knowledge_items SET status = 'published', updated_at = :_now "
+                "WHERE tenant_id = :_tenant AND deleted_at IS NULL AND id = :p0",
+                (item_id,),
+            )
+        result = insert_publish_history(
             connection,
-            publish_id=publish_id,
+            publish_id=f"pub_{uuid4().hex}",
             action="publish",
-            status="succeeded",
+            status="succeeded" if rows else "skipped",
             merged_count=len(rows),
             item_ids=item_ids,
-            backup_path=str(backup_path),
+            note="Tenant knowledge snapshot; retrieval release uses ingestion pipeline.",
         )
-    except Exception as error:
-        if backup_path is not None and backup_path.exists():
-            shutil.copy2(backup_path, KNOWLEDGE_DATA_PATH)
-            reset_runtime_vector_cache()
-        insert_publish_history(
-            connection,
-            publish_id=publish_id,
-            action="publish",
-            status="failed",
-            note=str(error),
-        )
-        raise
+        connection.commit()
+        return result
     finally:
         connection.close()
 
 
 def rollback_latest_publish() -> dict:
     connection = get_connection()
-    rollback_id = f"rollback_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid4().hex[:8]}"
     try:
         row = connection.execute(
-            """
-            SELECT * FROM knowledge_publish_history
-            WHERE action = 'publish' AND status = 'succeeded' AND backup_path != ''
-            ORDER BY id DESC
-            LIMIT 1
-            """
+            "SELECT * FROM runtime_knowledge_publish_history WHERE tenant_id = :_tenant "
+            "AND deleted_at IS NULL AND action = 'publish' AND status = 'succeeded' "
+            "ORDER BY id DESC LIMIT 1"
         ).fetchone()
         if row is None:
             raise ValueError("no succeeded publish record to rollback")
-
-        backup_path = Path(row["backup_path"])
-        if not backup_path.exists():
-            raise FileNotFoundError(f"backup not found: {backup_path}")
-
-        KNOWLEDGE_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(backup_path, KNOWLEDGE_DATA_PATH)
-        rebuild_vector_store()
-
-        item_ids = json.loads(row["item_ids"] or "[]")
-        if item_ids:
-            now = utc_now()
-            connection.executemany(
-                "UPDATE knowledge_items SET status = 'rollback', updated_at = ? WHERE id = ? AND status = 'published'",
-                [(now, int(item_id)) for item_id in item_ids],
+        item_ids = json.loads(row["item_ids"])
+        for item_id in item_ids:
+            connection.execute(
+                "UPDATE runtime_knowledge_items SET status = 'rollback', updated_at = :_now "
+                "WHERE tenant_id = :_tenant AND deleted_at IS NULL AND id = :p0 AND status = 'published'",
+                (item_id,),
             )
-            connection.commit()
-
-        return insert_publish_history(
+        connection.execute(
+            "UPDATE runtime_knowledge_publish_history SET status = 'rolled_back', updated_at = :_now "
+            "WHERE tenant_id = :_tenant AND id = :p0",
+            (row["id"],),
+        )
+        result = insert_publish_history(
             connection,
-            publish_id=rollback_id,
+            publish_id=f"rollback_{uuid4().hex}",
             action="rollback",
             status="succeeded",
-            merged_count=int(row["merged_count"]),
-            item_ids=[int(item_id) for item_id in item_ids],
-            backup_path=str(backup_path),
+            merged_count=len(item_ids),
+            item_ids=item_ids,
             note=f"rollback {row['publish_id']}",
         )
-    except Exception as error:
-        insert_publish_history(
-            connection,
-            publish_id=rollback_id,
-            action="rollback",
-            status="failed",
-            note=str(error),
-        )
-        raise
-    finally:
-        connection.close()
-
-
-def list_publish_history(limit: int = 20) -> dict:
-    connection = get_connection()
-    try:
-        rows = connection.execute(
-            """
-            SELECT * FROM knowledge_publish_history
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-        return {"count": len(rows), "items": [row_to_publish_history(row) for row in rows]}
+        connection.commit()
+        return result
     finally:
         connection.close()

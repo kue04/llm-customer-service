@@ -10,6 +10,7 @@
 """
 
 import unittest
+import os
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -37,11 +38,16 @@ from services.ingestion.object_store import LocalObjectStore
 from auth_helpers import auth_headers, make_auth_context
 
 
-AUTH_HEADERS = auth_headers(roles=["agent"], user_id="agent_1")
-AGENT_CONTEXT = make_auth_context(roles=["agent"], user_id="agent_1")
+AUTH_HEADERS = auth_headers(roles=["admin"], user_id="admin_1")
+AGENT_CONTEXT = make_auth_context(roles=["admin"], user_id="admin_1")
 
 
 class RetrievalSearchApiTest(unittest.TestCase):
+    def setUp(self):
+        environment = patch.dict(os.environ, {'RAG_ENV': 'test', 'RAG_ENABLE_DEMO_ENDPOINTS': 'true'})
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_config_endpoint_returns_current_rag_config(self) -> None:
         app = FastAPI()
         app.include_router(retrieval.router, prefix="/retrieval")
@@ -153,7 +159,7 @@ class RetrievalSearchApiTest(unittest.TestCase):
 
     def test_prompt_preview_http_endpoint_returns_context_json(self) -> None:
         app = FastAPI()
-        app.include_router(retrieval.router, prefix="/retrieval")
+        app.include_router(retrieval.demo_router, prefix="/retrieval")
         client = TestClient(app)
         candidates = [
             {
@@ -374,9 +380,10 @@ class TestChunkRetrievalApi:
         assert response.json()["detail"]["error_code"] == "chunk_index_unavailable"
         db.dispose_engines()
 
-    def test_demo_endpoint_is_explicitly_labeled(self, api_env) -> None:
+    def test_demo_endpoint_is_explicitly_labeled(self, api_env, monkeypatch) -> None:
         """A 轨保留但**显式标注**：响应里必须能看出自己走的是演示路径。"""
 
+        monkeypatch.setenv('RAG_ENABLE_DEMO_ENDPOINTS', 'true')
         client = TestClient(build_retrieval_app())
         with patch("routers.retrieval.retrieve_by_real_vector", return_value=[]):
             body = client.post(
