@@ -1,6 +1,6 @@
 from services.runtime_db import scoped_route
 # app/routers/chat.py
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from schemas.chat_schema import (
     ChatHistoryResponse,
@@ -26,16 +26,23 @@ router = APIRouter()
 @scoped_route
 async def generate_answer(
     request: ChatRequest,
+    http_request: Request,
     auth: AuthContext = Depends(get_auth_context),
 ):
     from services.chat_service import get_answer_from_rag
     from services.conversation_store import ConversationAccessError
+    from services.request_budget import execute_chat, BudgetExceeded, CapacityExceeded
 
     require_read_operation_role("chat_generate", auth)
     # auth 一路传到检索层：B 轨（chunk 索引）的租户 / document ACL 过滤必须由
     # 服务端身份构造，传的是**已校验的 AuthContext**，不接受任何自报字段（D-2）。
     try:
-        response = get_answer_from_rag(request, auth)
+        response = await execute_chat(lambda: get_answer_from_rag(request, auth), auth.tenant_id, http_request)
+    except CapacityExceeded as error:
+        raise HTTPException(status_code=429, detail={'code': error.code, 'retryable': True}, headers={'Retry-After': '1'}) from error
+    except BudgetExceeded as error:
+        raise HTTPException(status_code=499 if error.code == 'request_cancelled' else 504,
+                            detail={'code': error.code, 'retryable': False}) from error
     except ConversationAccessError as error:
         raise HTTPException(status_code=404, detail="conversation not found") from error
     if not response:

@@ -875,6 +875,15 @@ class IngestionPipeline:
     @staticmethod
     def _translate(error: Exception) -> tuple[str, str]:
         """异常 → (error_code, message)。稳定错误码全部来自各模块自己的定义。"""
+        from sqlalchemy.exc import OperationalError
+        cause, seen = error, set()
+        while cause is not None and id(cause) not in seen:
+            seen.add(id(cause))
+            if isinstance(cause, (ConnectionError, OperationalError)):
+                return 'dependency_unavailable', 'Dependency temporarily unavailable'
+            if isinstance(cause, TimeoutError):
+                return 'dependency_timeout', 'Dependency timed out'
+            cause = cause.__cause__
 
         if isinstance(error, PipelineError):
             return error.error_code, error.message

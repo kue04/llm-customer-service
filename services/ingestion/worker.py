@@ -16,11 +16,10 @@ B4 交付后 `queue.publish()` 已就绪，但**没有消费端** —— 上传�
 * 消息丢失也只影响"这次没被及时处理"，任务仍在 ``pending``，可被重投；
 * 队列不需要实现"恰好一次"，而这个要求本来也做不到。
 
-**2. 处理完（无论成功失败）就 ack。**
-不 ack 的话 Redis 会把消息一直留在 pending 列表里，靠 ``XAUTOCLAIM`` 才能回到别人手上 ——
-而"重投"在本系统里等于再跑一遍流水线：失败原因（配置非法、文件丢了、模型不可用）
-不会因为重投而消失，只会让同一个失败被反复重跑。**恢复动作交给 ``/reprocess``**：
-它建一个新任务、带明确的审计记录，比"队列默默重试"更可查、也更可控。
+**2. 只确认已持久化的终态。**
+5.4 增加 XAUTOCLAIM、执行心跳与 PostgreSQL 执行锁。临时依赖故障有限退避，
+永久错误与耗尽尝试进入死信；requires_review 正常 ACK，绝不自动放行。
+死信通过经授权、幂等的 redrive 入口新建任务。
 
 一个任务失败**不能**影响后面的任务
 ----------------------------------
@@ -111,7 +110,9 @@ class IngestionWorker:
         """读一批消息并逐个处理，返回每个任务的结果。队列不可用会抛 ``QueueUnavailableError``。"""
 
         count = max(int(limit if limit is not None else self.batch), 1)
-        messages = self.queue.read(count=count, block_ms=block_ms)
+        messages = self.queue.reclaim(count=count)
+        if not messages:
+            messages = self.queue.read(count=count, block_ms=block_ms)
         outcomes: list[PipelineOutcome] = []
         for message in messages:
             outcomes.append(self._handle(message))
@@ -179,10 +180,13 @@ class IngestionWorker:
     # ------------------------------------------------------------ 单条
 
     def _handle(self, message: QueueMessage) -> PipelineOutcome:
-        """处理一条消息，**无论成败都 ack**（理由见模块 docstring）。"""
+        """Only acknowledge durable terminal states; failures before commit stay pending."""
 
         try:
-            outcome = self._process(message.job_id)
+            from services.ingestion.delivery import handle
+            outcome, acknowledge = handle(self, message)
+            if acknowledge:
+                self._ack(message)
         except Exception:  # noqa: BLE001 - 单条消息的任何异常都不该杀掉 worker
             logger.exception("[worker] 处理消息时出现未预期异常 job=%s", message.job_id)
             outcome = PipelineOutcome(
@@ -192,12 +196,10 @@ class IngestionWorker:
                 error_code="unexpected_error",
                 error_message="worker 处理消息时出现未预期异常（详见日志）",
             )
-        finally:
-            self._ack(message)
         return outcome
 
-    def _process(self, job_id: str) -> PipelineOutcome:
-        with self._session_scope() as session:
+    def _process(self, job_id: str, connection=None) -> PipelineOutcome:
+        with self._session_scope(connection) as session:
             job = repository.get_ingestion_job_unscoped(session, job_id)
             if job is None:
                 logger.warning("[worker] 消息指向的任务不存在（已删除或非本库）job=%s", job_id)
@@ -210,7 +212,7 @@ class IngestionWorker:
             tenant_id = job.tenant_id
 
         # 流水线自己开事务（阶段结束即提交），因此这里给它一个独立会话
-        with self._session_scope() as session:
+        with self._session_scope(connection) as session:
             return process_job(
                 session,
                 tenant_id=tenant_id,
@@ -226,8 +228,8 @@ class IngestionWorker:
             logger.error("[worker] ack 失败（消息可能被重复投递）message=%s：%s", message.message_id, error)
 
     @contextmanager
-    def _session_scope(self) -> Iterator[Session]:
-        session = self.session_factory()
+    def _session_scope(self, connection=None) -> Iterator[Session]:
+        session = self.session_factory(bind=connection) if connection is not None else self.session_factory()
         try:
             yield session
         except Exception:

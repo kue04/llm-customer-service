@@ -1,5 +1,7 @@
 # app/services/chat_service.py
 from services.runtime_db import scoped_route
+from services.request_budget import BudgetExceeded, checkpoint, current_budget, capacity
+from services.call_ledger import tracked_model, capture_usage
 import logging
 import os
 from pathlib import Path
@@ -313,6 +315,8 @@ def load_local_tokenizer() -> object | None:
         return None
     try:
         tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
+    except BudgetExceeded:
+        raise
     except Exception as error:
         logger.warning("local tokenizer unavailable: %s", error)
         return None
@@ -561,6 +565,7 @@ def generate_local_text_with_system_prompt(prompt: str, system_prompt: str) -> s
     return generate_local_text_result_with_system_prompt(prompt, system_prompt)["text"]
 
 
+@tracked_model('local', 'generation', MODEL_PATH.name)
 def generate_local_text_result_with_system_prompt(prompt: str, system_prompt: str) -> dict:
     local_tokenizer, local_model = load_local_model()
     text = build_chat_template_text(prompt, system_prompt)
@@ -570,15 +575,32 @@ def generate_local_text_result_with_system_prompt(prompt: str, system_prompt: st
         for key, value in inputs.items()
     }
     input_length = _count_input_ids(inputs["input_ids"])
+    options = {}
+    if current_budget.get() is not None:
+        from transformers import StoppingCriteria, StoppingCriteriaList
+
+        class StopOnBudget(StoppingCriteria):
+            def __call__(self, input_ids, scores, **kwargs):
+                try:
+                    checkpoint()
+                    return False
+                except BudgetExceeded:
+                    return True
+
+        options['stopping_criteria'] = StoppingCriteriaList([StopOnBudget()])
+    checkpoint()
     outputs = local_model.generate(
         **inputs,
-        max_new_tokens=256,
+        max_new_tokens=capacity('RAG_GENERATION_MAX_NEW_TOKENS', 256),
         do_sample=False,
         pad_token_id=local_tokenizer.eos_token_id,
+        **options,
     )
     completion_ids = outputs[0][input_length:]
     completion_tokens = _count_input_ids(completion_ids)
     reply = local_tokenizer.decode(completion_ids, skip_special_tokens=True).strip()
+    capture_usage(build_token_usage(provider='local', model_name=MODEL_PATH.name, prompt_tokens=int(input_length),
+                                   completion_tokens=completion_tokens, counting_method='local_tokenizer'))
     return {
         "text": reply,
         "token_usage": build_token_usage(
@@ -1208,7 +1230,7 @@ def get_answer_from_rag(request, auth=None):
         request_data['user_id'] = auth.user_id
     tenant_id = auth.tenant_id if auth is not None else ''
     query = request_data["message"]
-    request_id = uuid4().hex
+    request_id = current_budget.get().request_id if current_budget.get() else uuid4().hex
     started_at = time.perf_counter()
     full_trace = [
         trace_step(
@@ -1346,6 +1368,7 @@ def get_answer_from_rag(request, auth=None):
     )
     context["facts"] = facts or context.get("facts", {})
     context["summary"] = summary or context.get("summary", "")
+    checkpoint()
     order_tool_started_at = time.perf_counter()
     order_status_result = query_order_status(
         context["user_id"], context.get("order_id"), tenant_id=tenant_id or None,
@@ -1386,6 +1409,7 @@ def get_answer_from_rag(request, auth=None):
     query_plan = preprocess_retrieval_query(query, intent_analysis, context)
     retrieval_query = query_plan["resolved_query"]
 
+    checkpoint()
     retrieval_started_at = time.perf_counter()
     retrieval_source = describe_chat_retrieval_source()
     retrieval_path = retrieval_source["retrieval_path"]
@@ -1464,6 +1488,8 @@ def get_answer_from_rag(request, auth=None):
                 source="retrieval",
             )
             context["facts"] = conversation_store.get_facts(context["session_id"])
+    except BudgetExceeded:
+        raise
     except Exception as error:
         degraded = True
         failure_stage = "retrieval"
@@ -1542,6 +1568,7 @@ def get_answer_from_rag(request, auth=None):
         )
     )
 
+    checkpoint()
     generation_started_at = time.perf_counter()
     try:
         generation_result = generate_reply_with_usage(prompt, prompt_config.get("system_prompt", SYSTEM_PROMPT))
@@ -1555,6 +1582,8 @@ def get_answer_from_rag(request, auth=None):
                 metadata={"token_usage": token_usage},
             )
         )
+    except BudgetExceeded:
+        raise
     except Exception as error:
         degraded = True
         failure_stage = "generation"
@@ -1634,6 +1663,8 @@ def get_answer_from_rag(request, auth=None):
             )
             answer_composer_applied = updated_reply != reply
             reply = updated_reply
+        except BudgetExceeded:
+            raise
         except Exception as error:
             degraded = True
             failure_stage = "answer_composer"
@@ -1650,6 +1681,8 @@ def get_answer_from_rag(request, auth=None):
             )
             reply_rules_applied = updated_reply != reply
             reply = updated_reply
+        except BudgetExceeded:
+            raise
         except Exception as error:
             degraded = True
             failure_stage = "reply_rules"
@@ -1671,6 +1704,8 @@ def get_answer_from_rag(request, auth=None):
                 metadata={"safety_issues": safety_status.get("issues", [])},
             )
         )
+    except BudgetExceeded:
+        raise
     except Exception as error:
         degraded = True
         failure_stage = "safety_guard"

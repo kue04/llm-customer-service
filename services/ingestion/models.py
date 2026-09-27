@@ -371,6 +371,10 @@ class IngestionJob(Base):
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    delivery_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default='0')
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dead_letter_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    replay_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 

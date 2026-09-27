@@ -46,6 +46,7 @@ from services.ingestion.db import session_scope
 from services.ingestion.pipeline import default_embedder, default_embedding_model, default_index_root
 from services.retrieval_access import build_chunk_access_filter
 from services.runtime_db import scoped_route
+from services.call_ledger import tracked_route
 from utils.hybrid_retriever import retrieve_hybrid_items
 from utils.rag_context import build_prompt_context_items
 from utils.sparse_retriever import ERROR_SPARSE_UNAVAILABLE
@@ -155,6 +156,7 @@ def _chunk_hit_item(rank: int, item: dict) -> ChunkRetrievalItem:
     response_model=ChunkRetrievalResponse,
     summary="检索文档 chunk（正式路径，按租户与 document ACL 过滤）",
 )
+@tracked_route
 def search_retrieval_chunks(
     request: ChunkRetrievalRequest,
     auth: AuthContext = Depends(get_auth_context),

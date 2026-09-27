@@ -1,0 +1,282 @@
+{
+  "run_id": "20260927T080318Z-02fae837",
+  "status": "passed",
+  "started_at": "2026-09-27T08:03:18.882270+00:00",
+  "execution": "real-subprocess-api-worker-postgresql-redis-local-model",
+  "steps": [
+    {
+      "name": "bootstrap",
+      "status": "passed",
+      "identities": [
+        {
+          "tenant_id": "1dcb6fb437e142aab67355ab8782c51c",
+          "user_id": "af2acceb5b2340b6aebd9b1ec2c8c894",
+          "external_id": "live-owner",
+          "kb_id": "cc42d0d276394c34bb378966e4fc1ad3"
+        },
+        {
+          "tenant_id": "d513afcd1a6f42d0b132ba6f4f3d3ced",
+          "user_id": "0dd1307969954d02ad57b4612c6c4425",
+          "external_id": "live-foreign",
+          "kb_id": "b168f4288c9b4957936d2918bae7bff4"
+        }
+      ],
+      "database_backend": "postgresql",
+      "queue_backend": "redis-streams",
+      "run_root": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\delivery",
+      "stream_key": "live-acceptance:20260927T080318Z-02fae837:jobs"
+    },
+    {
+      "name": "api_worker_running",
+      "status": "passed",
+      "api_pid": 31196,
+      "worker_pid": 36272
+    },
+    {
+      "name": "operations_publish_is_database_snapshot",
+      "status": "passed",
+      "item_id": 5,
+      "publish_id": "pub_3f20f22f9f43449aa341366014b975cb",
+      "formal_document_count": 0,
+      "index_unchanged": true,
+      "export_order": "approved_export_before_snapshot_publish"
+    },
+    {
+      "name": "upload_to_published",
+      "status": "passed",
+      "document_id": "d6da8f03b73245b087838ac3eca2931f",
+      "job_id": "058d0a4684d64e87943731057b471e00",
+      "job": {
+        "id": "058d0a4684d64e87943731057b471e00",
+        "tenant_id": "1dcb6fb437e142aab67355ab8782c51c",
+        "document_id": "d6da8f03b73245b087838ac3eca2931f",
+        "document_version_id": "145f3b00b0ec43479bdec1dc33530687",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 0,
+        "delivery_attempts": 1,
+        "next_retry_at": null,
+        "dead_letter_at": null,
+        "replay_job_id": null,
+        "created_at": "2026-09-27T08:03:28.483780",
+        "updated_at": "2026-09-27T08:03:33.542556",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 113,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      },
+      "markdown_sha256": "fe57470a68b949bf18579370f30cb0a438e6e6be2552cae8f7d0abea3c65f3a7"
+    },
+    {
+      "name": "ready_with_real_models",
+      "status": "passed",
+      "health": {
+        "status": "ready",
+        "ready": true,
+        "checks": {
+          "database": {
+            "status": "ok",
+            "revision": "0004_delivery_attempts",
+            "latency_ms": 8.9
+          },
+          "redis": {
+            "status": "ok",
+            "latency_ms": 11.1
+          },
+          "worker": {
+            "status": "ok",
+            "latency_ms": 11.0
+          },
+          "index": {
+            "status": "ok",
+            "version": 26,
+            "latency_ms": 1.9
+          },
+          "models": {
+            "status": "ok",
+            "provider": "local",
+            "latency_ms": 0.0
+          },
+          "auth": {
+            "status": "ok",
+            "latency_ms": 0.0
+          }
+        },
+        "public_ready_http_status": 200
+      }
+    },
+    {
+      "name": "worker_kill_recovery",
+      "status": "passed",
+      "job": {
+        "id": "856025f9273044ab960dfb82702e31ae",
+        "tenant_id": "1dcb6fb437e142aab67355ab8782c51c",
+        "document_id": "c8323bf4044344b48a17ec5de4212351",
+        "document_version_id": "3b8e22eba79243d4a37eb39b9a13fa8c",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 0,
+        "delivery_attempts": 2,
+        "next_retry_at": null,
+        "dead_letter_at": null,
+        "replay_job_id": null,
+        "created_at": "2026-09-27T08:03:33.700638",
+        "updated_at": "2026-09-27T08:03:45.409233",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 66,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      },
+      "live_task_not_taken_over": true
+    },
+    {
+      "name": "finite_transient_retries",
+      "status": "passed",
+      "job": {
+        "id": "87b8143feb40415787c392133135e568",
+        "tenant_id": "1dcb6fb437e142aab67355ab8782c51c",
+        "document_id": "b381f2f4c8e24053abbe37800e33a9d0",
+        "document_version_id": "9314305b7e5c402cb299dd7b6801bb7c",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 2,
+        "delivery_attempts": 3,
+        "next_retry_at": null,
+        "dead_letter_at": null,
+        "replay_job_id": null,
+        "created_at": "2026-09-27T08:03:45.812744",
+        "updated_at": "2026-09-27T08:03:55.645687",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 80,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      }
+    },
+    {
+      "name": "ack_failure_idempotent_recovery",
+      "status": "passed",
+      "job": {
+        "id": "684e1fa69d2c4c5687136dc7447f925e",
+        "tenant_id": "1dcb6fb437e142aab67355ab8782c51c",
+        "document_id": "dccffdf0c99b4b1c91357a0a75297bad",
+        "document_version_id": "1e26776b22654f33b00a832f199aef9d",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 0,
+        "delivery_attempts": 1,
+        "next_retry_at": null,
+        "dead_letter_at": null,
+        "replay_job_id": null,
+        "created_at": "2026-09-27T08:03:55.915457",
+        "updated_at": "2026-09-27T08:04:01.606052",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 62,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      },
+      "index_unchanged": true
+    },
+    {
+      "name": "dead_letter_authorized_idempotent_redrive",
+      "status": "passed",
+      "source": {
+        "id": "bcb020d712fb4010a2aac0626021c13a",
+        "tenant_id": "1dcb6fb437e142aab67355ab8782c51c",
+        "document_id": "e460ed4848f44f9b8c7feb4bb0c90a89",
+        "document_version_id": null,
+        "status": "failed",
+        "stage": "parsed",
+        "error_code": "unexpected_error",
+        "error_message": "Processing failed; see error_code",
+        "retry_count": 1,
+        "delivery_attempts": 1,
+        "next_retry_at": null,
+        "dead_letter_at": "2026-09-27T08:04:04.574381",
+        "replay_job_id": null,
+        "created_at": "2026-09-27T08:04:03.998452",
+        "updated_at": "2026-09-27T08:04:04.568381",
+        "warnings": [],
+        "parse_quality": null
+      },
+      "replay_job_id": "65532ccac4424ee4b39778100f1135dc",
+      "foreign_http_status": 404
+    },
+    {
+      "name": "requires_review_ack_preserved",
+      "status": "passed",
+      "job": {
+        "id": "d5a7b3a075f64f268075031a2a7be53d",
+        "tenant_id": "1dcb6fb437e142aab67355ab8782c51c",
+        "document_id": "b9e794637d684ce88c707c934f4790d9",
+        "document_version_id": "bdb23ea4b45447d2bb436cc1544620bf",
+        "status": "requires_review",
+        "stage": "parsed",
+        "error_code": "parse_quality_requires_review",
+        "error_message": "no_meaningful_text,garbled_text",
+        "retry_count": 0,
+        "delivery_attempts": 1,
+        "next_retry_at": null,
+        "dead_letter_at": null,
+        "replay_job_id": null,
+        "created_at": "2026-09-27T08:04:11.130964",
+        "updated_at": "2026-09-27T08:04:11.744944",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "requires_review",
+          "reasons": [
+            "no_meaningful_text",
+            "garbled_text"
+          ],
+          "metrics": {
+            "text_length": 100,
+            "garbled_ratio": 1.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      }
+    }
+  ],
+  "finished_at": "2026-09-27T08:04:12.161721+00:00"
+}

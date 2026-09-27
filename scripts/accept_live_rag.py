@@ -210,7 +210,7 @@ def headers(identity: dict, secret: str) -> dict:
     return {'Authorization': f'Bearer {token}'}
 
 
-def validate_chat(body: dict, document_id: str, keywords: list[str]) -> dict:
+def validate_chat(body: dict, document_id: str, keywords: list[str], *, expected_document_ids=None) -> dict:
     usage = body.get('token_usage', {})
     trace = body.get('trace', {})
     require(usage.get('provider') == 'local' and usage.get('completion_tokens', 0) > 0, 'local_generation_not_exercised')
@@ -223,7 +223,7 @@ def validate_chat(body: dict, document_id: str, keywords: list[str]) -> dict:
     require(all(word in body.get('reply', '') for word in keywords), 'answer_content_mismatch')
     citations = body.get('citations', []) + body.get('evidence_citations', [])
     ids = {str(item.get('document_id', '')) for item in citations if item.get('document_id')}
-    require(ids == {document_id}, 'citation_document_mismatch')
+    require(ids == (set(expected_document_ids) if expected_document_ids is not None else {document_id}), 'citation_document_mismatch')
     return {'reply': body['reply'], 'document_ids': sorted(ids), 'token_usage': usage,
             'trace': trace, 'citation_count': len(citations), 'generation_evidence': generated[0],
             'raw_generation_text_available': False,
@@ -239,6 +239,11 @@ def parse_args(argv=None):
     parser.add_argument('--answer', default='请打开星桥优享服务 App 的订单详情页，在售后进度中查看结果。请以官方页面显示为准。')
     parser.add_argument('--expected-keyword', action='append', default=None)
     parser.add_argument('--verify-parse-quality', action='store_true', help='Also exercise quarantine with real worker and rebuild.')
+    parser.add_argument('--capacity', action='store_true', help='Measure bounded capacity instead of repeating fault acceptance.')
+    parser.add_argument('--budget-checks', action='store_true', help='Run real timeout/disconnect/admission probes with a short configured deadline.')
+    parser.add_argument('--worker-checks', action='store_true')
+    parser.add_argument('--ledger-checks', action='store_true')
+    parser.add_argument('--capacity-phases', nargs='+', choices=['chat', 'ingestion', 'mixed'], default=['chat', 'ingestion', 'mixed'])
     return parser.parse_args(argv)
 
 
@@ -350,11 +355,12 @@ def run(args) -> int:
                     return False
 
             stage = 'api_worker_startup'
+            startup_started = time.monotonic()
             worker, api = launch('worker'), launch('api')
             poll(live, timeout=args.timeout, label='api_live')
             checkpoint('api_worker_running', api_pid=api.process.pid, worker_pid=worker.process.pid)
             stage = 'operations_snapshot'
-            marker = f'live-proof-{run_id}'
+            marker = 'capacity-fixture-v2' if args.capacity else f'live-proof-{run_id}'
             item = request('POST', '/knowledge/items', json={'title': marker, 'question': args.question, 'answer': args.answer,
                                                            'category': '服务说明', 'intent': '进度查询'})
             request('POST', f"/knowledge/items/{item['id']}/review", json={'status': 'approved', 'review_note': 'isolated live acceptance'})
@@ -390,6 +396,22 @@ def run(args) -> int:
             stage = 'real_retrieval_and_generation'
             readiness = poll(health, timeout=args.timeout, label='all_dependencies_ready')
             checkpoint('ready_with_real_models', health=readiness)
+            if args.worker_checks:
+                from scripts.verify_live_delivery import verify_delivery
+                verify_delivery(client, owner, owner_headers, foreign_headers, worker, launch, env, run_root, checkpoint)
+                report['status'] = 'passed'
+                return 0
+            if args.budget_checks:
+                from scripts.verify_live_budget import verify_budget
+                verify_budget(client, owner_headers, foreign_headers, args.question, checkpoint)
+                report['status'] = 'passed'
+                return 0
+            if args.capacity:
+                from scripts.capacity_observer import capacity_sweep
+                capacity_sweep(client, owner, owner_headers, args.question, api, worker, env,
+                               run_root, checkpoint, time.monotonic() - startup_started, args.capacity_phases)
+                report['status'] = 'passed'
+                return 0
 
             def verify_answers(phase):
                 retrieval = request('POST', '/retrieval/search', json={'query': args.question, 'retrieval_mode': 'hybrid', 'limit': 5})
@@ -413,6 +435,11 @@ def run(args) -> int:
             poll(health, timeout=args.timeout, label='restarted_ready')
             checkpoint('api_worker_restarted', old_pids=old_pids, new_pids=[api.process.pid, worker.process.pid])
             verify_answers('query_and_chat_after_restart')
+            if args.ledger_checks:
+                from scripts.verify_live_ledger import verify_ledger
+                verify_ledger(client, owner_headers, foreign_headers, run_root, checkpoint)
+                report['status'] = 'passed'
+                return 0
             stage = 'cross_tenant_isolation'
             request('GET', f'/documents/{document_id}', auth=foreign_headers, expected=404)
             foreign_search = request('POST', '/retrieval/search', auth=foreign_headers, json={'query': args.question})

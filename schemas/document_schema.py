@@ -185,6 +185,10 @@ class IngestionJobDetail(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     retry_count: int = Field(ge=0)
+    delivery_attempts: int = Field(default=0, ge=0)
+    next_retry_at: datetime | None = None
+    dead_letter_at: datetime | None = None
+    replay_job_id: str | None = None
     created_at: datetime
     updated_at: datetime
     warnings: list[ParseWarningItem] = Field(default_factory=list)

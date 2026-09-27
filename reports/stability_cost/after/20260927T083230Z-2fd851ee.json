@@ -1,0 +1,1329 @@
+{
+  "run_id": "20260927T083230Z-2fd851ee",
+  "status": "passed",
+  "started_at": "2026-09-27T08:32:30.088853+00:00",
+  "execution": "real-subprocess-api-worker-postgresql-redis-local-model",
+  "steps": [
+    {
+      "name": "bootstrap",
+      "status": "passed",
+      "identities": [
+        {
+          "tenant_id": "977b2f6ea61b4a048b675aabe4fa7a5d",
+          "user_id": "209b2c4a11ad4d4b9e086babb5e9760c",
+          "external_id": "live-owner",
+          "kb_id": "f5a038bf1db74a4abbf4e73a6bbf2507"
+        },
+        {
+          "tenant_id": "baa21b8142b440d6b41adecf688399ba",
+          "user_id": "e0ae7d9a38f14f609d915e40d397b849",
+          "external_id": "live-foreign",
+          "kb_id": "4dc974062bfa414fa283d5a42c5195f0"
+        }
+      ],
+      "database_backend": "postgresql",
+      "queue_backend": "redis-streams",
+      "run_root": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\after-mix",
+      "stream_key": "live-acceptance:20260927T083230Z-2fd851ee:jobs"
+    },
+    {
+      "name": "api_worker_running",
+      "status": "passed",
+      "api_pid": 1496,
+      "worker_pid": 38384
+    },
+    {
+      "name": "operations_publish_is_database_snapshot",
+      "status": "passed",
+      "item_id": 1,
+      "publish_id": "pub_b6b54a273ea74bd3ad4c8f562011c783",
+      "formal_document_count": 0,
+      "index_unchanged": true,
+      "export_order": "approved_export_before_snapshot_publish"
+    },
+    {
+      "name": "upload_to_published",
+      "status": "passed",
+      "document_id": "8790ec743cfd4daba8870598dfbe4b0b",
+      "job_id": "5ea7a129e64a4442a47df4e5749e9fb5",
+      "job": {
+        "id": "5ea7a129e64a4442a47df4e5749e9fb5",
+        "tenant_id": "977b2f6ea61b4a048b675aabe4fa7a5d",
+        "document_id": "8790ec743cfd4daba8870598dfbe4b0b",
+        "document_version_id": "b979fbdb68c14a31ae5f218a63dea156",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 0,
+        "delivery_attempts": 1,
+        "next_retry_at": null,
+        "dead_letter_at": null,
+        "replay_job_id": null,
+        "created_at": "2026-09-27T08:32:41.471313",
+        "updated_at": "2026-09-27T08:32:47.674599",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 96,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      },
+      "markdown_sha256": "afc89470af2857f1cbbdd961f1d5d493699a639e188be7d13e7c86dc018b5a1f"
+    },
+    {
+      "name": "ready_with_real_models",
+      "status": "passed",
+      "health": {
+        "status": "ready",
+        "ready": true,
+        "checks": {
+          "database": {
+            "status": "ok",
+            "revision": "0006_ledger_audit_fields",
+            "latency_ms": 11.5
+          },
+          "redis": {
+            "status": "ok",
+            "latency_ms": 11.5
+          },
+          "worker": {
+            "status": "ok",
+            "latency_ms": 11.0
+          },
+          "index": {
+            "status": "ok",
+            "version": 1,
+            "latency_ms": 1.4
+          },
+          "models": {
+            "status": "ok",
+            "provider": "local",
+            "latency_ms": 0.0
+          },
+          "auth": {
+            "status": "ok",
+            "latency_ms": 0.0
+          }
+        },
+        "public_ready_http_status": 200
+      }
+    },
+    {
+      "name": "capacity_configuration",
+      "status": "passed",
+      "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+      "logical_cpu": 12,
+      "physical_cpu": 6,
+      "memory_bytes": 33996894208,
+      "python": "3.12.10",
+      "api_processes": 1,
+      "worker_processes": 1,
+      "model": "qwen2.5-1.5b-instruct",
+      "embedding": "BAAI/bge-small-zh-v1.5",
+      "thread_configuration": {
+        "OMP_NUM_THREADS": "6",
+        "MKL_NUM_THREADS": "6"
+      },
+      "warm_startup_seconds": 16.85900000000038,
+      "source_sha256": {
+        "services\\answer_composer.py": "6dc061252d8eedf8b394e2b71518ad528383f9e4b9141904e6d9a102831e6d40",
+        "services\\audit_service.py": "60f26eb6b60b72425e011b3dd1d11d71140c2a6919f2bd40e8c6198f76afe238",
+        "services\\auth_context.py": "9bde3367d262d8943e299b93bac9a00e64491ee9b28e734535577066f7a62d88",
+        "services\\auth_service.py": "f39b289c125a2e2fd243d3d0a68c559d162f241322ca11f7f505c9ca64a9fcbf",
+        "services\\call_ledger.py": "c9dd544ff2d8f9ba342e381165cab0ae52057069777f0f50c595b59546376307",
+        "services\\chat_service.py": "b2ad49a80c944c5543d28d1a076344926a0ca022eecee0058f5a76937cb09683",
+        "services\\conversation_service.py": "7ea67d46797bbab8718c5d212e8266bd089e9a22a7559f63d64adb16fe6fc1ad",
+        "services\\conversation_store.py": "14c4ff8268c12b57067731e43bc3d8875a5b3c423f312c8038a157795bec1430",
+        "services\\customer_memory_service.py": "a9a35ed410f2e33949995fb6394b9619ec9f2bf115eb341b0322950ad9163d4e",
+        "services\\example_service.py": "5400b1da2e9ccf8f4f056ad43f20e485368a9e4f8b14e4086894914480431644",
+        "services\\feedback_service.py": "1400c7cd63611604bbc42cf946a3f8ff70e4de9d38a44833c7efe97a6687e750",
+        "services\\grounding_diagnostics.py": "dd28c835b60d6f73d0002a5e5889bf75e292060e4de80a93d668198469264fc0",
+        "services\\health_service.py": "ced0df498ef2f481f4ca0950044396fdebfa97bfb3a3715f3a82797be36a1496",
+        "services\\ingestion\\__init__.py": "3fe0b9b48ec2d37788c7c12341373188c3483b3396707909bd256fafcec22f24",
+        "services\\ingestion\\admission.py": "34a1ca1e5ecb142f104a4ed705521394750a9c3c3eca6ed954e71bedb164945c",
+        "services\\ingestion\\chunkers\\__init__.py": "5e8d0e81a246e10b26223dfb1de1ca5efd97987c671e52fc29c97f81d1f2643a",
+        "services\\ingestion\\chunkers\\chunker.py": "9e999ecb58e05948a578f811d75a8861d1894e6c0370f3aecbb4ffc91b97dca4",
+        "services\\ingestion\\chunkers\\cleaner.py": "c09026b3402ca537542277546c659bcc805762d94be3aaaeded7e0530006a8f7",
+        "services\\ingestion\\chunkers\\errors.py": "f9bcd87467abccbe311051b8dd5294ae4619ec2a1fa2ca8e172e92fa05f0471c",
+        "services\\ingestion\\chunkers\\models.py": "15d597ef9e06df416fd930d1c422307afbae62006df82ded88006ed56a9c941b",
+        "services\\ingestion\\chunkers\\tokenizer.py": "256d2f08ff3f66a03141743ebfe9644aea62ef666f0eca239f934d32bdee758e",
+        "services\\ingestion\\content_sniff.py": "99fbbc2dcc2657194695e6eb31a5215b82dd8c34b5a46975656431efc72e0948",
+        "services\\ingestion\\db.py": "30268f2acb05c99d5b9ff58ff737c4bfcbf4a4c355d4ec15423319363f457c58",
+        "services\\ingestion\\delivery.py": "6907a7912fd63fb6d89fa885d2b53acfb3c949bc4d7b3051086b0d16c2368c3a",
+        "services\\ingestion\\index_builder.py": "2e4ae9cb8fb6b87613987796fe603bdc07e443483d0fa514bad768b119d3e859",
+        "services\\ingestion\\index_manifest.py": "343be7d842c20b402463a2837ff5516c159215e62085f2dd623916318ca9be33",
+        "services\\ingestion\\models.py": "fd22c1ecc236f4538087989d17145b18237fba3d72dbbd688b27b31295d8a73a",
+        "services\\ingestion\\object_store.py": "4a1880f3a106a4f7954122f9e59ba9d836e07a6446c2cd45e7b7b903d5b24d58",
+        "services\\ingestion\\parse_quality.py": "d7e7bedd13a378e47d8e73af9da487219453b43d24ca10b7ff880ba356140af0",
+        "services\\ingestion\\parser_registry.py": "c451b0618af96c8333c7bffa2e3a51e67a7adbe84eb49408b6210f98cd5813b7",
+        "services\\ingestion\\parsers\\__init__.py": "3fff5a6ef5bd7735de693eb795e63003d1f4df0961280f9a88fb3f7c11133406",
+        "services\\ingestion\\parsers\\_text.py": "6430baf9b25c9191ddcac9ca641168ac5bd451283b7dacda68b8f6943e64ee07",
+        "services\\ingestion\\parsers\\base.py": "01073fd3216bb3d9480e140d626284590c00d1d8ce470165a4f1a5e9f74817c3",
+        "services\\ingestion\\parsers\\docx.py": "e648d5f329f842f8261ce664c86899ce40b9985230ce068abb17fc58d50cc4c7",
+        "services\\ingestion\\parsers\\html.py": "d9af8cda0e0084d1c10295bf89985779015cdde5022cd8af6243aa2fef0f3626",
+        "services\\ingestion\\parsers\\markdown.py": "9e6581356ddcc806d49004a4ec3477b93a8dcfd2466cef7e05d6693faeef37ac",
+        "services\\ingestion\\parsers\\ocr.py": "d01bffb2840fba84815b560afb997e801de2d73edb6fea6a20bdfb6b298c4337",
+        "services\\ingestion\\parsers\\pdf.py": "a6005b6b34806aa8653735039fef81842a10cdb3f1e137399f7090909d0d3d23",
+        "services\\ingestion\\parsers\\plain_text.py": "5710e5a2b9677d83afdeab9bf77e971c8df4ed15f1f6ad475aa66403255e85fe",
+        "services\\ingestion\\pipeline.py": "eae9165357fd7154c6276f5fddc0f5f798c24436482937704eac7ff14b2f5f66",
+        "services\\ingestion\\queue.py": "07b90e3abd23831db62aa89e1a3bf492d6103e67f392606193367ce62c110be8",
+        "services\\ingestion\\repository.py": "5265753ff3b421d938b9f450c07db26cb29482c8e175e4fc79648dbfa43dd034",
+        "services\\ingestion\\sparse_index.py": "fbde148ddf5f6bfb96f824c993942a22a5f201cb9713b3386bf7eb5af7320485",
+        "services\\ingestion\\worker.py": "debc0f338b3c5d898a763c8dc4984cd100529e1aaac23d01680c4e2aace14700",
+        "services\\ingestion\\worker_health.py": "52d3d49e81aa682e5389feec6a86577c6b70743bc607ac04a5985bf63fbc60be",
+        "services\\intent_service.py": "ca5e7ceefd9fcff5de0e6e7a73cb22ee731d7a5660843c38742a9ba8ce40701c",
+        "services\\knowledge_service.py": "2eb7027c7a3e292af52098adb98d1ad9b899cccbe5c46a004d14928e8d910930",
+        "services\\online_generation.py": "49f282ebcf6a17667ab0a456c58dcf50086559e01859887b28cfc1975a7ba67e",
+        "services\\ops_metrics.py": "a44b1e858f704a97dd930ef97e1874131e35620a70a3f9ecaa11a595a4865deb",
+        "services\\order_state_store.py": "8b9d8b1a889dce8a19519e3e46729c8bd96e5105c30030696e970e649f8c7ecc",
+        "services\\order_tool_service.py": "6072437458274910fbf43afa278921c617cbac3b48b671b84d4b29f7678ff489",
+        "services\\pool_observation.py": "1ae5c13c077288f7474479a683114e69192b2bfcfde7445fe9e4722f47d44306",
+        "services\\privacy.py": "ecfdaae8d79fb3983d3d5073119ea185003914ee861dd4a6bbe2447834887def",
+        "services\\prompt_service.py": "de4d17b50f8c7f82e80c3ccb374b6244afeba39123b16a557971a14c0048d226",
+        "services\\query_resolution.py": "3a71829e22b2c977b3eba87e1ba37f4f165206fc56a53c19cab79e66b84b95a4",
+        "services\\query_rewrite_provider.py": "68cc2b9b5269b25d50655f769d9f6ec815c71f4c1a10c604b4f276cc11e7bb4b",
+        "services\\redis_context_cache.py": "9c1a86f324ad6c72085ab87987e250462142a4d763e0e140beea88d8da817222",
+        "services\\release_check_service.py": "75795c0cfe0704d718c0fa3d99e9ee87f6cbd57e373fbacf8de2771f6a465cc9",
+        "services\\reply_rules.py": "4b3d9245b80bd42454fbad00e500c547a5b1a6e43479599f84e603076d9fed3b",
+        "services\\request_budget.py": "aee99c0591979af28573a84483895b806e01ad228096b68f896969fa3918af4e",
+        "services\\retrieval_access.py": "d7fb6d0256055f5ed8bf427b2d020e5c9c41790aca19786bee6adb21db603c02",
+        "services\\runtime_db.py": "f0ec17f1f4736a9c0c0ee46a8b445883bbc78fd0806a59da241b7d0378f5f440",
+        "services\\runtime_maintenance.py": "0b9b7bf7fd57a57b09325ffb8efcfda5b5f5cf03022673144806b12dfa1429cd",
+        "services\\runtime_schema.py": "6cca5426cee284253d5d26ff722407c3b6ad7db27737c2df5b6017398c1ca486",
+        "services\\safety_guard.py": "8bb77e6b370306dd42b35a70d5e1c285baacb172792016f4beaea84bb9a7dc58",
+        "routers\\audit.py": "753616965627a70bd84ffac7393f642bafeda1ab123cdd3404e184336e0265f7",
+        "routers\\chat.py": "e6e982499dc21298133e099b8cf336a4eb5031e8843cd0a96393422bad7869d1",
+        "routers\\documents.py": "30f1b31680de43f529931ad0d0d39142e313d4bda5269908e81515393a09d576",
+        "routers\\example.py": "0e84ad1a3e76f7dc008f146bea94081d663c928a4696f37a05266450a90103f4",
+        "routers\\feedback.py": "156a647f69595e316a4d0d6eec305a38373db8aa90dce9eced08f5dac3ccd168",
+        "routers\\health.py": "5b00f90f38b353074f08fe7fc52305e1e96d9cc60b09fb7a20de486044490165",
+        "routers\\info.py": "f0037829845602f0cfdfc13fe2dd17f29c1d607116c00d5608bcd134efc5f2ff",
+        "routers\\knowledge.py": "12e83908f0aa8af92935b3ad2c47a8077a804d7d628df572a8c09015aaf76883",
+        "routers\\ops.py": "8f96145b44f67611ff792a48f5054de47ad5a2ad3b4dce3d4249c93d04a8603b",
+        "routers\\order.py": "d82247cb1c4283eac1361744e41c168dba1fa1dcbc4ab08b6631fb49e7469da6",
+        "routers\\prompt.py": "86c399e1c31c157b6a56267cf13f40c31f5d829e389872f567298372e579c129",
+        "routers\\release.py": "1732208041080648a3cd79bcd62d23c1a724c8867a9a80d2e4f4e80ebe034721",
+        "routers\\retrieval.py": "9daf15fc0df0b3d1e77634e764662a02bd10b68b1c6be8a39d9405b3a5e7cbc9",
+        "config\\chunking_config.py": "5b2fc8f3d4702b0974fa0eae7b204874ec59822cfe4f303b5c8a73eeb0210487",
+        "config\\rag_config.py": "0eeb91e3fde3cb61eb8adfefc31341cdd00047458762d792b79884c1a33f5a31",
+        "config\\runtime_config.py": "0a3f06c1358ae17f7511b6a6acd8c8d3b12eae719377c223e1ec2a038a66a481"
+      },
+      "fixture": "capacity-fixture-v2; deterministic phase-concurrency-index Markdown; one approved FAQ seed",
+      "concurrency_levels": [
+        1,
+        2,
+        4
+      ],
+      "attempts_per_level": "2 * concurrency",
+      "request_timeout_seconds": 90,
+      "stop_on": "any failure/timeout or P95 > 30 seconds or RSS > 16 GiB",
+      "pool_observation": "SQLAlchemy checkout/checkin event files in RAG_POOL_OBSERVATION_DIR",
+      "pool_observation_dir": "D:/llm/llm-customer-service/tmp/stability-20260927/after-mix-pools"
+    },
+    {
+      "name": "capacity_first_chat",
+      "status": "passed",
+      "attempts": 1,
+      "outcomes": {
+        "success": 1
+      },
+      "wall_seconds": 9.781999999999243,
+      "completed_per_second": 0.10222858311184597,
+      "successful_per_second": 0.10222858311184597,
+      "latency_all_attempts_ms": {
+        "p50": 9781.999999999243,
+        "p95": 9781.999999999243,
+        "p99": 9781.999999999243
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 9781.999999999243,
+          "request_id": "ae2fdaaa9b964f3d918d528d35a4e645",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 803,
+            "completion_tokens": 20,
+            "total_tokens": 823,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 31.23,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.69,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.39,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 45.74,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.04,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 3.08,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9639.68,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 1.19,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 4.49,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 7.11,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 10.87,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "ae2fdaaa9b964f3d918d528d35a4e645",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497968230583500-0",
+            "order_id": null,
+            "latency_ms": 9754.44,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 9781.999999999243
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "ingestion",
+      "concurrency": 1,
+      "stop": false,
+      "attempts": 2,
+      "outcomes": {
+        "success": 2
+      },
+      "wall_seconds": 2.0780000000013388,
+      "completed_per_second": 0.9624639076028448,
+      "successful_per_second": 0.9624639076028448,
+      "latency_all_attempts_ms": {
+        "p50": 828.0000000013388,
+        "p95": 1250.0,
+        "p99": 1250.0
+      },
+      "rows": [
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 0.0,
+          "job_id": "b7e011aafffb454f96edc7e11d9c1037",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 828.0000000013388
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "b2e9cb81e835451fa6c3aa412e1b37ab",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1250.0
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "ingestion",
+      "concurrency": 2,
+      "stop": false,
+      "attempts": 4,
+      "outcomes": {
+        "success": 4
+      },
+      "wall_seconds": 1.9059999999990396,
+      "completed_per_second": 2.0986358866747197,
+      "successful_per_second": 2.0986358866747197,
+      "latency_all_attempts_ms": {
+        "p50": 639.9999999994179,
+        "p95": 1265.9999999996217,
+        "p99": 1265.9999999996217
+      },
+      "rows": [
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "ebdfd2932dce40dc87e87862183398c3",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1061.9999999980791
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "22e80151e7cd4959af26c36b97f78203",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1265.9999999996217
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 16.00000000325963,
+          "job_id": "e1f5f8688b1841cf876a6d1ab0da00ab",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 422.0000000022992
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 14.999999999417923,
+          "job_id": "03daf935f24549acb7258a7de4061551",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 639.9999999994179
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "ingestion",
+      "concurrency": 4,
+      "stop": false,
+      "attempts": 8,
+      "outcomes": {
+        "success": 8
+      },
+      "wall_seconds": 4.015999999999622,
+      "completed_per_second": 1.9920318725101478,
+      "successful_per_second": 1.9920318725101478,
+      "latency_all_attempts_ms": {
+        "p50": 1655.9999999990396,
+        "p95": 2344.0000000009604,
+        "p99": 2344.0000000009604
+      },
+      "rows": [
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "2bed03f256fd414a8f08be7350ec1a5d",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1280.9999999990396
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 47.0000000022992,
+          "job_id": "376681bb70534270a7ff362e2a077ed6",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 2344.0000000009604
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 47.0000000022992,
+          "job_id": "ffee0029a4cf4049882c859ecd13be6c",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1969.0000000009604
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 30.999999999039574,
+          "job_id": "06f0ce84fd6947ce967dcf08dfa0b653",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1530.9999999990396
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 16.00000000325963,
+          "job_id": "0e8cb05fd7dd422dbb470936417a633b",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1282.0000000028813
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 16.00000000325963,
+          "job_id": "2d388a3aa4974398ba8178eee1d2f317",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1672.0000000022992
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 0.0,
+          "job_id": "e299df6fade84bfa89139cdad0861a76",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1655.9999999990396
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "9c0c32be893644718143498322cc4a20",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1671.9999999986612
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "mixed",
+      "concurrency": 1,
+      "stop": false,
+      "attempts": 2,
+      "outcomes": {
+        "success": 2
+      },
+      "wall_seconds": 12.484000000000378,
+      "completed_per_second": 0.16020506247996952,
+      "successful_per_second": 0.16020506247996952,
+      "latency_all_attempts_ms": {
+        "p50": 844.0000000009604,
+        "p95": 11639.999999999418,
+        "p99": 11639.999999999418
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 11639.999999999418,
+          "request_id": "afbe1bf03a6c41b6859b895610367bbb",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 20.31,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.7,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.03,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 1.11,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 48.23,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.15,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.82,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.85,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 11509.88,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.13,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.67,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.4,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 9.46,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 15,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "afbe1bf03a6c41b6859b895610367bbb",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497986044563000-0",
+            "order_id": null,
+            "latency_ms": 11615.45,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 11639.999999999418
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 16.00000000325963,
+          "job_id": "731e76dece3c4e9b8fbcbbb27bfb8f51",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 844.0000000009604
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "mixed",
+      "concurrency": 2,
+      "stop": false,
+      "attempts": 4,
+      "outcomes": {
+        "success": 4
+      },
+      "wall_seconds": 23.45300000000134,
+      "completed_per_second": 0.1705538737048468,
+      "successful_per_second": 0.1705538737048468,
+      "latency_all_attempts_ms": {
+        "p50": 2313.000000001921,
+        "p95": 21109.00000000038,
+        "p99": 21109.00000000038
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 11766.00000000326,
+          "request_id": "0a420ac3b1f944f98584aafe5152a5f0",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.03,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 28.19,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 1.29,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 1.09,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 41.02,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.09,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.45,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 3.06,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 11640.05,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.16,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.49,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.26,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 11.16,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 16,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "0a420ac3b1f944f98584aafe5152a5f0",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497998549355800-0",
+            "order_id": null,
+            "latency_ms": 11749.8,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 11766.00000000326
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 16.00000000325963,
+          "job_id": "c7b282e832ff43abac02a7cc13801d0e",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 2313.000000001921
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 21109.00000000038,
+          "request_id": "f593958991b045bf8b047fae23026a3b",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 23.29,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.81,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 1.52,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 64.39,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.08,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.98,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.28,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 20961.06,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.15,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.47,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.55,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 9.81,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 17,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "f593958991b045bf8b047fae23026a3b",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790498000865374600-2",
+            "order_id": null,
+            "latency_ms": 21086.99,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 21109.00000000038
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "0542ef4b44ed42799cac9becdc650ef4",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1905.9999999990396
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "mixed",
+      "concurrency": 4,
+      "stop": false,
+      "attempts": 8,
+      "outcomes": {
+        "success": 6,
+        "rejected": 2
+      },
+      "wall_seconds": 23.96900000000096,
+      "completed_per_second": 0.33376444574240394,
+      "successful_per_second": 0.2503233343068029,
+      "latency_all_attempts_ms": {
+        "p50": 3343.9999999973224,
+        "p95": 23969.00000000096,
+        "p99": 23969.00000000096
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 23969.00000000096,
+          "request_id": "23c4d141c68b47ffa69b329b449e35a8",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 51.11,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 4.08,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 1.82,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 66.7,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 7.16,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 3.05,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 23768.95,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.14,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.21,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.32,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 8.91,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 18,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "23c4d141c68b47ffa69b329b449e35a8",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790498021981962100-0",
+            "order_id": null,
+            "latency_ms": 23940.38,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 23969.00000000096
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 31.9999999992433,
+          "job_id": "619d47d8702f4348bf745b5e05fd6e12",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1921.9999999986612
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 12437.999999998283,
+          "request_id": "52dca2fe40774ecfb15b196110cabaea",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 58.46,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 1.21,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.55,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 55.11,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.08,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.78,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.74,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 12231.43,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.15,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 5.6,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.17,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 9.63,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 18,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "52dca2fe40774ecfb15b196110cabaea",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790498021982961400-2",
+            "order_id": null,
+            "latency_ms": 12396.24,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 12437.999999998283
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 46.999999998661224,
+          "job_id": "59a0c9ca5af34cf8baefd4747e67b594",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 3594.0000000009604
+        },
+        {
+          "kind": "chat",
+          "outcome": "rejected",
+          "http_status": 429,
+          "admission_ms": 15.99999999962165,
+          "elapsed_ms": 15.99999999962165
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 14.999999999417923,
+          "job_id": "e0228ab02d2a4f9a83d38a49929bd286",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 3547.000000002299
+        },
+        {
+          "kind": "chat",
+          "outcome": "rejected",
+          "http_status": 429,
+          "admission_ms": 0.0,
+          "elapsed_ms": 0.0
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "c70e57a93f1f4d9f877be3ac8ceb3012",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 3343.9999999973224
+        }
+      ]
+    },
+    {
+      "name": "capacity_observations",
+      "status": "passed",
+      "path": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\after-mix\\capacity_samples.json",
+      "samples": 155,
+      "pool_checked_out_peaks": {
+        "api": null,
+        "worker": null
+      },
+      "peak_rss_bytes": {
+        "api": 3563520,
+        "worker": 3575808
+      },
+      "max_lock_waiters": 0,
+      "max_pending": 4,
+      "sample_errors": 0
+    }
+  ],
+  "finished_at": "2026-09-27T08:34:05.987378+00:00"
+}

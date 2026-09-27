@@ -130,6 +130,8 @@ def read_root():
 
 def create_app() -> FastAPI:
     app = FastAPI(title="LLM Customer Service API", version="0.2.0", lifespan=lifespan)
+    from services.request_budget import RequestBudgetMiddleware
+    app.add_middleware(RequestBudgetMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

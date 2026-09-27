@@ -390,3 +390,7 @@ Index("ix_runtime_audit_request", audit_logs.c.tenant_id, audit_logs.c.request_i
 Index(
     "ix_runtime_knowledge_status", knowledge_items.c.tenant_id, knowledge_items.c.status, knowledge_items.c.updated_at
 )
+
+# Included in schema verification and migration planning, without runtime DDL.
+from services.call_ledger import calls as model_calls  # noqa: E402
+model_calls.to_metadata(metadata)

@@ -33,6 +33,7 @@ reports/*
 !reports/rag_ingestion_auth_review/
 !reports/retrieval_hybrid/
 !reports/retrieval_quality/
+!reports/stability_cost/
 reports/retrieval_quality/*
 !reports/retrieval_quality/20260927_summary.json
 !reports/retrieval_quality/20260927_provenance.json

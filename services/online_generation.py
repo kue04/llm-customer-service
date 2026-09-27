@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 from urllib import request
+from services.request_budget import checkpoint, remaining_timeout
+from services.call_ledger import tracked_model
 
 
 def build_online_chat_completions_url(api_base_url: str) -> str:
@@ -30,6 +32,7 @@ def generate_online_chat_completion(
     )["text"]
 
 
+@tracked_model('online', 'generation', lambda *a, **kw: kw.get('model_name') or a[2])
 def generate_online_chat_completion_with_usage(
     prompt: str,
     system_prompt: str,
@@ -61,13 +64,16 @@ def generate_online_chat_completion_with_usage(
         },
         method="POST",
     )
-    with request.urlopen(http_request, timeout=60) as response:
+    checkpoint()
+    with request.urlopen(http_request, timeout=remaining_timeout(60)) as response:
         response_body = response.read().decode("utf-8")
+    checkpoint()
     data = json.loads(response_body)
     usage = data.get("usage") or {}
     return {
         "text": data["choices"][0]["message"]["content"].strip(),
         "usage": {
+            "counting_method": 'provider_usage' if usage else 'unknown',
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
             "total_tokens": usage.get("total_tokens"),

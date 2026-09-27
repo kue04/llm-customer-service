@@ -120,8 +120,16 @@ def get_embedding_model() -> SentenceTransformer:
 
 
 def build_embedding(text: str) -> list[float]:
+    from services.request_budget import checkpoint
+    from services.call_ledger import model_call, capture_usage
+    checkpoint()
     model = get_embedding_model()
-    vector = model.encode(text, normalize_embeddings=True)
+    with model_call('local', get_rag_config().embedding_model_name, 'embedding'):
+        vector = model.encode(text, normalize_embeddings=True)
+        if hasattr(model, 'tokenize'):
+            count = int(model.tokenize([text])['attention_mask'].sum().item())
+            capture_usage({'prompt_tokens': count, 'completion_tokens': 0, 'total_tokens': count, 'counting_method': 'local_tokenizer'})
+        checkpoint()
     return vector.tolist()
 
 
@@ -378,7 +386,16 @@ def calculate_model_rerank_scores(
 
     pairs = [[query, build_rerank_text(candidate)] for candidate in candidates]
     model = get_reranker_model()
-    scores = model.predict(pairs)
+    from services.call_ledger import model_call, capture_usage
+    from services.request_budget import checkpoint
+    checkpoint()
+    with model_call('local', get_rag_config().reranker_model_name, 'reranking'):
+        scores = model.predict(pairs)
+        if hasattr(model, 'tokenizer'):
+            encoded = model.tokenizer(pairs, padding=True, truncation=True, return_tensors='pt')
+            count = int(encoded['attention_mask'].sum().item())
+            capture_usage({'prompt_tokens': count, 'completion_tokens': 0, 'total_tokens': count, 'counting_method': 'local_tokenizer'})
+        checkpoint()
     return [float(score) for score in scores]
 
 

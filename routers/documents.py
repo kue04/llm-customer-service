@@ -47,6 +47,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from schemas.document_schema import (
     DocumentDetail,
@@ -70,6 +71,7 @@ from services.auth_service import (
     require_write_operation_role,
 )
 from services.ingestion import db, models, parser_registry, repository
+from services.ingestion.admission import admit_job
 from services.ingestion.content_sniff import matches_declared_type
 from services.ingestion.index_builder import (
     ERROR_INDEX_BUILD_FAILED,
@@ -472,6 +474,7 @@ async def upload_document(
         # 否则「KB-A 的成员」可以借同名文件给 KB-B 的文档追加版本。
         _require_kb_write_member(session, auth, existing.knowledge_base_id)
 
+    admit_job(session, auth.tenant_id)
     document = existing
     if document is None:
         document = repository.create_document(
@@ -587,6 +590,7 @@ def reprocess_document(
     document = _load_document(session, auth, document_id)
     _require_kb_write_member(session, auth, document.knowledge_base_id)
 
+    admit_job(session, auth.tenant_id)
     job = repository.create_ingestion_job(
         session,
         tenant_id=auth.tenant_id,
@@ -617,6 +621,34 @@ def reprocess_document(
         job_status=job.status,
         job_stage=job.stage,
     )
+
+
+@router.post('/ingestion-jobs/{job_id}/redrive', response_model=DocumentReprocessResponse, status_code=202)
+def redrive_job(job_id: str, auth: AuthContext = Depends(get_auth_context),
+                meta: RequestMeta = Depends(get_request_meta), session: Session = Depends(get_session),
+                queue: IngestionQueue = Depends(get_queue)):
+    require_write_operation_role(REPROCESS_OPERATION, auth)
+    source = session.scalar(select(models.IngestionJob).where(
+        models.IngestionJob.id == job_id, models.IngestionJob.tenant_id == auth.tenant_id).with_for_update())
+    if source is None or not document_is_visible(session, auth, source.document_id):
+        raise HTTPException(404, detail='任务不存在')
+    document = _load_document(session, auth, source.document_id)
+    _require_kb_write_member(session, auth, document.knowledge_base_id)
+    if source.dead_letter_at is None or source.status == 'requires_review':
+        raise HTTPException(409, detail='job_not_dead_letter')
+    if source.replay_job_id:
+        job = repository.get_ingestion_job(session, auth.tenant_id, source.replay_job_id)
+    else:
+        admit_job(session, auth.tenant_id)
+        job = repository.create_ingestion_job(session, tenant_id=auth.tenant_id, document_id=document.id,
+                                               status='pending', stage='received')
+        source.replay_job_id = job.id
+        _record_audit(session, auth, meta, action='ingestion_dead_letter_redrive', resource_type='ingestion_job',
+                      resource_id=source.id, summary={'source_job_id': source.id, 'replay_job_id': job.id})
+    session.commit()
+    if job.status in {'pending', 'retrying'}:
+        _publish_job(job.id, queue)
+    return DocumentReprocessResponse(document_id=document.id, job_id=job.id, job_status=job.status, job_stage=job.stage)
 
 
 @router.get("/ingestion-jobs/{job_id}", response_model=IngestionJobDetail, summary="查询接入任务")
@@ -653,6 +685,10 @@ def get_ingestion_job(
         error_code=job.error_code,
         error_message=job.error_message,
         retry_count=job.retry_count,
+        delivery_attempts=job.delivery_attempts,
+        next_retry_at=job.next_retry_at,
+        dead_letter_at=job.dead_letter_at,
+        replay_job_id=job.replay_job_id,
         created_at=job.created_at,
         updated_at=job.updated_at,
         warnings=_extract_warnings(version),

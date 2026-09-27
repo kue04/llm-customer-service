@@ -1,0 +1,1940 @@
+{
+  "run_id": "20260927T082408Z-910e204c",
+  "status": "passed",
+  "started_at": "2026-09-27T08:24:08.981028+00:00",
+  "execution": "real-subprocess-api-worker-postgresql-redis-local-model",
+  "steps": [
+    {
+      "name": "bootstrap",
+      "status": "passed",
+      "identities": [
+        {
+          "tenant_id": "7bd849d2ddc54a929b083c94fb4dbab7",
+          "user_id": "301894440eeb459ea8d24660f6b60b98",
+          "external_id": "live-owner",
+          "kb_id": "3ecab45d680d46919448393bec5b23f4"
+        },
+        {
+          "tenant_id": "1d5206e561f44308a6db480c1dcd2351",
+          "user_id": "51f4af6a255c43eb82babf79acf4ec2c",
+          "external_id": "live-foreign",
+          "kb_id": "8af19c088115464e8616f77c1feab692"
+        }
+      ],
+      "database_backend": "postgresql",
+      "queue_backend": "redis-streams",
+      "run_root": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\before-v3",
+      "stream_key": "live-acceptance:20260927T082408Z-910e204c:jobs"
+    },
+    {
+      "name": "api_worker_running",
+      "status": "passed",
+      "api_pid": 37940,
+      "worker_pid": 35324
+    },
+    {
+      "name": "operations_publish_is_database_snapshot",
+      "status": "passed",
+      "item_id": 1,
+      "publish_id": "pub_05e183f6d2984a6a921eb4f2d46adeea",
+      "formal_document_count": 0,
+      "index_unchanged": true,
+      "export_order": "approved_export_before_snapshot_publish"
+    },
+    {
+      "name": "upload_to_published",
+      "status": "passed",
+      "document_id": "c5c3189afd0a4c9c96b31558c00394af",
+      "job_id": "54eba07d83124253a41d65efb74e9527",
+      "job": {
+        "id": "54eba07d83124253a41d65efb74e9527",
+        "tenant_id": "7bd849d2ddc54a929b083c94fb4dbab7",
+        "document_id": "c5c3189afd0a4c9c96b31558c00394af",
+        "document_version_id": "fb13fc61e3a14e389402dd131e083877",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 0,
+        "created_at": "2026-09-27T08:24:20.480116",
+        "updated_at": "2026-09-27T08:24:26.504986",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 96,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      },
+      "markdown_sha256": "afc89470af2857f1cbbdd961f1d5d493699a639e188be7d13e7c86dc018b5a1f"
+    },
+    {
+      "name": "ready_with_real_models",
+      "status": "passed",
+      "health": {
+        "status": "ready",
+        "ready": true,
+        "checks": {
+          "database": {
+            "status": "ok",
+            "revision": "0003_parse_quality",
+            "latency_ms": 10.0
+          },
+          "redis": {
+            "status": "ok",
+            "latency_ms": 1.8
+          },
+          "worker": {
+            "status": "ok",
+            "latency_ms": 1.6
+          },
+          "index": {
+            "status": "ok",
+            "version": 1,
+            "latency_ms": 1.7
+          },
+          "models": {
+            "status": "ok",
+            "provider": "local",
+            "latency_ms": 0.0
+          },
+          "auth": {
+            "status": "ok",
+            "latency_ms": 0.0
+          }
+        },
+        "public_ready_http_status": 200
+      }
+    },
+    {
+      "name": "capacity_configuration",
+      "status": "passed",
+      "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+      "logical_cpu": 12,
+      "physical_cpu": 6,
+      "memory_bytes": 33996894208,
+      "python": "3.12.10",
+      "api_processes": 1,
+      "worker_processes": 1,
+      "model": "qwen2.5-1.5b-instruct",
+      "embedding": "BAAI/bge-small-zh-v1.5",
+      "thread_configuration": {
+        "OMP_NUM_THREADS": "6",
+        "MKL_NUM_THREADS": "6"
+      },
+      "warm_startup_seconds": 16.4529999999977,
+      "source_sha256": {
+        "services\\answer_composer.py": "6dc061252d8eedf8b394e2b71518ad528383f9e4b9141904e6d9a102831e6d40",
+        "services\\audit_service.py": "60f26eb6b60b72425e011b3dd1d11d71140c2a6919f2bd40e8c6198f76afe238",
+        "services\\auth_context.py": "9bde3367d262d8943e299b93bac9a00e64491ee9b28e734535577066f7a62d88",
+        "services\\auth_service.py": "f39b289c125a2e2fd243d3d0a68c559d162f241322ca11f7f505c9ca64a9fcbf",
+        "services\\chat_service.py": "8d0645c483bbade76692187987ebe0a85f2a49bae1d2361ea3b8d0466910edc4",
+        "services\\conversation_service.py": "7ea67d46797bbab8718c5d212e8266bd089e9a22a7559f63d64adb16fe6fc1ad",
+        "services\\conversation_store.py": "14c4ff8268c12b57067731e43bc3d8875a5b3c423f312c8038a157795bec1430",
+        "services\\customer_memory_service.py": "b6d4312c8f692a709372ff7237ad095ae040d54c99356f79718c6e9607e88d1a",
+        "services\\example_service.py": "5400b1da2e9ccf8f4f056ad43f20e485368a9e4f8b14e4086894914480431644",
+        "services\\feedback_service.py": "1400c7cd63611604bbc42cf946a3f8ff70e4de9d38a44833c7efe97a6687e750",
+        "services\\grounding_diagnostics.py": "5b6b4c81a0495b40463600a129cf9bcd778db59c4708eeb247e2c07a23126496",
+        "services\\health_service.py": "ced0df498ef2f481f4ca0950044396fdebfa97bfb3a3715f3a82797be36a1496",
+        "services\\ingestion\\__init__.py": "3fe0b9b48ec2d37788c7c12341373188c3483b3396707909bd256fafcec22f24",
+        "services\\ingestion\\chunkers\\__init__.py": "5e8d0e81a246e10b26223dfb1de1ca5efd97987c671e52fc29c97f81d1f2643a",
+        "services\\ingestion\\chunkers\\chunker.py": "9e999ecb58e05948a578f811d75a8861d1894e6c0370f3aecbb4ffc91b97dca4",
+        "services\\ingestion\\chunkers\\cleaner.py": "c09026b3402ca537542277546c659bcc805762d94be3aaaeded7e0530006a8f7",
+        "services\\ingestion\\chunkers\\errors.py": "f9bcd87467abccbe311051b8dd5294ae4619ec2a1fa2ca8e172e92fa05f0471c",
+        "services\\ingestion\\chunkers\\models.py": "15d597ef9e06df416fd930d1c422307afbae62006df82ded88006ed56a9c941b",
+        "services\\ingestion\\chunkers\\tokenizer.py": "256d2f08ff3f66a03141743ebfe9644aea62ef666f0eca239f934d32bdee758e",
+        "services\\ingestion\\content_sniff.py": "99fbbc2dcc2657194695e6eb31a5215b82dd8c34b5a46975656431efc72e0948",
+        "services\\ingestion\\db.py": "30268f2acb05c99d5b9ff58ff737c4bfcbf4a4c355d4ec15423319363f457c58",
+        "services\\ingestion\\index_builder.py": "2e4ae9cb8fb6b87613987796fe603bdc07e443483d0fa514bad768b119d3e859",
+        "services\\ingestion\\index_manifest.py": "343be7d842c20b402463a2837ff5516c159215e62085f2dd623916318ca9be33",
+        "services\\ingestion\\models.py": "80729bfcb2bbbf126826f596c9c16eee26e9cd15e4cc326b292b3551b672940f",
+        "services\\ingestion\\object_store.py": "4a1880f3a106a4f7954122f9e59ba9d836e07a6446c2cd45e7b7b903d5b24d58",
+        "services\\ingestion\\parse_quality.py": "099e8922fce5b0ef3ee67365b99a65691c523f12c41123458a76d9f8c992ff5f",
+        "services\\ingestion\\parser_registry.py": "c451b0618af96c8333c7bffa2e3a51e67a7adbe84eb49408b6210f98cd5813b7",
+        "services\\ingestion\\parsers\\__init__.py": "3fff5a6ef5bd7735de693eb795e63003d1f4df0961280f9a88fb3f7c11133406",
+        "services\\ingestion\\parsers\\_text.py": "6430baf9b25c9191ddcac9ca641168ac5bd451283b7dacda68b8f6943e64ee07",
+        "services\\ingestion\\parsers\\base.py": "01073fd3216bb3d9480e140d626284590c00d1d8ce470165a4f1a5e9f74817c3",
+        "services\\ingestion\\parsers\\docx.py": "e648d5f329f842f8261ce664c86899ce40b9985230ce068abb17fc58d50cc4c7",
+        "services\\ingestion\\parsers\\html.py": "d9af8cda0e0084d1c10295bf89985779015cdde5022cd8af6243aa2fef0f3626",
+        "services\\ingestion\\parsers\\markdown.py": "9e6581356ddcc806d49004a4ec3477b93a8dcfd2466cef7e05d6693faeef37ac",
+        "services\\ingestion\\parsers\\ocr.py": "d01bffb2840fba84815b560afb997e801de2d73edb6fea6a20bdfb6b298c4337",
+        "services\\ingestion\\parsers\\pdf.py": "a6005b6b34806aa8653735039fef81842a10cdb3f1e137399f7090909d0d3d23",
+        "services\\ingestion\\parsers\\plain_text.py": "5710e5a2b9677d83afdeab9bf77e971c8df4ed15f1f6ad475aa66403255e85fe",
+        "services\\ingestion\\pipeline.py": "ed66300b312a187018da3752605df2b528862fdd79d5d627968eac5d2ea95310",
+        "services\\ingestion\\queue.py": "fb8a1294dcaddbc98c4a3f5c36a7fdcb6000c630b6a91099ea1044df4f00653d",
+        "services\\ingestion\\repository.py": "5265753ff3b421d938b9f450c07db26cb29482c8e175e4fc79648dbfa43dd034",
+        "services\\ingestion\\sparse_index.py": "fbde148ddf5f6bfb96f824c993942a22a5f201cb9713b3386bf7eb5af7320485",
+        "services\\ingestion\\worker.py": "9beaa1cbef79283b4dce09752c013527adcd6dc7f0819e207e6734f544a4e0a8",
+        "services\\ingestion\\worker_health.py": "135d6dca150002647b0f1132670d885aed2d160eaaa99d7948985dd8fc19a605",
+        "services\\intent_service.py": "ca5e7ceefd9fcff5de0e6e7a73cb22ee731d7a5660843c38742a9ba8ce40701c",
+        "services\\knowledge_service.py": "2eb7027c7a3e292af52098adb98d1ad9b899cccbe5c46a004d14928e8d910930",
+        "services\\online_generation.py": "9f2c3100ddc24d41028578846e33f53ac011d2535eb8836776141b4f6c78aeba",
+        "services\\ops_metrics.py": "abae2c808b999f1f26e5d1a2ae44798573ab1726cc97e10418c019ade893ead9",
+        "services\\order_state_store.py": "8b9d8b1a889dce8a19519e3e46729c8bd96e5105c30030696e970e649f8c7ecc",
+        "services\\order_tool_service.py": "8b0c4ed04d4f5fcd03c92f0eb2aa1db5e6160b46621d74cf00e91d16cf538829",
+        "services\\pool_observation.py": "1ae5c13c077288f7474479a683114e69192b2bfcfde7445fe9e4722f47d44306",
+        "services\\privacy.py": "385da22af8a7daefcbaafb83d6353a586f2709249ebe3c4eb6f0ce016159e9e3",
+        "services\\prompt_service.py": "de4d17b50f8c7f82e80c3ccb374b6244afeba39123b16a557971a14c0048d226",
+        "services\\query_resolution.py": "3a71829e22b2c977b3eba87e1ba37f4f165206fc56a53c19cab79e66b84b95a4",
+        "services\\query_rewrite_provider.py": "68cc2b9b5269b25d50655f769d9f6ec815c71f4c1a10c604b4f276cc11e7bb4b",
+        "services\\redis_context_cache.py": "fd6040c32e5c42a853b63a454b7d2e38fdba890e24977458620a7fe4cfc3e065",
+        "services\\release_check_service.py": "da01eea40c2e2d57ea9061acd77e611e2d9d31a499d78c6f239a88403c5f3a55",
+        "services\\reply_rules.py": "da3ee63c72000d60db07c19e9f755df3f3deddd14e01c64b1500e79e89c6df53",
+        "services\\retrieval_access.py": "d7fb6d0256055f5ed8bf427b2d020e5c9c41790aca19786bee6adb21db603c02",
+        "services\\runtime_db.py": "0da29c71c97a86c6aac76ac2f6d9c0d80778c76a79a3a91908249cea3149b7e7",
+        "services\\runtime_maintenance.py": "9afca6f2ed61dbd085fad83f54a293798fd6f944fedb57d127954c3a750a3df1",
+        "services\\runtime_schema.py": "534199560b6218e036f05fcd7f4d73facfd5a5210015e21d38586b03af26ecd4",
+        "services\\safety_guard.py": "6ddcd4c099458fc2f10947749e4bac6c42b2176c5b7017f456fc00bddf24647b",
+        "routers\\audit.py": "753616965627a70bd84ffac7393f642bafeda1ab123cdd3404e184336e0265f7",
+        "routers\\chat.py": "72f332915083cc911fe4aa3a6a668073b395f65e6bd1421ae317b52beb2fc822",
+        "routers\\documents.py": "879c8ddbe043ae6749528d9acfcac77e61bc007dca93bd9c93c849d13e29b4ee",
+        "routers\\example.py": "0e84ad1a3e76f7dc008f146bea94081d663c928a4696f37a05266450a90103f4",
+        "routers\\feedback.py": "156a647f69595e316a4d0d6eec305a38373db8aa90dce9eced08f5dac3ccd168",
+        "routers\\health.py": "9ade38b9682c9ca5a90b02205f1a4d4ec31583cfd912a278a9216582e9c0aceb",
+        "routers\\info.py": "f0037829845602f0cfdfc13fe2dd17f29c1d607116c00d5608bcd134efc5f2ff",
+        "routers\\knowledge.py": "12e83908f0aa8af92935b3ad2c47a8077a804d7d628df572a8c09015aaf76883",
+        "routers\\ops.py": "c33db7c37f5159ed2843da849464a56922325f16eef90f0011bf139873861b7b",
+        "routers\\order.py": "d82247cb1c4283eac1361744e41c168dba1fa1dcbc4ab08b6631fb49e7469da6",
+        "routers\\prompt.py": "86c399e1c31c157b6a56267cf13f40c31f5d829e389872f567298372e579c129",
+        "routers\\release.py": "1732208041080648a3cd79bcd62d23c1a724c8867a9a80d2e4f4e80ebe034721",
+        "routers\\retrieval.py": "310e8577b8f5c210d22e6d82cc0df3db9ea75db861643186dbdaa00c66bcf50d",
+        "config\\chunking_config.py": "5b2fc8f3d4702b0974fa0eae7b204874ec59822cfe4f303b5c8a73eeb0210487",
+        "config\\rag_config.py": "0eeb91e3fde3cb61eb8adfefc31341cdd00047458762d792b79884c1a33f5a31",
+        "config\\runtime_config.py": "888e5c69aa17f6a0cd7b7479c380874505763b0bc49a7e8e465acd70286999a9"
+      },
+      "fixture": "capacity-fixture-v2; deterministic phase-concurrency-index Markdown; one approved FAQ seed",
+      "concurrency_levels": [
+        1,
+        2,
+        4
+      ],
+      "attempts_per_level": "2 * concurrency",
+      "request_timeout_seconds": 90,
+      "stop_on": "any failure/timeout or P95 > 30 seconds or RSS > 16 GiB",
+      "pool_observation": "SQLAlchemy checkout/checkin event files in RAG_POOL_OBSERVATION_DIR",
+      "pool_observation_dir": "D:/llm/llm-customer-service/tmp/stability-20260927/before-v3-pools"
+    },
+    {
+      "name": "capacity_first_chat",
+      "status": "passed",
+      "attempts": 1,
+      "outcomes": {
+        "success": 1
+      },
+      "wall_seconds": 9.375,
+      "completed_per_second": 0.10666666666666667,
+      "successful_per_second": 0.10666666666666667,
+      "latency_all_attempts_ms": {
+        "p50": 9375.0,
+        "p95": 9375.0,
+        "p99": 9375.0
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 9375.0,
+          "request_id": "593340f812ea4a0cb095c2e6d45d9a81",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 803,
+            "completion_tokens": 20,
+            "total_tokens": 823,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 31.92,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.7,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.49,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 35.45,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.07,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.73,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 3.05,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9236.4,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 1.12,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.81,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.64,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 7.62,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "593340f812ea4a0cb095c2e6d45d9a81",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497466734978500-0",
+            "order_id": null,
+            "latency_ms": 9340.27,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 9375.0
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "chat",
+      "concurrency": 1,
+      "stop": false,
+      "attempts": 2,
+      "outcomes": {
+        "success": 2
+      },
+      "wall_seconds": 18.96799999999712,
+      "completed_per_second": 0.10544074230284183,
+      "successful_per_second": 0.10544074230284183,
+      "latency_all_attempts_ms": {
+        "p50": 9467.999999997119,
+        "p95": 9500.0,
+        "p99": 9500.0
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 9500.0,
+          "request_id": "bafeebf568fa4af5954f8dbd2d96f84a",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.94,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.77,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.68,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 26.48,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.06,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.88,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9395.87,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.21,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.45,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.89,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 8.09,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "bafeebf568fa4af5954f8dbd2d96f84a",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497476100994600-0",
+            "order_id": null,
+            "latency_ms": 9473.85,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 9500.0
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 9467.999999997119,
+          "request_id": "14c37d414bb54c828e32892554c8f89d",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.8,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.86,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.5,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 26.1,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.37,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.12,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9370.62,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.14,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.66,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.0,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 7.05,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "14c37d414bb54c828e32892554c8f89d",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497485599365400-1",
+            "order_id": null,
+            "latency_ms": 9446.82,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 9467.999999997119
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "chat",
+      "concurrency": 2,
+      "stop": false,
+      "attempts": 4,
+      "outcomes": {
+        "success": 4
+      },
+      "wall_seconds": 38.4220000000023,
+      "completed_per_second": 0.10410702201862893,
+      "successful_per_second": 0.10410702201862893,
+      "latency_all_attempts_ms": {
+        "p50": 18985.000000000582,
+        "p95": 19437.000000001717,
+        "p99": 19437.000000001717
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 9469.00000000096,
+          "request_id": "e432ccddf7f14b478ada992510e20012",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.83,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.03,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.65,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.48,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 26.6,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.08,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.15,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.29,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9370.7,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.15,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.93,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.84,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 6.88,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "e432ccddf7f14b478ada992510e20012",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497495070405600-0",
+            "order_id": null,
+            "latency_ms": 9449.29,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 9469.00000000096
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 18985.000000000582,
+          "request_id": "76b2188e5ce8493baed9e2ad395a79a6",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.03,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.03,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.69,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.54,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 28.26,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.54,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.27,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9413.51,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.17,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.61,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.91,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 7.0,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "76b2188e5ce8493baed9e2ad395a79a6",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497495070405600-1",
+            "order_id": null,
+            "latency_ms": 9491.64,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 18985.000000000582
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 19125.0,
+          "request_id": "915df9640113483c8dcc30ec8d137e2f",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.01,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.67,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.87,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.63,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 27.04,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.73,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.15,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9504.06,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.14,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.95,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.9,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 6.98,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "915df9640113483c8dcc30ec8d137e2f",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497504542229700-2",
+            "order_id": null,
+            "latency_ms": 9580.91,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 19125.0
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 19437.000000001717,
+          "request_id": "4c43dea271a24695b8ae03e2ef9b584c",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.01,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.6,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.06,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.87,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.56,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 26.41,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.06,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.32,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.86,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9736.13,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.19,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.08,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.28,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 8.48,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "4c43dea271a24695b8ae03e2ef9b584c",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497514055574000-3",
+            "order_id": null,
+            "latency_ms": 9814.09,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 19437.000000001717
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "chat",
+      "concurrency": 4,
+      "stop": true,
+      "attempts": 8,
+      "outcomes": {
+        "success": 7,
+        "failure": 1
+      },
+      "wall_seconds": 67.3279999999977,
+      "completed_per_second": 0.11882129277566945,
+      "successful_per_second": 0.10396863117871077,
+      "latency_all_attempts_ms": {
+        "p50": 28545.999999998457,
+        "p95": 48265.99999999962,
+        "p99": 48265.99999999962
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 9656.999999999243,
+          "request_id": "97d2c0e4c433494f908e1c5bd48605a0",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 17.42,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.85,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.56,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 32.0,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.06,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.84,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.44,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9535.4,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.11,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.77,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.69,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 7.48,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "97d2c0e4c433494f908e1c5bd48605a0",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497533498133200-0",
+            "order_id": null,
+            "latency_ms": 9622.19,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 9656.999999999243
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 19156.999999999243,
+          "request_id": "9e299922414d42f787a2d680cf807a27",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 17.11,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.7,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.03,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.4,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 28.48,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.16,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.27,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9402.67,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.15,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.31,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.14,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 6.97,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "9e299922414d42f787a2d680cf807a27",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497533498133200-1",
+            "order_id": null,
+            "latency_ms": 9482.89,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 19156.999999999243
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 38781.99999999924,
+          "request_id": "6da241b39ebe4d67a37b2d49b13087ea",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.01,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.96,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.06,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.73,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.06,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.55,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 26.96,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.48,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.37,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9533.71,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.14,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.77,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.85,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 6.97,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "6da241b39ebe4d67a37b2d49b13087ea",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497533499133000-2",
+            "order_id": null,
+            "latency_ms": 9610.28,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 38781.99999999924
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 48265.99999999962,
+          "request_id": "fd78f590f08943e0a5f5872acbbd66f1",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 17.15,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.84,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.03,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.57,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 26.41,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.06,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.8,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.51,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9389.0,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.18,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.92,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.86,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 6.57,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "fd78f590f08943e0a5f5872acbbd66f1",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497533499133000-3",
+            "order_id": null,
+            "latency_ms": 9467.04,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 48265.99999999962
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 29125.0,
+          "request_id": "c7da5ca4fb544af3aaa64e3301785cda",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 17.06,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.75,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.57,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 29.72,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.5,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.03,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9893.45,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.14,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.96,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.96,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 7.54,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "c7da5ca4fb544af3aaa64e3301785cda",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497543141969400-4",
+            "order_id": null,
+            "latency_ms": 9972.5,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 29125.0
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 38609.00000000038,
+          "request_id": "3399b3126d5b4840bd464177b7de11ee",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 17.21,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.72,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.52,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 30.7,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.68,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.18,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9387.19,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.14,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.11,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.06,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 7.72,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "3399b3126d5b4840bd464177b7de11ee",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497552649948500-5",
+            "order_id": null,
+            "latency_ms": 9467.34,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 38609.00000000038
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 28545.999999998457,
+          "request_id": "bc448f0d6d08473a81df61a4dc4bd565",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 826,
+            "completion_tokens": 20,
+            "total_tokens": 846,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 17.1,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.89,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.52,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 29.75,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.06,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.62,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.22,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9464.01,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.13,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.8,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.85,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 7.62,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "bc448f0d6d08473a81df61a4dc4bd565",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497572273227300-6",
+            "order_id": null,
+            "latency_ms": 9544.57,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 28545.999999998457
+        },
+        {
+          "kind": "chat",
+          "outcome": "failure",
+          "http_status": null,
+          "error_type": "ReadError",
+          "elapsed_ms": 9484.000000000378
+        }
+      ]
+    },
+    {
+      "name": "capacity_observations",
+      "status": "passed",
+      "path": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\before-v3\\capacity_samples.json",
+      "samples": 266,
+      "pool_checked_out_peaks": {
+        "api": null,
+        "worker": null
+      },
+      "peak_rss_bytes": {
+        "api": 3579904,
+        "worker": 3567616
+      },
+      "max_lock_waiters": 0,
+      "max_pending": 0,
+      "sample_errors": 0
+    }
+  ],
+  "finished_at": "2026-09-27T08:26:40.839876+00:00"
+}

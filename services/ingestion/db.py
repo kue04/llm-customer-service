@@ -91,6 +91,8 @@ def create_db_engine(url: str | None = None, *, echo: bool = False) -> Engine:
                            pool_pre_ping=True, **pool_options)
     if is_sqlite(resolved):
         event.listen(engine, "connect", _enable_sqlite_foreign_keys)
+    from services.pool_observation import observe_pool
+    observe_pool(engine)
     return engine
 
 

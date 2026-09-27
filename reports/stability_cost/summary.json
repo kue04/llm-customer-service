@@ -1,0 +1,660 @@
+{
+  "created_at": "2026-09-27T08:41:23.605371+00:00",
+  "capacity": [
+    {
+      "workload": "chat:1",
+      "before": {
+        "attempts": 2,
+        "outcomes": {
+          "success": 2
+        },
+        "successful_per_second": 0.10544074230284183,
+        "all_attempts_latency_ms": {
+          "p50": 9467.999999997119,
+          "p95": 9500.0,
+          "p99": 9500.0
+        },
+        "success_latency_ms": {
+          "p50": 9467.999999997119,
+          "p95": 9500.0,
+          "p99": 9500.0
+        },
+        "stopped_increasing_concurrency": false
+      },
+      "after": {
+        "attempts": 2,
+        "outcomes": {
+          "success": 2
+        },
+        "successful_per_second": 0.09071940488071033,
+        "all_attempts_latency_ms": {
+          "p50": 10530.99999999904,
+          "p95": 11514.999999999418,
+          "p99": 11514.999999999418
+        },
+        "success_latency_ms": {
+          "p50": 10530.99999999904,
+          "p95": 11514.999999999418,
+          "p99": 11514.999999999418
+        },
+        "stopped_increasing_concurrency": false
+      }
+    },
+    {
+      "workload": "chat:2",
+      "before": {
+        "attempts": 4,
+        "outcomes": {
+          "success": 4
+        },
+        "successful_per_second": 0.10410702201862893,
+        "all_attempts_latency_ms": {
+          "p50": 18985.000000000582,
+          "p95": 19437.000000001717,
+          "p99": 19437.000000001717
+        },
+        "success_latency_ms": {
+          "p50": 18985.000000000582,
+          "p95": 19437.000000001717,
+          "p99": 19437.000000001717
+        },
+        "stopped_increasing_concurrency": false
+      },
+      "after": {
+        "attempts": 4,
+        "outcomes": {
+          "success": 4
+        },
+        "successful_per_second": 0.1033084532141817,
+        "all_attempts_latency_ms": {
+          "p50": 19202.9999999977,
+          "p95": 19516.00000000326,
+          "p99": 19516.00000000326
+        },
+        "success_latency_ms": {
+          "p50": 19202.9999999977,
+          "p95": 19516.00000000326,
+          "p99": 19516.00000000326
+        },
+        "stopped_increasing_concurrency": false
+      }
+    },
+    {
+      "workload": "chat:4",
+      "before": {
+        "attempts": 8,
+        "outcomes": {
+          "success": 7,
+          "failure": 1
+        },
+        "successful_per_second": 0.10396863117871077,
+        "all_attempts_latency_ms": {
+          "p50": 28545.999999998457,
+          "p95": 48265.99999999962,
+          "p99": 48265.99999999962
+        },
+        "success_latency_ms": {
+          "p50": 29125.0,
+          "p95": 48265.99999999962,
+          "p99": 48265.99999999962
+        },
+        "stopped_increasing_concurrency": true
+      },
+      "after": {
+        "attempts": 8,
+        "outcomes": {
+          "success": 2,
+          "rejected": 6
+        },
+        "successful_per_second": 0.10364305332433858,
+        "all_attempts_latency_ms": {
+          "p50": 0.0,
+          "p95": 19297.0000000023,
+          "p99": 19297.0000000023
+        },
+        "success_latency_ms": {
+          "p50": 9688.00000000192,
+          "p95": 19297.0000000023,
+          "p99": 19297.0000000023
+        },
+        "stopped_increasing_concurrency": false
+      }
+    },
+    {
+      "workload": "ingestion:1",
+      "before": {
+        "attempts": 2,
+        "outcomes": {
+          "success": 2
+        },
+        "successful_per_second": 0.9624639076028448,
+        "all_attempts_latency_ms": {
+          "p50": 1031.0000000026776,
+          "p95": 1046.9999999986612,
+          "p99": 1046.9999999986612
+        },
+        "success_latency_ms": {
+          "p50": 1031.0000000026776,
+          "p95": 1046.9999999986612,
+          "p99": 1046.9999999986612
+        },
+        "stopped_increasing_concurrency": false
+      },
+      "after": {
+        "attempts": 2,
+        "outcomes": {
+          "success": 2
+        },
+        "successful_per_second": 0.9624639076028448,
+        "all_attempts_latency_ms": {
+          "p50": 828.0000000013388,
+          "p95": 1250.0,
+          "p99": 1250.0
+        },
+        "success_latency_ms": {
+          "p50": 828.0000000013388,
+          "p95": 1250.0,
+          "p99": 1250.0
+        },
+        "stopped_increasing_concurrency": false
+      }
+    },
+    {
+      "workload": "ingestion:2",
+      "before": {
+        "attempts": 4,
+        "outcomes": {
+          "success": 4
+        },
+        "successful_per_second": 1.4630577907825335,
+        "all_attempts_latency_ms": {
+          "p50": 1264.999999999418,
+          "p95": 1469.0000000009604,
+          "p99": 1469.0000000009604
+        },
+        "success_latency_ms": {
+          "p50": 1264.999999999418,
+          "p95": 1469.0000000009604,
+          "p99": 1469.0000000009604
+        },
+        "stopped_increasing_concurrency": false
+      },
+      "after": {
+        "attempts": 4,
+        "outcomes": {
+          "success": 4
+        },
+        "successful_per_second": 2.0986358866747197,
+        "all_attempts_latency_ms": {
+          "p50": 639.9999999994179,
+          "p95": 1265.9999999996217,
+          "p99": 1265.9999999996217
+        },
+        "success_latency_ms": {
+          "p50": 639.9999999994179,
+          "p95": 1265.9999999996217,
+          "p99": 1265.9999999996217
+        },
+        "stopped_increasing_concurrency": false
+      }
+    },
+    {
+      "workload": "ingestion:4",
+      "before": {
+        "attempts": 8,
+        "outcomes": {
+          "success": 8
+        },
+        "successful_per_second": 2.3591860808023863,
+        "all_attempts_latency_ms": {
+          "p50": 1265.9999999996217,
+          "p95": 1921.9999999986612,
+          "p99": 1921.9999999986612
+        },
+        "success_latency_ms": {
+          "p50": 1265.9999999996217,
+          "p95": 1921.9999999986612,
+          "p99": 1921.9999999986612
+        },
+        "stopped_increasing_concurrency": false
+      },
+      "after": {
+        "attempts": 8,
+        "outcomes": {
+          "success": 8
+        },
+        "successful_per_second": 1.9920318725101478,
+        "all_attempts_latency_ms": {
+          "p50": 1655.9999999990396,
+          "p95": 2344.0000000009604,
+          "p99": 2344.0000000009604
+        },
+        "success_latency_ms": {
+          "p50": 1655.9999999990396,
+          "p95": 2344.0000000009604,
+          "p99": 2344.0000000009604
+        },
+        "stopped_increasing_concurrency": false
+      }
+    },
+    {
+      "workload": "mixed:1",
+      "before": {
+        "attempts": 2,
+        "outcomes": {
+          "success": 2
+        },
+        "successful_per_second": 0.15422578655154567,
+        "all_attempts_latency_ms": {
+          "p50": 1295.9999999984575,
+          "p95": 11671.999999998661,
+          "p99": 11671.999999998661
+        },
+        "success_latency_ms": {
+          "p50": 1295.9999999984575,
+          "p95": 11671.999999998661,
+          "p99": 11671.999999998661
+        },
+        "stopped_increasing_concurrency": false
+      },
+      "after": {
+        "attempts": 2,
+        "outcomes": {
+          "success": 2
+        },
+        "successful_per_second": 0.16020506247996952,
+        "all_attempts_latency_ms": {
+          "p50": 844.0000000009604,
+          "p95": 11639.999999999418,
+          "p99": 11639.999999999418
+        },
+        "success_latency_ms": {
+          "p50": 844.0000000009604,
+          "p95": 11639.999999999418,
+          "p99": 11639.999999999418
+        },
+        "stopped_increasing_concurrency": false
+      }
+    },
+    {
+      "workload": "mixed:2",
+      "before": {
+        "attempts": 4,
+        "outcomes": {
+          "success": 4
+        },
+        "successful_per_second": 0.15467904098994237,
+        "all_attempts_latency_ms": {
+          "p50": 11577.9999999977,
+          "p95": 25438.00000000192,
+          "p99": 25438.00000000192
+        },
+        "success_latency_ms": {
+          "p50": 11577.9999999977,
+          "p95": 25438.00000000192,
+          "p99": 25438.00000000192
+        },
+        "stopped_increasing_concurrency": false
+      },
+      "after": {
+        "attempts": 4,
+        "outcomes": {
+          "success": 4
+        },
+        "successful_per_second": 0.1705538737048468,
+        "all_attempts_latency_ms": {
+          "p50": 2313.000000001921,
+          "p95": 21109.00000000038,
+          "p99": 21109.00000000038
+        },
+        "success_latency_ms": {
+          "p50": 2313.000000001921,
+          "p95": 21109.00000000038,
+          "p99": 21109.00000000038
+        },
+        "stopped_increasing_concurrency": false
+      }
+    },
+    {
+      "workload": "mixed:4",
+      "before": {
+        "attempts": 8,
+        "outcomes": {
+          "success": 8
+        },
+        "successful_per_second": 0.1477213974444125,
+        "all_attempts_latency_ms": {
+          "p50": 24734.00000000038,
+          "p95": 52889.99999999942,
+          "p99": 52889.99999999942
+        },
+        "success_latency_ms": {
+          "p50": 24734.00000000038,
+          "p95": 52889.99999999942,
+          "p99": 52889.99999999942
+        },
+        "stopped_increasing_concurrency": true
+      },
+      "after": {
+        "attempts": 8,
+        "outcomes": {
+          "success": 6,
+          "rejected": 2
+        },
+        "successful_per_second": 0.2503233343068029,
+        "all_attempts_latency_ms": {
+          "p50": 3343.9999999973224,
+          "p95": 23969.00000000096,
+          "p99": 23969.00000000096
+        },
+        "success_latency_ms": {
+          "p50": 3547.000000002299,
+          "p95": 23969.00000000096,
+          "p99": 23969.00000000096
+        },
+        "stopped_increasing_concurrency": false
+      }
+    }
+  ],
+  "runs": {
+    "before": [
+      {
+        "path": "reports\\stability_cost\\before_v3\\20260927T082408Z-910e204c.json",
+        "run_id": "20260927T082408Z-910e204c",
+        "report_sha256": "3491e835e2cd1e463ebe46480bc6b123e28087f459fc4a96501f0bd2788c1574",
+        "fixture": "capacity-fixture-v2; deterministic phase-concurrency-index Markdown; one approved FAQ seed",
+        "seed_sha256": "afc89470af2857f1cbbdd961f1d5d493699a639e188be7d13e7c86dc018b5a1f",
+        "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+        "memory_bytes": 33996894208,
+        "logical_cpu": 12,
+        "physical_cpu": 6,
+        "startup_to_ready_seconds": 16.4529999999977,
+        "threads": {
+          "OMP_NUM_THREADS": "6",
+          "MKL_NUM_THREADS": "6"
+        },
+        "observations": {
+          "name": "capacity_observations",
+          "status": "passed",
+          "path": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\before-v3\\capacity_samples.json",
+          "samples": 266,
+          "pool_checked_out_peaks": {
+            "api": null,
+            "worker": null
+          },
+          "max_lock_waiters": 0,
+          "max_pending": 0,
+          "sample_errors": 0,
+          "launcher_only_peak_rss_bytes": {
+            "api": 3579904,
+            "worker": 3567616
+          },
+          "actual_model_process_peak_rss_bytes": null,
+          "resource_measurement_limit": "These runs sampled Windows launcher PIDs; model process RSS/CPU is unavailable. Pool events are independently recoverable by actual PID. No rerun requested.",
+          "pool_peaks_by_actual_pid": {
+            "15976": 1,
+            "34760": 1,
+            "36600": 2
+          }
+        }
+      },
+      {
+        "path": "reports\\stability_cost\\before_v3\\20260927T082827Z-feae4492.json",
+        "run_id": "20260927T082827Z-feae4492",
+        "report_sha256": "02dd7a3225a32b0ea5d38d4b543d18fe15955c879f1eff12ec73e458a2c8c1b5",
+        "fixture": "capacity-fixture-v2; deterministic phase-concurrency-index Markdown; one approved FAQ seed",
+        "seed_sha256": "afc89470af2857f1cbbdd961f1d5d493699a639e188be7d13e7c86dc018b5a1f",
+        "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+        "memory_bytes": 33996894208,
+        "logical_cpu": 12,
+        "physical_cpu": 6,
+        "startup_to_ready_seconds": 16.860000000000582,
+        "threads": {
+          "OMP_NUM_THREADS": "6",
+          "MKL_NUM_THREADS": "6"
+        },
+        "observations": {
+          "name": "capacity_observations",
+          "status": "passed",
+          "path": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\before-mix-v2\\capacity_samples.json",
+          "samples": 220,
+          "pool_checked_out_peaks": {
+            "api": null,
+            "worker": null
+          },
+          "max_lock_waiters": 0,
+          "max_pending": 4,
+          "sample_errors": 0,
+          "launcher_only_peak_rss_bytes": {
+            "api": 3559424,
+            "worker": 3579904
+          },
+          "actual_model_process_peak_rss_bytes": null,
+          "resource_measurement_limit": "These runs sampled Windows launcher PIDs; model process RSS/CPU is unavailable. Pool events are independently recoverable by actual PID. No rerun requested.",
+          "pool_peaks_by_actual_pid": {
+            "27408": 1,
+            "35356": 1,
+            "3964": 4
+          }
+        }
+      }
+    ],
+    "after": [
+      {
+        "path": "reports\\stability_cost\\after\\20260927T083037Z-b67a833f.json",
+        "run_id": "20260927T083037Z-b67a833f",
+        "report_sha256": "af7c22dc3852c4763898ef4a86eebe91e50db6b18b5a21826674dade72136f3e",
+        "fixture": "capacity-fixture-v2; deterministic phase-concurrency-index Markdown; one approved FAQ seed",
+        "seed_sha256": "afc89470af2857f1cbbdd961f1d5d493699a639e188be7d13e7c86dc018b5a1f",
+        "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+        "memory_bytes": 33996894208,
+        "logical_cpu": 12,
+        "physical_cpu": 6,
+        "startup_to_ready_seconds": 19.90599999999904,
+        "threads": {
+          "OMP_NUM_THREADS": "6",
+          "MKL_NUM_THREADS": "6"
+        },
+        "observations": {
+          "name": "capacity_observations",
+          "status": "passed",
+          "path": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\after-chat\\capacity_samples.json",
+          "samples": 181,
+          "pool_checked_out_peaks": {
+            "api": null,
+            "worker": null
+          },
+          "max_lock_waiters": 0,
+          "max_pending": 0,
+          "sample_errors": 0,
+          "launcher_only_peak_rss_bytes": {
+            "api": 3575808,
+            "worker": 3584000
+          },
+          "actual_model_process_peak_rss_bytes": null,
+          "resource_measurement_limit": "These runs sampled Windows launcher PIDs; model process RSS/CPU is unavailable. Pool events are independently recoverable by actual PID. No rerun requested.",
+          "pool_peaks_by_actual_pid": {
+            "31736": 4,
+            "33464": 2,
+            "35236": 1
+          }
+        }
+      },
+      {
+        "path": "reports\\stability_cost\\after\\20260927T083230Z-2fd851ee.json",
+        "run_id": "20260927T083230Z-2fd851ee",
+        "report_sha256": "021c231964ee449e4cff4f761669b9de879260282ce06b080769d405c0356c85",
+        "fixture": "capacity-fixture-v2; deterministic phase-concurrency-index Markdown; one approved FAQ seed",
+        "seed_sha256": "afc89470af2857f1cbbdd961f1d5d493699a639e188be7d13e7c86dc018b5a1f",
+        "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+        "memory_bytes": 33996894208,
+        "logical_cpu": 12,
+        "physical_cpu": 6,
+        "startup_to_ready_seconds": 16.85900000000038,
+        "threads": {
+          "OMP_NUM_THREADS": "6",
+          "MKL_NUM_THREADS": "6"
+        },
+        "observations": {
+          "name": "capacity_observations",
+          "status": "passed",
+          "path": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\after-mix\\capacity_samples.json",
+          "samples": 155,
+          "pool_checked_out_peaks": {
+            "api": null,
+            "worker": null
+          },
+          "max_lock_waiters": 0,
+          "max_pending": 4,
+          "sample_errors": 0,
+          "launcher_only_peak_rss_bytes": {
+            "api": 3563520,
+            "worker": 3575808
+          },
+          "actual_model_process_peak_rss_bytes": null,
+          "resource_measurement_limit": "These runs sampled Windows launcher PIDs; model process RSS/CPU is unavailable. Pool events are independently recoverable by actual PID. No rerun requested.",
+          "pool_peaks_by_actual_pid": {
+            "34296": 4,
+            "35692": 1,
+            "36596": 2,
+            "38296": 2,
+            "9252": 1
+          }
+        }
+      }
+    ]
+  },
+  "same_seed_payload_verified": true,
+  "tests": {
+    "tests": 1209,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "test_junit": "tmp\\stability-20260927\\final-tests.xml",
+  "recovery": {
+    "status": "passed",
+    "source_run_id": "20260927T083230Z-2fd851ee",
+    "target_database": "s54_restore_20260927t083752z_02dbe6",
+    "run_root": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\recovery-verified",
+    "backup_started_at": "2026-09-27T08:37:52.792593+00:00",
+    "backup_finished_at": "2026-09-27T08:37:53.127584+00:00",
+    "dump_sha256": "a46986773a0ce79bdd9d60fdb6e63da3cbef4d78e81839a33d0d09d715aaef50",
+    "table_counts_before": {
+      "alembic_version": 1,
+      "audit_events": 22,
+      "document_acl": 0,
+      "document_chunks": 44,
+      "document_versions": 22,
+      "documents": 22,
+      "index_builds": 22,
+      "ingestion_jobs": 22,
+      "knowledge_base_members": 2,
+      "knowledge_bases": 2,
+      "roles": 2,
+      "runtime_audit_logs": 3,
+      "runtime_chat_sessions": 6,
+      "runtime_conversation_facts": 24,
+      "runtime_conversation_messages": 12,
+      "runtime_conversation_review_actions": 0,
+      "runtime_conversation_turns": 6,
+      "runtime_conversations": 6,
+      "runtime_feedback": 0,
+      "runtime_knowledge_items": 1,
+      "runtime_knowledge_publish_history": 1,
+      "runtime_model_calls": 524,
+      "runtime_order_state_requests": 0,
+      "runtime_order_states": 0,
+      "runtime_prompt_versions": 0,
+      "runtime_user_memory": 2,
+      "runtime_users": 1,
+      "tenants": 2,
+      "user_roles": 2,
+      "users": 2
+    },
+    "backup_file_counts": {
+      "objects": 44,
+      "faiss": 67
+    },
+    "restore_started_at": "2026-09-27T08:37:53.127584+00:00",
+    "verified_document_objects": 22,
+    "restored_chat": {
+      "reply": "capacity-fixture-v2 问题：星桥优享服务退款申请审核通过后，应通过哪个渠道查看进度？ 官方答复：请打开星桥优享服务 App 的订单详情页，在售后进度中查看结果。",
+      "document_ids": [
+        "1c04595aaeb34942b91d224bf08b305f",
+        "50b87ef187d64048924d3ec7a01758db",
+        "8790ec743cfd4daba8870598dfbe4b0b"
+      ],
+      "token_usage": {
+        "provider": "local",
+        "model": "qwen2.5-1.5b-instruct",
+        "prompt_tokens": 1106,
+        "completion_tokens": 20,
+        "total_tokens": 1126,
+        "counting_method": "local_tokenizer"
+      },
+      "trace": {
+        "retrieval_count": 3,
+        "retrieval_path": "chunk-index",
+        "data_source": "document_chunks",
+        "index_name": "document_chunks",
+        "index_version": 22,
+        "embedding_model": "",
+        "sparse_available": false,
+        "index_load_ms": 0.0,
+        "request_id": "03f7d414086a4547b4a2fe72439a2f0b",
+        "user_id": "live-owner",
+        "session_id": "restored-20260927T083752Z",
+        "order_id": null,
+        "latency_ms": 11324.59,
+        "top1_intent": "capacity-fixture-v2",
+        "used_fallback_prompt": false,
+        "reply_rules_applied": false,
+        "answer_source": "rag",
+        "degraded": false,
+        "failure_stage": "none",
+        "fallback_reason": ""
+      },
+      "citation_count": 6,
+      "generation_evidence": {
+        "step": "generation_completed",
+        "status": "success",
+        "input_summary": "",
+        "output_summary": "reply_chars=30",
+        "latency_ms": 11213.29,
+        "metadata": {
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          }
+        }
+      },
+      "raw_generation_text_available": false,
+      "generation_evidence_note": "API exposes local generation token counts and character count; final reply may include answer composition."
+    },
+    "source_citation_verification": {
+      "primary_document_id": "8790ec743cfd4daba8870598dfbe4b0b",
+      "references_checked": 6,
+      "every_quote_matches_source_published_tenant_chunk": true,
+      "note": "Multi-document corpus may include supporting diagnostic documents; this verifies recovery, not 5.3 semantic relevance."
+    },
+    "rto_seconds": 22.468000000000757,
+    "observed_rpo_seconds": 0,
+    "rpo_basis": "quiesced source, zero committed rows lost, identical table counts and artifact hashes",
+    "sla_target_confirmed": false,
+    "tenant_isolation": true,
+    "source_unchanged": true,
+    "finished_at": "2026-09-27T08:38:15.636590+00:00"
+  },
+  "currency_cost": null,
+  "limits": [
+    "small diagnostic corpus, not the historical 9229 chunks",
+    "closed-loop concurrency 1/2/4, only 2*concurrency attempts per phase",
+    "no production QPS/SLA or externally confirmed model prices",
+    "backup taken while source was quiescent; not online PITR"
+  ]
+}

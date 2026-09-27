@@ -263,4 +263,8 @@ def get_persisted_ops_metrics() -> dict:
 
 def get_ops_metrics() -> dict:
     # Process-local counters cannot represent a multi-replica tenant view.
-    return get_persisted_ops_metrics()
+    from services.call_ledger import ledger_summary
+    from services.runtime_db import identity
+    result = get_persisted_ops_metrics()
+    result['model_calls'] = ledger_summary(identity()[0])
+    return result

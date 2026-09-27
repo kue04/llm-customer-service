@@ -1,7 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OpsMetricsResponse(BaseModel):
+    model_calls: dict = Field(default_factory=dict)
     source: str = ""
     request_count: int
     failure_count: int

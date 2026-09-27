@@ -102,6 +102,9 @@ class IngestionQueue(ABC):
 
         return None
 
+    def reclaim(self, *, count=1):
+        return []
+
 
 
 class InMemoryIngestionQueue(IngestionQueue):
@@ -278,6 +281,27 @@ class RedisStreamIngestionQueue(IngestionQueue):
             raise
         except Exception as error:
             raise QueueUnavailableError(f"确认消息 {message_id} 失败：{error}") from error
+
+    def reclaim(self, *, count=1):
+        from services.request_budget import positive
+        if not self._group_ready:
+            self.ensure_group()
+        try:
+            cursor = getattr(self, '_claim_cursor', '0-0')
+            result = self._resolve_client().xautoclaim(
+                self.stream_key, self.consumer_group, self.consumer_name,
+                min_idle_time=int(positive('RAG_WORKER_LEASE_SECONDS', 30)*1000),
+                start_id=cursor, count=count)
+            self._claim_cursor = _as_text(result[0])
+            return _parse_read_response([(self.stream_key, result[1])])
+        except Exception as error:
+            raise QueueUnavailableError('pending_reclaim_unavailable') from error
+
+    def renew(self, message_id):
+        # JUSTID avoids increasing Redis' transport delivery counter. Execution
+        # attempts are recorded transactionally in PostgreSQL.
+        self._resolve_client().xclaim(self.stream_key, self.consumer_group, self.consumer_name,
+                                      min_idle_time=0, message_ids=[message_id], justid=True)
 
 
 def _as_text(value: object) -> str:

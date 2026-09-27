@@ -1,0 +1,137 @@
+{
+  "run_id": "20260927T075855Z-72bf92fe",
+  "status": "passed",
+  "started_at": "2026-09-27T07:58:55.744801+00:00",
+  "execution": "real-subprocess-api-worker-postgresql-redis-local-model",
+  "steps": [
+    {
+      "name": "bootstrap",
+      "status": "passed",
+      "identities": [
+        {
+          "tenant_id": "86c7cc6ec9f2437892696d4930752d8c",
+          "user_id": "06fb1fc07a9143a0b1b7c08609aa9521",
+          "external_id": "live-owner",
+          "kb_id": "83b8444cd4f34cdea6def30573d21b87"
+        },
+        {
+          "tenant_id": "2fb8664337c9453ab32dbc6f55e4c4ee",
+          "user_id": "84033e868c3149cb9a1d1da1111e9c11",
+          "external_id": "live-foreign",
+          "kb_id": "9cc33c2a22b043c7bb820a0f40c46407"
+        }
+      ],
+      "database_backend": "postgresql",
+      "queue_backend": "redis-streams",
+      "run_root": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\budget2",
+      "stream_key": "live-acceptance:20260927T075855Z-72bf92fe:jobs"
+    },
+    {
+      "name": "api_worker_running",
+      "status": "passed",
+      "api_pid": 38008,
+      "worker_pid": 38648
+    },
+    {
+      "name": "operations_publish_is_database_snapshot",
+      "status": "passed",
+      "item_id": 4,
+      "publish_id": "pub_438d325db8044d60a59d4cd3ee23ab9b",
+      "formal_document_count": 0,
+      "index_unchanged": true,
+      "export_order": "approved_export_before_snapshot_publish"
+    },
+    {
+      "name": "upload_to_published",
+      "status": "passed",
+      "document_id": "9a07b1902d3645ffa59a331f3415c91f",
+      "job_id": "4826e7de1d3f4cb4ae89a3a9e014abca",
+      "job": {
+        "id": "4826e7de1d3f4cb4ae89a3a9e014abca",
+        "tenant_id": "86c7cc6ec9f2437892696d4930752d8c",
+        "document_id": "9a07b1902d3645ffa59a331f3415c91f",
+        "document_version_id": "f9a0f145d7324e6b9991a8930ef73e4b",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 0,
+        "created_at": "2026-09-27T07:59:04.680370",
+        "updated_at": "2026-09-27T07:59:10.122319",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 113,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      },
+      "markdown_sha256": "6d99f7aec65f83c25032ff5ee7aa8d33413db099740b8cfd5379c407094679bf"
+    },
+    {
+      "name": "ready_with_real_models",
+      "status": "passed",
+      "health": {
+        "status": "ready",
+        "ready": true,
+        "checks": {
+          "database": {
+            "status": "ok",
+            "revision": "0003_parse_quality",
+            "latency_ms": 6.6
+          },
+          "redis": {
+            "status": "ok",
+            "latency_ms": 11.6
+          },
+          "worker": {
+            "status": "ok",
+            "latency_ms": 11.0
+          },
+          "index": {
+            "status": "ok",
+            "version": 25,
+            "latency_ms": 1.4
+          },
+          "models": {
+            "status": "ok",
+            "provider": "local",
+            "latency_ms": 0.0
+          },
+          "auth": {
+            "status": "ok",
+            "latency_ms": 0.0
+          }
+        },
+        "public_ready_http_status": 200
+      }
+    },
+    {
+      "name": "real_budget_and_cancellation",
+      "status": "passed",
+      "timeout_http_status": 504,
+      "burst_statuses": [
+        504,
+        429,
+        429,
+        429
+      ],
+      "disconnected_request_followup_http_status": 504,
+      "other_tenant_http_status": 504,
+      "health_during_generation_ms": 0.0,
+      "model": "real-local-qwen",
+      "resource_recovery_seconds": [
+        4.014999999999418,
+        4.032000000002881,
+        4.03099999999904,
+        5.53099999999904
+      ]
+    }
+  ],
+  "finished_at": "2026-09-27T07:59:35.651907+00:00"
+}

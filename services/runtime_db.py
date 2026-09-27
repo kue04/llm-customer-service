@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 from services.ingestion.db import get_engine
+from services.request_budget import checkpoint, remaining_timeout
 
 _identity: ContextVar[tuple[str, str] | None] = ContextVar("runtime_identity", default=None)
 
@@ -111,14 +112,17 @@ class Result:
 
 class RuntimeConnection:
     def __init__(self):
+        checkpoint()
         self.tenant_id, self.user_id = identity()
         self.connection = get_engine().connect()
         self._locked = False
 
     def lock(self):
         if not self._locked and self.connection.dialect.name == "postgresql":
-            self.connection.execute(text("SET LOCAL lock_timeout = '5s'"))
-            self.connection.execute(text("SET LOCAL statement_timeout = '15s'"))
+            self.connection.execute(text("SELECT set_config('lock_timeout', :limit, true)"),
+                                    {'limit': str(max(1, int(remaining_timeout(5)*1000)))})
+            self.connection.execute(text("SELECT set_config('statement_timeout', :limit, true)"),
+                                    {'limit': str(max(1, int(remaining_timeout(15)*1000)))})
             key = int.from_bytes(hashlib.sha256(self.tenant_id.encode()).digest()[:8], "big", signed=True)
             self.connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
         elif not self._locked and self.connection.dialect.name == "sqlite":
@@ -133,6 +137,7 @@ class RuntimeConnection:
             self.connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
 
     def execute(self, statement: str, parameters=()):
+        checkpoint()
         # SQL in services uses SQLAlchemy named bind parameters; no dialect
         # rewriting or string interpolation of SQL identifiers/values occurs.
         self.lock()
@@ -147,6 +152,7 @@ class RuntimeConnection:
             self.execute(statement, row)
 
     def commit(self):
+        checkpoint()
         self.connection.commit()
         self._locked = False
 

@@ -1,0 +1,121 @@
+{
+  "run_id": "20260927T075731Z-49ef9afc",
+  "status": "failed",
+  "started_at": "2026-09-27T07:57:31.671614+00:00",
+  "execution": "real-subprocess-api-worker-postgresql-redis-local-model",
+  "steps": [
+    {
+      "name": "bootstrap",
+      "status": "passed",
+      "identities": [
+        {
+          "tenant_id": "1920c3bc64784956923d94915a785333",
+          "user_id": "64b209f0c1f9455ab45cc0035cbe50a5",
+          "external_id": "live-owner",
+          "kb_id": "85eaafca3478463caa1e430a1c4bcce5"
+        },
+        {
+          "tenant_id": "25b8de0080104de392a91a0f05fbc02a",
+          "user_id": "27eda3cd87a24eee9096d1a17f64a184",
+          "external_id": "live-foreign",
+          "kb_id": "2ec03ffb84734d648b942ae6bba878ea"
+        }
+      ],
+      "database_backend": "postgresql",
+      "queue_backend": "redis-streams",
+      "run_root": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\budget",
+      "stream_key": "live-acceptance:20260927T075731Z-49ef9afc:jobs"
+    },
+    {
+      "name": "api_worker_running",
+      "status": "passed",
+      "api_pid": 36552,
+      "worker_pid": 4144
+    },
+    {
+      "name": "operations_publish_is_database_snapshot",
+      "status": "passed",
+      "item_id": 3,
+      "publish_id": "pub_79599e9847284ed98b769d97a81d3f23",
+      "formal_document_count": 0,
+      "index_unchanged": true,
+      "export_order": "approved_export_before_snapshot_publish"
+    },
+    {
+      "name": "upload_to_published",
+      "status": "passed",
+      "document_id": "1869d9eb01444d74a5b4914ca8b08b9d",
+      "job_id": "923fbe69d1c148309f95d2bff1739bba",
+      "job": {
+        "id": "923fbe69d1c148309f95d2bff1739bba",
+        "tenant_id": "1920c3bc64784956923d94915a785333",
+        "document_id": "1869d9eb01444d74a5b4914ca8b08b9d",
+        "document_version_id": "f9ecad50c90a4197a96f7f3dc65c9859",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 0,
+        "created_at": "2026-09-27T07:57:41.193751",
+        "updated_at": "2026-09-27T07:57:47.114005",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 113,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      },
+      "markdown_sha256": "3752ec622a6b3923f0eea19796d3bfeb0a3e00c9c83ce74ab1bc0255e1953f7a"
+    },
+    {
+      "name": "ready_with_real_models",
+      "status": "passed",
+      "health": {
+        "status": "ready",
+        "ready": true,
+        "checks": {
+          "database": {
+            "status": "ok",
+            "revision": "0003_parse_quality",
+            "latency_ms": 7.3
+          },
+          "redis": {
+            "status": "ok",
+            "latency_ms": 11.8
+          },
+          "worker": {
+            "status": "ok",
+            "latency_ms": 11.0
+          },
+          "index": {
+            "status": "ok",
+            "version": 24,
+            "latency_ms": 1.4
+          },
+          "models": {
+            "status": "ok",
+            "provider": "local",
+            "latency_ms": 0.0
+          },
+          "auth": {
+            "status": "ok",
+            "latency_ms": 0.0
+          }
+        },
+        "public_ready_http_status": 200
+      }
+    }
+  ],
+  "failure": {
+    "stage": "real_retrieval_and_generation",
+    "type": "AcceptanceFailure",
+    "message": "slot_not_released_after_timeout"
+  },
+  "finished_at": "2026-09-27T07:57:49.441679+00:00"
+}

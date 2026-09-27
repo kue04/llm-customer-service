@@ -1,0 +1,1536 @@
+{
+  "run_id": "20260927T082827Z-feae4492",
+  "status": "passed",
+  "started_at": "2026-09-27T08:28:27.050878+00:00",
+  "execution": "real-subprocess-api-worker-postgresql-redis-local-model",
+  "steps": [
+    {
+      "name": "bootstrap",
+      "status": "passed",
+      "identities": [
+        {
+          "tenant_id": "0869b52462f84a7eadaf1cfdae1c46e3",
+          "user_id": "95a7c36f882a4a9a826440bc55bab4ab",
+          "external_id": "live-owner",
+          "kb_id": "58a99e6f5d164b61a79c6aee0e33b9a0"
+        },
+        {
+          "tenant_id": "b71c8f765be349ffa2dc886967207a7a",
+          "user_id": "d3af3e199a494ad48a4171e04d1cc19c",
+          "external_id": "live-foreign",
+          "kb_id": "8a3ceea07718463fa3a0fbc09668a253"
+        }
+      ],
+      "database_backend": "postgresql",
+      "queue_backend": "redis-streams",
+      "run_root": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\before-mix-v2",
+      "stream_key": "live-acceptance:20260927T082827Z-feae4492:jobs"
+    },
+    {
+      "name": "api_worker_running",
+      "status": "passed",
+      "api_pid": 28876,
+      "worker_pid": 38136
+    },
+    {
+      "name": "operations_publish_is_database_snapshot",
+      "status": "passed",
+      "item_id": 1,
+      "publish_id": "pub_7b3f009d0d374dd8a1e261755c70baaa",
+      "formal_document_count": 0,
+      "index_unchanged": true,
+      "export_order": "approved_export_before_snapshot_publish"
+    },
+    {
+      "name": "upload_to_published",
+      "status": "passed",
+      "document_id": "3c94a0434f9a42a3b24b6c8e5d701d5f",
+      "job_id": "ebee3f2c91174347844fe1e5256b1e60",
+      "job": {
+        "id": "ebee3f2c91174347844fe1e5256b1e60",
+        "tenant_id": "0869b52462f84a7eadaf1cfdae1c46e3",
+        "document_id": "3c94a0434f9a42a3b24b6c8e5d701d5f",
+        "document_version_id": "a78b7cdc996d4772b59431b1d6364f27",
+        "status": "succeeded",
+        "stage": "published",
+        "error_code": null,
+        "error_message": null,
+        "retry_count": 0,
+        "created_at": "2026-09-27T08:28:38.367613",
+        "updated_at": "2026-09-27T08:28:44.658332",
+        "warnings": [],
+        "parse_quality": {
+          "policy_version": "1",
+          "status": "passed",
+          "reasons": [],
+          "metrics": {
+            "text_length": 96,
+            "garbled_ratio": 0.0,
+            "duplicate_ratio": 0.0,
+            "structure_issues": []
+          }
+        }
+      },
+      "markdown_sha256": "afc89470af2857f1cbbdd961f1d5d493699a639e188be7d13e7c86dc018b5a1f"
+    },
+    {
+      "name": "ready_with_real_models",
+      "status": "passed",
+      "health": {
+        "status": "ready",
+        "ready": true,
+        "checks": {
+          "database": {
+            "status": "ok",
+            "revision": "0003_parse_quality",
+            "latency_ms": 7.9
+          },
+          "redis": {
+            "status": "ok",
+            "latency_ms": 12.1
+          },
+          "worker": {
+            "status": "ok",
+            "latency_ms": 10.8
+          },
+          "index": {
+            "status": "ok",
+            "version": 1,
+            "latency_ms": 1.1
+          },
+          "models": {
+            "status": "ok",
+            "provider": "local",
+            "latency_ms": 0.0
+          },
+          "auth": {
+            "status": "ok",
+            "latency_ms": 0.0
+          }
+        },
+        "public_ready_http_status": 200
+      }
+    },
+    {
+      "name": "capacity_configuration",
+      "status": "passed",
+      "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+      "logical_cpu": 12,
+      "physical_cpu": 6,
+      "memory_bytes": 33996894208,
+      "python": "3.12.10",
+      "api_processes": 1,
+      "worker_processes": 1,
+      "model": "qwen2.5-1.5b-instruct",
+      "embedding": "BAAI/bge-small-zh-v1.5",
+      "thread_configuration": {
+        "OMP_NUM_THREADS": "6",
+        "MKL_NUM_THREADS": "6"
+      },
+      "warm_startup_seconds": 16.860000000000582,
+      "source_sha256": {
+        "services\\answer_composer.py": "6dc061252d8eedf8b394e2b71518ad528383f9e4b9141904e6d9a102831e6d40",
+        "services\\audit_service.py": "60f26eb6b60b72425e011b3dd1d11d71140c2a6919f2bd40e8c6198f76afe238",
+        "services\\auth_context.py": "9bde3367d262d8943e299b93bac9a00e64491ee9b28e734535577066f7a62d88",
+        "services\\auth_service.py": "f39b289c125a2e2fd243d3d0a68c559d162f241322ca11f7f505c9ca64a9fcbf",
+        "services\\chat_service.py": "8d0645c483bbade76692187987ebe0a85f2a49bae1d2361ea3b8d0466910edc4",
+        "services\\conversation_service.py": "7ea67d46797bbab8718c5d212e8266bd089e9a22a7559f63d64adb16fe6fc1ad",
+        "services\\conversation_store.py": "14c4ff8268c12b57067731e43bc3d8875a5b3c423f312c8038a157795bec1430",
+        "services\\customer_memory_service.py": "b6d4312c8f692a709372ff7237ad095ae040d54c99356f79718c6e9607e88d1a",
+        "services\\example_service.py": "5400b1da2e9ccf8f4f056ad43f20e485368a9e4f8b14e4086894914480431644",
+        "services\\feedback_service.py": "1400c7cd63611604bbc42cf946a3f8ff70e4de9d38a44833c7efe97a6687e750",
+        "services\\grounding_diagnostics.py": "5b6b4c81a0495b40463600a129cf9bcd778db59c4708eeb247e2c07a23126496",
+        "services\\health_service.py": "ced0df498ef2f481f4ca0950044396fdebfa97bfb3a3715f3a82797be36a1496",
+        "services\\ingestion\\__init__.py": "3fe0b9b48ec2d37788c7c12341373188c3483b3396707909bd256fafcec22f24",
+        "services\\ingestion\\chunkers\\__init__.py": "5e8d0e81a246e10b26223dfb1de1ca5efd97987c671e52fc29c97f81d1f2643a",
+        "services\\ingestion\\chunkers\\chunker.py": "9e999ecb58e05948a578f811d75a8861d1894e6c0370f3aecbb4ffc91b97dca4",
+        "services\\ingestion\\chunkers\\cleaner.py": "c09026b3402ca537542277546c659bcc805762d94be3aaaeded7e0530006a8f7",
+        "services\\ingestion\\chunkers\\errors.py": "f9bcd87467abccbe311051b8dd5294ae4619ec2a1fa2ca8e172e92fa05f0471c",
+        "services\\ingestion\\chunkers\\models.py": "15d597ef9e06df416fd930d1c422307afbae62006df82ded88006ed56a9c941b",
+        "services\\ingestion\\chunkers\\tokenizer.py": "256d2f08ff3f66a03141743ebfe9644aea62ef666f0eca239f934d32bdee758e",
+        "services\\ingestion\\content_sniff.py": "99fbbc2dcc2657194695e6eb31a5215b82dd8c34b5a46975656431efc72e0948",
+        "services\\ingestion\\db.py": "30268f2acb05c99d5b9ff58ff737c4bfcbf4a4c355d4ec15423319363f457c58",
+        "services\\ingestion\\index_builder.py": "2e4ae9cb8fb6b87613987796fe603bdc07e443483d0fa514bad768b119d3e859",
+        "services\\ingestion\\index_manifest.py": "343be7d842c20b402463a2837ff5516c159215e62085f2dd623916318ca9be33",
+        "services\\ingestion\\models.py": "80729bfcb2bbbf126826f596c9c16eee26e9cd15e4cc326b292b3551b672940f",
+        "services\\ingestion\\object_store.py": "4a1880f3a106a4f7954122f9e59ba9d836e07a6446c2cd45e7b7b903d5b24d58",
+        "services\\ingestion\\parse_quality.py": "099e8922fce5b0ef3ee67365b99a65691c523f12c41123458a76d9f8c992ff5f",
+        "services\\ingestion\\parser_registry.py": "c451b0618af96c8333c7bffa2e3a51e67a7adbe84eb49408b6210f98cd5813b7",
+        "services\\ingestion\\parsers\\__init__.py": "3fff5a6ef5bd7735de693eb795e63003d1f4df0961280f9a88fb3f7c11133406",
+        "services\\ingestion\\parsers\\_text.py": "6430baf9b25c9191ddcac9ca641168ac5bd451283b7dacda68b8f6943e64ee07",
+        "services\\ingestion\\parsers\\base.py": "01073fd3216bb3d9480e140d626284590c00d1d8ce470165a4f1a5e9f74817c3",
+        "services\\ingestion\\parsers\\docx.py": "e648d5f329f842f8261ce664c86899ce40b9985230ce068abb17fc58d50cc4c7",
+        "services\\ingestion\\parsers\\html.py": "d9af8cda0e0084d1c10295bf89985779015cdde5022cd8af6243aa2fef0f3626",
+        "services\\ingestion\\parsers\\markdown.py": "9e6581356ddcc806d49004a4ec3477b93a8dcfd2466cef7e05d6693faeef37ac",
+        "services\\ingestion\\parsers\\ocr.py": "d01bffb2840fba84815b560afb997e801de2d73edb6fea6a20bdfb6b298c4337",
+        "services\\ingestion\\parsers\\pdf.py": "a6005b6b34806aa8653735039fef81842a10cdb3f1e137399f7090909d0d3d23",
+        "services\\ingestion\\parsers\\plain_text.py": "5710e5a2b9677d83afdeab9bf77e971c8df4ed15f1f6ad475aa66403255e85fe",
+        "services\\ingestion\\pipeline.py": "ed66300b312a187018da3752605df2b528862fdd79d5d627968eac5d2ea95310",
+        "services\\ingestion\\queue.py": "fb8a1294dcaddbc98c4a3f5c36a7fdcb6000c630b6a91099ea1044df4f00653d",
+        "services\\ingestion\\repository.py": "5265753ff3b421d938b9f450c07db26cb29482c8e175e4fc79648dbfa43dd034",
+        "services\\ingestion\\sparse_index.py": "fbde148ddf5f6bfb96f824c993942a22a5f201cb9713b3386bf7eb5af7320485",
+        "services\\ingestion\\worker.py": "9beaa1cbef79283b4dce09752c013527adcd6dc7f0819e207e6734f544a4e0a8",
+        "services\\ingestion\\worker_health.py": "135d6dca150002647b0f1132670d885aed2d160eaaa99d7948985dd8fc19a605",
+        "services\\intent_service.py": "ca5e7ceefd9fcff5de0e6e7a73cb22ee731d7a5660843c38742a9ba8ce40701c",
+        "services\\knowledge_service.py": "2eb7027c7a3e292af52098adb98d1ad9b899cccbe5c46a004d14928e8d910930",
+        "services\\online_generation.py": "9f2c3100ddc24d41028578846e33f53ac011d2535eb8836776141b4f6c78aeba",
+        "services\\ops_metrics.py": "abae2c808b999f1f26e5d1a2ae44798573ab1726cc97e10418c019ade893ead9",
+        "services\\order_state_store.py": "8b9d8b1a889dce8a19519e3e46729c8bd96e5105c30030696e970e649f8c7ecc",
+        "services\\order_tool_service.py": "8b0c4ed04d4f5fcd03c92f0eb2aa1db5e6160b46621d74cf00e91d16cf538829",
+        "services\\pool_observation.py": "1ae5c13c077288f7474479a683114e69192b2bfcfde7445fe9e4722f47d44306",
+        "services\\privacy.py": "385da22af8a7daefcbaafb83d6353a586f2709249ebe3c4eb6f0ce016159e9e3",
+        "services\\prompt_service.py": "de4d17b50f8c7f82e80c3ccb374b6244afeba39123b16a557971a14c0048d226",
+        "services\\query_resolution.py": "3a71829e22b2c977b3eba87e1ba37f4f165206fc56a53c19cab79e66b84b95a4",
+        "services\\query_rewrite_provider.py": "68cc2b9b5269b25d50655f769d9f6ec815c71f4c1a10c604b4f276cc11e7bb4b",
+        "services\\redis_context_cache.py": "fd6040c32e5c42a853b63a454b7d2e38fdba890e24977458620a7fe4cfc3e065",
+        "services\\release_check_service.py": "da01eea40c2e2d57ea9061acd77e611e2d9d31a499d78c6f239a88403c5f3a55",
+        "services\\reply_rules.py": "da3ee63c72000d60db07c19e9f755df3f3deddd14e01c64b1500e79e89c6df53",
+        "services\\retrieval_access.py": "d7fb6d0256055f5ed8bf427b2d020e5c9c41790aca19786bee6adb21db603c02",
+        "services\\runtime_db.py": "0da29c71c97a86c6aac76ac2f6d9c0d80778c76a79a3a91908249cea3149b7e7",
+        "services\\runtime_maintenance.py": "9afca6f2ed61dbd085fad83f54a293798fd6f944fedb57d127954c3a750a3df1",
+        "services\\runtime_schema.py": "534199560b6218e036f05fcd7f4d73facfd5a5210015e21d38586b03af26ecd4",
+        "services\\safety_guard.py": "6ddcd4c099458fc2f10947749e4bac6c42b2176c5b7017f456fc00bddf24647b",
+        "routers\\audit.py": "753616965627a70bd84ffac7393f642bafeda1ab123cdd3404e184336e0265f7",
+        "routers\\chat.py": "72f332915083cc911fe4aa3a6a668073b395f65e6bd1421ae317b52beb2fc822",
+        "routers\\documents.py": "879c8ddbe043ae6749528d9acfcac77e61bc007dca93bd9c93c849d13e29b4ee",
+        "routers\\example.py": "0e84ad1a3e76f7dc008f146bea94081d663c928a4696f37a05266450a90103f4",
+        "routers\\feedback.py": "156a647f69595e316a4d0d6eec305a38373db8aa90dce9eced08f5dac3ccd168",
+        "routers\\health.py": "9ade38b9682c9ca5a90b02205f1a4d4ec31583cfd912a278a9216582e9c0aceb",
+        "routers\\info.py": "f0037829845602f0cfdfc13fe2dd17f29c1d607116c00d5608bcd134efc5f2ff",
+        "routers\\knowledge.py": "12e83908f0aa8af92935b3ad2c47a8077a804d7d628df572a8c09015aaf76883",
+        "routers\\ops.py": "c33db7c37f5159ed2843da849464a56922325f16eef90f0011bf139873861b7b",
+        "routers\\order.py": "d82247cb1c4283eac1361744e41c168dba1fa1dcbc4ab08b6631fb49e7469da6",
+        "routers\\prompt.py": "86c399e1c31c157b6a56267cf13f40c31f5d829e389872f567298372e579c129",
+        "routers\\release.py": "1732208041080648a3cd79bcd62d23c1a724c8867a9a80d2e4f4e80ebe034721",
+        "routers\\retrieval.py": "310e8577b8f5c210d22e6d82cc0df3db9ea75db861643186dbdaa00c66bcf50d",
+        "config\\chunking_config.py": "5b2fc8f3d4702b0974fa0eae7b204874ec59822cfe4f303b5c8a73eeb0210487",
+        "config\\rag_config.py": "0eeb91e3fde3cb61eb8adfefc31341cdd00047458762d792b79884c1a33f5a31",
+        "config\\runtime_config.py": "888e5c69aa17f6a0cd7b7479c380874505763b0bc49a7e8e465acd70286999a9"
+      },
+      "fixture": "capacity-fixture-v2; deterministic phase-concurrency-index Markdown; one approved FAQ seed",
+      "concurrency_levels": [
+        1,
+        2,
+        4
+      ],
+      "attempts_per_level": "2 * concurrency",
+      "request_timeout_seconds": 90,
+      "stop_on": "any failure/timeout or P95 > 30 seconds or RSS > 16 GiB",
+      "pool_observation": "SQLAlchemy checkout/checkin event files in RAG_POOL_OBSERVATION_DIR",
+      "pool_observation_dir": "D:/llm/llm-customer-service/tmp/stability-20260927/before-mix-v2-pools"
+    },
+    {
+      "name": "capacity_first_chat",
+      "status": "passed",
+      "attempts": 1,
+      "outcomes": {
+        "success": 1
+      },
+      "wall_seconds": 9.75,
+      "completed_per_second": 0.10256410256410256,
+      "successful_per_second": 0.10256410256410256,
+      "latency_all_attempts_ms": {
+        "p50": 9750.0,
+        "p95": 9750.0,
+        "p99": 9750.0
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 9750.0,
+          "request_id": "c4f5ad22fe1a498fb493bdd26f7f9aa8",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 803,
+            "completion_tokens": 20,
+            "total_tokens": 823,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 30.29,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.74,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.41,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 36.06,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.06,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.83,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.79,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 9611.19,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 1.11,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.93,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.65,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 9.49,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 1,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 1,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "c4f5ad22fe1a498fb493bdd26f7f9aa8",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497725128318600-0",
+            "order_id": null,
+            "latency_ms": 9714.6,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 9750.0
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "ingestion",
+      "concurrency": 1,
+      "stop": false,
+      "attempts": 2,
+      "outcomes": {
+        "success": 2
+      },
+      "wall_seconds": 2.0780000000013388,
+      "completed_per_second": 0.9624639076028448,
+      "successful_per_second": 0.9624639076028448,
+      "latency_all_attempts_ms": {
+        "p50": 1031.0000000026776,
+        "p95": 1046.9999999986612,
+        "p99": 1046.9999999986612
+      },
+      "rows": [
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "d26a7385612e401e8134ce4fff3c2c53",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1046.9999999986612
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 0.0,
+          "job_id": "71308180f36549cd81ec6a070d82cb86",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1031.0000000026776
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "ingestion",
+      "concurrency": 2,
+      "stop": false,
+      "attempts": 4,
+      "outcomes": {
+        "success": 4
+      },
+      "wall_seconds": 2.7340000000003783,
+      "completed_per_second": 1.4630577907825335,
+      "successful_per_second": 1.4630577907825335,
+      "latency_all_attempts_ms": {
+        "p50": 1264.999999999418,
+        "p95": 1469.0000000009604,
+        "p99": 1469.0000000009604
+      },
+      "rows": [
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 14.999999999417923,
+          "job_id": "cb6b0a18ca07412598cacd9db872e70a",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1264.999999999418
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 14.999999999417923,
+          "job_id": "ac316a2b6c8e47439a9cc4901ca8e3a2",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1264.999999999418
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "8188b43072c74e5192d8e295c5865e44",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1469.0000000009604
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "4000462544a84b96ad7080244841854f",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1265.9999999996217
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "ingestion",
+      "concurrency": 4,
+      "stop": false,
+      "attempts": 8,
+      "outcomes": {
+        "success": 8
+      },
+      "wall_seconds": 3.3909999999996217,
+      "completed_per_second": 2.3591860808023863,
+      "successful_per_second": 2.3591860808023863,
+      "latency_all_attempts_ms": {
+        "p50": 1265.9999999996217,
+        "p95": 1921.9999999986612,
+        "p99": 1921.9999999986612
+      },
+      "rows": [
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 30.999999999039574,
+          "job_id": "92fa7faac3a44b88900ace4e7ffdf7db",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1515.9999999996217
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 30.999999999039574,
+          "job_id": "5084fdafac164e87b1bf82ad26b22d39",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1093.9999999973224
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 30.999999999039574,
+          "job_id": "51ff44e7174149fbb34c30559f3f9513",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1702.9999999977008
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 30.999999999039574,
+          "job_id": "bd556a5ab6384af2a90060cd30a2ebfe",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1921.9999999986612
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 14.999999999417923,
+          "job_id": "5184a9c4e2664712ac67f8bad091f171",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1264.999999999418
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 14.999999999417923,
+          "job_id": "f09784d3c31d492fa462e1126788c928",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1061.9999999980791
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "6901a8194f8846e68b5fb8bb5fe8c35d",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1265.9999999996217
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 15.99999999962165,
+          "job_id": "fafe161b002245019631b8a6f7afaa75",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1453.0000000013388
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "mixed",
+      "concurrency": 1,
+      "stop": false,
+      "attempts": 2,
+      "outcomes": {
+        "success": 2
+      },
+      "wall_seconds": 12.967999999997119,
+      "completed_per_second": 0.15422578655154567,
+      "successful_per_second": 0.15422578655154567,
+      "latency_all_attempts_ms": {
+        "p50": 1295.9999999984575,
+        "p95": 11671.999999998661,
+        "p99": 11671.999999998661
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 11671.999999998661,
+          "request_id": "8fc52dc4306b4b1facdfe01ac7aa206c",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.03,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 17.43,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.74,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.86,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 28.98,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.07,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.7,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.52,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 11563.8,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.15,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.52,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.46,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 10.49,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 15,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "8fc52dc4306b4b1facdfe01ac7aa206c",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497743088547700-0",
+            "order_id": null,
+            "latency_ms": 11643.24,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 11671.999999998661
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 0.0,
+          "job_id": "1c1a176b3c774adba14ed2303de54139",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1295.9999999984575
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "mixed",
+      "concurrency": 2,
+      "stop": false,
+      "attempts": 4,
+      "outcomes": {
+        "success": 4
+      },
+      "wall_seconds": 25.860000000000582,
+      "completed_per_second": 0.15467904098994237,
+      "successful_per_second": 0.15467904098994237,
+      "latency_all_attempts_ms": {
+        "p50": 11577.9999999977,
+        "p95": 25438.00000000192,
+        "p99": 25438.00000000192
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 12797.0000000023,
+          "request_id": "3301ab0ad0444da1958a789e33617447",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 38.02,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.82,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 1.08,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 80.94,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.09,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.64,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 7.02,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 12580.28,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.14,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.19,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.52,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 9.61,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 16,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "3301ab0ad0444da1958a789e33617447",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497756063812300-0",
+            "order_id": null,
+            "latency_ms": 12763.06,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 12797.0000000023
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 24391.00000000326,
+          "job_id": "f82ccc05df154a37a0d296f42efc3d47",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 25438.00000000192
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 11577.9999999977,
+          "request_id": "2ff6314e48374b23936ec4a043e82e12",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.48,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.86,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.47,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 28.0,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.07,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.59,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.78,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 11482.64,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.17,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.54,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.68,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 8.58,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 16,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "2ff6314e48374b23936ec4a043e82e12",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497768856160500-2",
+            "order_id": null,
+            "latency_ms": 11562.12,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 11577.9999999977
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 32.00000000288128,
+          "job_id": "1626ede3e82b49f78fec0683f009c712",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 1485.000000000582
+        }
+      ]
+    },
+    {
+      "name": "capacity_batch",
+      "status": "passed",
+      "phase": "mixed",
+      "concurrency": 4,
+      "stop": true,
+      "attempts": 8,
+      "outcomes": {
+        "success": 8
+      },
+      "wall_seconds": 54.15600000000268,
+      "completed_per_second": 0.1477213974444125,
+      "successful_per_second": 0.1477213974444125,
+      "latency_all_attempts_ms": {
+        "p50": 24734.00000000038,
+        "p95": 52889.99999999942,
+        "p99": 52889.99999999942
+      },
+      "rows": [
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 11562.000000001717,
+          "request_id": "326865a13c304350838dfcb7b3027361",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 20.86,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.84,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 1.18,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 37.61,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.07,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.9,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.49,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 11430.73,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.14,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.63,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.84,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 8.81,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 18,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "326865a13c304350838dfcb7b3027361",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497781922974000-0",
+            "order_id": null,
+            "latency_ms": 11530.29,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 11562.000000001717
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 51172.0000000023,
+          "job_id": "414201bf6b2a4311958218b9e2910df3",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 52484.00000000038
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 24734.00000000038,
+          "request_id": "1de98aed95cf4534be4b80253c25a39e",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 17.14,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.96,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.41,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 28.63,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.07,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.24,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.58,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 13075.57,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.15,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 2.92,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 4.75,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 7.55,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 18,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "1de98aed95cf4534be4b80253c25a39e",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497781923973200-2",
+            "order_id": null,
+            "latency_ms": 13156.46,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 24734.00000000038
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 51172.0000000023,
+          "job_id": "e99370a5a537433b85545d7809219227",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 52889.99999999942
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 26562.999999998283,
+          "request_id": "b0ceac9b9bbf47c49c2e505a87bcf335",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.01,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 16.58,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.68,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.56,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 28.06,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.05,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 5.19,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.31,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 13280.68,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.19,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 3.33,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 5.2,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 9.09,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 18,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "b0ceac9b9bbf47c49c2e505a87bcf335",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497793477938300-4",
+            "order_id": null,
+            "latency_ms": 13358.21,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 26562.999999998283
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 26453.00000000134,
+          "job_id": "36b59054a6404fc8bc8bb99a0cc1375d",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 29015.99999999962
+        },
+        {
+          "kind": "chat",
+          "outcome": "success",
+          "http_status": 200,
+          "admission_ms": 13031.000000002678,
+          "request_id": "ea20d2e5ff7749aa8cb7d99f0d36b6ae",
+          "token_usage": {
+            "provider": "local",
+            "model": "qwen2.5-1.5b-instruct",
+            "prompt_tokens": 1106,
+            "completion_tokens": 20,
+            "total_tokens": 1126,
+            "counting_method": "local_tokenizer"
+          },
+          "stages": [
+            {
+              "step": "request_received",
+              "latency_ms": 0.02,
+              "status": "success"
+            },
+            {
+              "step": "memory_loaded",
+              "latency_ms": 18.92,
+              "status": "success"
+            },
+            {
+              "step": "intent_detected",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "risk_precheck",
+              "latency_ms": 0.87,
+              "status": "success"
+            },
+            {
+              "step": "order_tool_called",
+              "latency_ms": 0.04,
+              "status": "success"
+            },
+            {
+              "step": "retrieval_started",
+              "latency_ms": 0.56,
+              "status": "success"
+            },
+            {
+              "step": "rerank_completed",
+              "latency_ms": 35.7,
+              "status": "success"
+            },
+            {
+              "step": "evidence_selected",
+              "latency_ms": 0.08,
+              "status": "success"
+            },
+            {
+              "step": "evidence_gate",
+              "latency_ms": 6.9,
+              "status": "pass"
+            },
+            {
+              "step": "prompt_built",
+              "latency_ms": 2.6,
+              "status": "success"
+            },
+            {
+              "step": "generation_completed",
+              "latency_ms": 12898.81,
+              "status": "success"
+            },
+            {
+              "step": "reply_rules_checked",
+              "latency_ms": 0.16,
+              "status": "success"
+            },
+            {
+              "step": "grounding_checked",
+              "latency_ms": 4.62,
+              "status": "success"
+            },
+            {
+              "step": "memory_updated",
+              "latency_ms": 6.12,
+              "status": "success"
+            },
+            {
+              "step": "response_returned",
+              "latency_ms": 10.3,
+              "status": "success"
+            }
+          ],
+          "trace": {
+            "retrieval_count": 3,
+            "retrieval_path": "chunk-index",
+            "data_source": "document_chunks",
+            "index_name": "document_chunks",
+            "index_version": 18,
+            "embedding_model": "",
+            "sparse_available": false,
+            "index_load_ms": 0.0,
+            "request_id": "ea20d2e5ff7749aa8cb7d99f0d36b6ae",
+            "user_id": "live-owner",
+            "session_id": "capacity-1790497820039384600-6",
+            "order_id": null,
+            "latency_ms": 12991.43,
+            "top1_intent": "capacity-fixture-v2",
+            "used_fallback_prompt": false,
+            "reply_rules_applied": false,
+            "answer_source": "rag",
+            "degraded": false,
+            "failure_stage": "none",
+            "fallback_reason": ""
+          },
+          "elapsed_ms": 13031.000000002678
+        },
+        {
+          "kind": "ingestion",
+          "outcome": "success",
+          "http_status": 202,
+          "admission_ms": 46.999999998661224,
+          "job_id": "c889435e73c845b88d206443964efd8f",
+          "terminal": "succeeded",
+          "stage": "published",
+          "error_code": null,
+          "elapsed_ms": 3000.0
+        }
+      ]
+    },
+    {
+      "name": "capacity_observations",
+      "status": "passed",
+      "path": "D:\\llm\\llm-customer-service\\tmp\\stability-20260927\\before-mix-v2\\capacity_samples.json",
+      "samples": 220,
+      "pool_checked_out_peaks": {
+        "api": null,
+        "worker": null
+      },
+      "peak_rss_bytes": {
+        "api": 3559424,
+        "worker": 3579904
+      },
+      "max_lock_waiters": 0,
+      "max_pending": 4,
+      "sample_errors": 0
+    }
+  ],
+  "finished_at": "2026-09-27T08:30:36.128409+00:00"
+}
