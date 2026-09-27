@@ -1,0 +1,34 @@
+2026-09-27 — 5.3 retrieval quality verification
+
+Recorded command output from this task (not a full-suite run):
+venv/Scripts/python.exe -m pytest tests/test_query_resolution.py tests/test_evaluate_formal_rag.py tests/test_run_formal_rag_evaluation.py tests/test_retrieval_quality_candidates.py tests/test_chat_retrieval_track.py tests/test_intent_and_safety.py tests/test_hybrid_retrieval.py tests/test_retrieval_isolation.py tests/test_retrieval_dedup.py -q --tb=short
+Result: 162 passed, 3 warnings, 3 subtests passed in 23.36s
+Warnings: existing SWIG types lack __module__ attributes.
+
+Failing regression evidence:
+1. Original splitter: comma-condition regression produced 3 failed subtests, 16 passed.
+2. First fix: object-conjunction regression produced 1 failed, 16 passed, 3 subtests passed.
+3. Final fix: all included in the passing 162-test run above.
+4. Real candidate s53_018 regressed in 20260927_after.json; preserved. No paired lost cases remain in final_paired/comparison.json.
+
+Real runs (all completed exit 0; actual offline BGE query embeddings):
+- 20260927_baseline.json: initial 81 title / 30 colloquial baseline.
+- 20260927_before.json: expanded BEFORE fix, 81 / 30 / 20 and independent 90-case intent evaluation.
+- 20260927_after.json: intermediate AFTER with detected synthetic multi-intent regression.
+- 20260927_final.json: final corrected run, same snapshot/data/config/budgets.
+No downloads, model substitutions or mocked evaluation results.
+
+Static checks:
+- venv/Scripts/python.exe -m ruff check . : All checks passed!
+- git diff --check : passed
+- venv/Scripts/python.exe scripts/check_repo_data_size.py --max-mb 1 : passed
+- New compact summary: 300047 bytes, below 1 MB (also checked independently; currently untracked).
+
+Not run: historical full 1154-test suite; unrelated live API/worker acceptance;
+Qwen answer generation; BGE reranker; Docker; 5.4 load/cost/recovery work.
+No source data or shared PostgreSQL/Redis resources were removed. No commit/push/deploy.
+
+Quality status:
+Suggested fixed-set non-regression gates pass; absolute live-user quality not established.
+Independent retrieval blind evaluation: NOT RUN, missing independent human labels.
+Synthetic candidates: pending human review, never promoted to blind or production gold.

@@ -758,6 +758,7 @@ def test_job_exposes_parse_warnings_from_linked_version(api: Api):
         {"code": "no_text_layer", "message": "疑似扫描件，未提取到文本层", "detail": {"ocr_engine": None}},
         {"code": "encoding_fallback", "message": "按 GBK 回退解码", "detail": {"encoding": "gbk"}},
     ]
+    quality = {"policy_version": "1", "status": "requires_review", "reasons": ["empty_text"]}
     with db.session_scope(api.db_url) as session:
         version = repository.create_document_version(
             session,
@@ -766,7 +767,7 @@ def test_job_exposes_parse_warnings_from_linked_version(api: Api):
             content_hash="b" * 64,
             parser_name="pdf",
             parser_version="1.0",
-            metadata_json={"warnings": warnings, "block_count": 0},
+            metadata_json={"warnings": warnings, "block_count": 0, "parse_quality": quality},
         )
         repository.update_ingestion_job(
             session, TENANT_A, job_id, status="succeeded", stage="parsed", document_version_id=version.id
@@ -776,6 +777,7 @@ def test_job_exposes_parse_warnings_from_linked_version(api: Api):
     assert response.status_code == 200
     body = response.json()
     assert body["warnings"] == warnings
+    assert body["parse_quality"] == quality
     assert body["document_version_id"] == version.id
 
 

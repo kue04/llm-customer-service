@@ -1,0 +1,89 @@
+{
+  "git_head": "333ba325dea31b0ba29dcb03c4aa9334c7f719e6",
+  "working_tree_dirty": true,
+  "source_artifacts_unchanged": {
+    "source_manifest_sha256": true,
+    "source_vectors_sha256": true,
+    "source_database_sha256": true
+  },
+  "cached_embedding_spot_checks": [
+    {
+      "source_row": 0,
+      "text_sha256": "df3945a363a6eab06ebb6ee9b9098f0d71863e1e2e2268e0c7786164da7607b8",
+      "cosine": 1.0,
+      "matches": true
+    },
+    {
+      "source_row": 4614,
+      "text_sha256": "356730636804fcb132582dac6b82d950ca5a8c6e07841bb30d2b7f2e69dbe59a",
+      "cosine": 1.0,
+      "matches": true
+    },
+    {
+      "source_row": 9228,
+      "text_sha256": "ababf82bcb6644409ffc61bb9d3e5ed59d9aef8eeaa31a2b56a7de39e04a1bfe",
+      "cosine": 1.0,
+      "matches": true
+    }
+  ],
+  "offline": true,
+  "cpu_threads": 2,
+  "versions": {
+    "torch": "2.11.0",
+    "transformers": "5.6.1",
+    "sentence-transformers": "5.4.1",
+    "faiss-cpu": "1.13.2",
+    "SQLAlchemy": "2.0.54",
+    "psycopg": "3.2.3"
+  },
+  "final_code_sha256": {
+    "services/query_resolution.py": "3a71829e22b2c977b3eba87e1ba37f4f165206fc56a53c19cab79e66b84b95a4",
+    "services/intent_service.py": "ca5e7ceefd9fcff5de0e6e7a73cb22ee731d7a5660843c38742a9ba8ce40701c",
+    "services/chat_service.py": "8d0645c483bbade76692187987ebe0a85f2a49bae1d2361ea3b8d0466910edc4",
+    "utils/hybrid_retriever.py": "d07b8b1cb654a591ceff074b41e007e83aab6a60002e9e185cf0203b32518e2c",
+    "scripts/evaluate_formal_rag.py": "6326b22889109dfd74207fed32b9705b23ec082c0b8613c2ff4fd76859a7e499",
+    "scripts/run_formal_rag_evaluation.py": "8339df1533bbf36fb47b6003d0cb9ff541546cf1eeda787aae69515afb32eb9d",
+    "scripts/prepare_retrieval_quality_snapshot.py": "f6663b8a190dc0493aa178e69aea4065efd0218e16c0095d93f4ea106b7667b0",
+    "scripts/build_colloquial_cases.py": "ce181cab53a0ac0f66fbebfc81529f67a8a3dbd8abdbb10675ac296774b79847"
+  },
+  "blind_preservation": {
+    "path": "data/chat_grounding_blind_cases.jsonl",
+    "sha256": "9c550c6395e8526092d8b38a18a92bd86008f10317f0cd58e52e6c1d07245357",
+    "opened_for_evaluation": false,
+    "status": "answer-grounding blind set; no independent retrieval labels"
+  },
+  "intent_taxonomy_audit": {
+    "all_count": 90,
+    "all_correct": 34,
+    "supported_count": 44,
+    "supported_correct": 34,
+    "unsupported_count": 46,
+    "unsupported_labels": [
+      "优惠叠加咨询",
+      "催单",
+      "发票开具咨询",
+      "取消订单",
+      "取餐后取消",
+      "商家拒绝退款",
+      "商家电话咨询",
+      "地址修改追问",
+      "备注未满足",
+      "少送漏送",
+      "延误补偿",
+      "接单后取消",
+      "支付超时取消",
+      "满减未生效",
+      "联系商家咨询",
+      "超时取消追问",
+      "退款失败",
+      "错送餐品",
+      "餐品撒漏售后"
+    ]
+  },
+  "evidence_files_sha256": {
+    "reports\\retrieval_quality\\20260927_after.json": "10e12d4be014dec89f64a9da9355ea8e9e6d7119758d583d4ed80defca9b073f",
+    "reports\\retrieval_quality\\20260927_baseline.json": "cc31583a23d123c440222682648f8aee63d0e7883c33ac4bf0cccd5208e03b73",
+    "reports\\retrieval_quality\\20260927_before.json": "b91af26a76ca87aa8baad020ef3b520fdfd6f1821cce521b800c63ed6e1c20fd",
+    "reports\\retrieval_quality\\20260927_final.json": "9b934b43d9a1c4cf5a6584eadf80266d697097df5a4ae55ef633fe21fd7f8943"
+  }
+}

@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -188,6 +188,7 @@ class IngestionJobDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     warnings: list[ParseWarningItem] = Field(default_factory=list)
+    parse_quality: dict[str, Any] | None = None
 
 
 __all__ = [

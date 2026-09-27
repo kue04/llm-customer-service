@@ -1,0 +1,53 @@
+{
+  "date": "2026-09-27",
+  "git_head": "333ba325dea31b0ba29dcb03c4aa9334c7f719e6",
+  "scope": "5.3 label audit, answer-preserving cleanup and human review queue; 5.4 plan only",
+  "tests": {
+    "command": "python -m pytest tests/test_chunking.py tests/test_parse_quality.py tests/test_ingestion_pipeline.py tests/test_document_upload_api.py tests/test_retrieval_quality_candidates.py tests/test_evaluate_formal_rag.py tests/test_run_formal_rag_evaluation.py tests/test_intent_and_safety.py -q --tb=short",
+    "environment": {
+      "PYTHONUTF8": "1",
+      "PYTHONIOENCODING": "utf-8"
+    },
+    "passed": 455,
+    "warnings": 5,
+    "seconds": 29.23,
+    "full_suite": false
+  },
+  "initial_test_issue": "Windows subprocess decoded UTF-8 output as GBK; rerun with PYTHONUTF8=1, no assertion weakened",
+  "checks": {
+    "ruff": "passed",
+    "fixture_real_model": "passed",
+    "offline_source_replay": "passed"
+  },
+  "annotation_tasks": {
+    "count": 140,
+    "status": "all_pending",
+    "split": "development_not_blind"
+  },
+  "unchanged": {
+    "production_intent_rules": true,
+    "parse_quality_gate": true,
+    "shared_indexes": true,
+    "original_gold": true,
+    "blind_content_used": false
+  },
+  "limitations": [
+    "full historical FAQ sources require review and were not republished",
+    "three-query diagnostic fixture is not a representative retrieval benchmark",
+    "no new 81/30 retrieval quality claim",
+    "no 5.4 implementation, full-suite run, HTTP/worker rerun, commit or deployment"
+  ],
+  "files_sha256": {
+    "services/ingestion/chunkers/cleaner.py": "c09026b3402ca537542277546c659bcc805762d94be3aaaeded7e0530006a8f7",
+    "services/ingestion/chunkers/chunker.py": "9e999ecb58e05948a578f811d75a8861d1894e6c0370f3aecbb4ffc91b97dca4",
+    "scripts/audit_faq_chunking.py": "271a6db67d5baac64bcf9b9683618c17ac574541f521768ce4c0b61df6f9b971",
+    "scripts/evaluate_formal_rag.py": "620a079c7ef31931106ba240af0aad530879dbba72916b4582481c3429caf300",
+    "scripts/build_colloquial_cases.py": "136714709ef2e6bfc8448a8b1e9a7393427d072e7d4e3a400091bac16ca05609",
+    "data/retrieval_annotation_tasks.jsonl": "bb14db08d37616b2b64df3a235423a52d6d06120c595244afe0d755ff3fe1822"
+  },
+  "evidence_sha256": {
+    "20260927_faq_chunking.json": "fa8435fa1a88a2008c3086906aec70d9b354746deaaec5fc7250a288a1f60353",
+    "20260927_faq_live.json": "6f9217f90154553afd1b598def48d7df325b571e58e0398181e5eae861e7abeb",
+    "20260927_intent_labels.json": "3ba47263bcb233e937a44af248b9fa903b62df19c4f3d9c24311e154b2461b43"
+  }
+}

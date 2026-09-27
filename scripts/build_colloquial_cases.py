@@ -36,6 +36,89 @@ from pathlib import Path
 DEFAULT_GOLD = Path("data/retrieval_gold_cases.jsonl")
 DEFAULT_OUT = Path("data/retrieval_colloquial_cases.jsonl")
 
+
+def build_annotation_tasks(candidate_path: Path, intent_path: Path, retrieval_path: Path, output_path: Path) -> list[dict]:
+    """Export a development review queue; predictions are omitted to reduce anchoring.
+
+    Reference labels are preserved verbatim and are not human approvals. An
+    unsupported intent must be adjudicated, never silently mapped to fallback.
+    """
+    import hashlib
+    from services.intent_service import FALLBACK_INTENT_NAME, KNOWN_INTENT_NAMES
+
+    if output_path.exists():
+        raise ValueError('refusing to overwrite human annotations')
+    names = KNOWN_INTENT_NAMES | {FALLBACK_INTENT_NAME}
+    tasks = []
+    for kind, path in [('candidate', candidate_path), ('intent', intent_path), ('retrieval', retrieval_path)]:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        rows = [json.loads(line) for line in path.read_text('utf-8').splitlines() if line.strip()]
+        for case in rows:
+            unsupported = kind == 'intent' and case['expected_intent'] not in names
+            priority = 1 if case.get('query_type') == 'coreference' else (2 if unsupported else 3)
+            tasks.append({'task_id': f"{kind}:{case['id']}", 'review_type': kind, 'priority': priority,
+                'split': 'development_not_blind', 'status': 'pending',
+                'source_file': path.as_posix(), 'source_sha256': digest, 'source_case_id': case['id'],
+                'query': case['query'], 'context': case.get('context') or {},
+                'reference_intent': case.get('expected_intent'),
+                'reference_intents': case.get('expected_intents'),
+                'reference_intent_supported': not unsupported if kind == 'intent' else None,
+                'reference_gold_spans': case.get('gold_spans') or ([case['gold_span']] if case.get('gold_span') else []),
+                'reference_document_id': case.get('gold_document_id'),
+                'reference_heading': case.get('gold_heading'),
+                'reference_evidence_requirements': case.get('evidence_requirements') or [],
+                'decision': None, 'human_primary_intent': None, 'human_intents': None,
+                'human_evidence': None, 'reviewer': None, 'reviewed_at': None, 'notes': None})
+    tasks.sort(key=lambda item: (item['priority'], item['task_id']))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(''.join(json.dumps(row, ensure_ascii=False) + '\n' for row in tasks), encoding='utf-8')
+    return tasks
+
+
+def build_quality_candidates(source_path: Path, output_path: Path) -> list[dict]:
+    """Generate development candidates only; never call these human/blind gold."""
+    import hashlib
+
+    sources = {r['id']: r for r in map(json.loads, source_path.read_text('utf-8').splitlines()) if r}
+    specs = [
+        ('colloquial', ['c003'], '货出了毛病，售后入口在哪啊', {}),
+        ('colloquial', ['c006'], '评价已经发出去了还能再编辑不', {}),
+        ('colloquial', ['c012'], '售后单交了，审核大概等多久呀', {}),
+        ('colloquial', ['c027'], '电子发票可以反复下载不', {}),
+        ('colloquial', ['c015'], '订单拒收了，退钱得等多长时间', {}),
+        ('typo', ['c003'], '如何提交售候申请？', {}),
+        ('typo', ['c006'], '评价晒旦可以修改吗？', {}),
+        ('typo', ['c012'], '售后审合一般要多久？', {}),
+        ('typo', ['c027'], '电子发漂下载有没有次数限制？', {}),
+        ('typo', ['c015'], '订单拒收后，退款什时候返还？', {}),
+        ('coreference', ['c012'], '那一般要等多久才能审完？', {'messages': [{'role': 'user', 'content': '我提交了售后申请，正在等审核。'}], 'facts': {'last_user_query': '我提交了售后申请，正在等审核。'}}),
+        ('coreference', ['c027'], '那它能反复下载吗？', {'messages': [{'role': 'user', 'content': '我问的是增值税普通发票电子版。'}], 'facts': {'last_user_query': '我问的是增值税普通发票电子版。'}}),
+        ('coreference', ['c006'], '那这个发出去之后还能改吗？', {'messages': [{'role': 'user', 'content': '我刚写完京东商品的评价晒单。'}], 'facts': {'last_user_query': '我刚写完京东商品的评价晒单。'}}),
+        ('coreference', ['c021'], '那最多能放几天？', {'messages': [{'role': 'user', 'content': '我的商品放在京东自提柜。'}], 'facts': {'last_user_query': '我的商品放在京东自提柜。'}}),
+        ('coreference', ['c015'], '那退款什么时候能回来？', {'order_id': 'EVAL-0015', 'messages': [{'role': 'user', 'content': '订单EVAL-0015我已经拒收了。'}], 'facts': {'last_user_query': '订单EVAL-0015我已经拒收了。', 'last_primary_intent': '退款进度', 'active_order_id': 'EVAL-0015'}}),
+        ('multi_intent', ['c003', 'c012'], '如何提交售后申请？售后审核一般要多久？', {}),
+        ('multi_intent', ['c006', 'c027'], '评价晒单可以修改吗？电子发票下载有没有次数限制？', {}),
+        ('multi_intent', ['c015', 'c007'], '订单拒收后退款什么时候返还？京品加油支持哪些支付方式以及优惠券？', {}),
+        ('multi_intent', ['c021', 'c004'], '自提柜可以保留货物几天？自提订单是否收费？', {}),
+        ('multi_intent', ['c018', 'c020'], '京豆的有效期是多久？电器延保险是什么？', {}),
+    ]
+    cases = []
+    for i, (kind, source_ids, query, context) in enumerate(specs, 1):
+        refs = [sources[key] for key in source_ids]
+        cases.append({'id': f's53_{i:03d}', 'query': query, 'query_type': kind, 'context': context,
+            'gold_spans': [r['gold_span'] for r in refs],
+            'evidence_requirements': [{'source_case_id': r['id'], 'sub_question': r['rewritten_from_query'],
+                'gold_span': r['gold_span'], 'gold_document_id': r['gold_document_id']} for r in refs],
+            'source_case_ids': source_ids, 'source': 'agent-authored synthetic transformations',
+            'source_sha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
+            'annotation_status': 'candidate_pending_human_review', 'split': 'development',
+            'expected_intents': ['退款进度'] if source_ids == ['c015'] else None})
+    if output_path.exists():
+        raise ValueError('refusing to overwrite candidate annotations')
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in cases), encoding='utf-8')
+    return cases
+
 #: ``(金标里的原 query, 人工改写的口语化 query)``
 #: 改写刻意避开正文用词 —— 见模块 docstring。
 REWRITES: list[tuple[str, str]] = [

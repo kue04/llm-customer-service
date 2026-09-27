@@ -1,0 +1,130 @@
+{
+  "scope": "offline parser/chunker replay, no publication or retrieval quality claim",
+  "baseline_ref": "333ba325dea31b0ba29dcb03c4aa9334c7f719e6",
+  "baseline_cleaner_sha256": "ec84c54dfab1f7c857b7f2b34c3e14e739febeeca017b7837062c040dba9a155",
+  "current_cleaner_sha256": "c09026b3402ca537542277546c659bcc805762d94be3aaaeded7e0530006a8f7",
+  "chunker_version": "1.1",
+  "documents": [
+    {
+      "source_file": "data/corpus/html/takeout_售后流程.html",
+      "source_sha256": "1e34c0b771b2b27a144a004a1ada7242851f5dc53053685e7ea9dbe35d6474f1",
+      "parse_quality": {
+        "policy_version": "1",
+        "status": "requires_review",
+        "reasons": [
+          "repeated_content"
+        ],
+        "metrics": {
+          "text_length": 4157,
+          "garbled_ratio": 0.0,
+          "duplicate_ratio": 0.5189,
+          "structure_issues": []
+        }
+      },
+      "metrics": {
+        "before": {
+          "chunk_count": 78,
+          "bare_heading_chunks": 38,
+          "question_only_chunks": 34,
+          "dropped_duplicate": 18,
+          "source_answer_blocks": 38,
+          "answer_blocks_without_matching_chunk": 18,
+          "lost_answer_headings": [
+            "11. 这个问题我有点不太明白，客服你好，我想问一下怎么申请售后。这个要怎么处理？",
+            "12. 多轮对话：用户先问“客服你好，我想问一下怎么申请售后。”，客服初步回复后，用户继续追问“我还能继续申请平台介入吗？”",
+            "14. 客服你好，售后申请需要上传什么照片？",
+            "15. 多轮对话：用户先问“售后申请需要上传什么照片？”，客服初步回复后，用户继续追问“这个会影响退款吗？”",
+            "17. 这个问题我有点不太明白，售后审核一般要多久？可以帮我看一下吗？",
+            "18. 多轮对话：用户先问“售后审核一般要多久？”，客服初步回复后，用户继续追问“那现在我应该先做什么？”",
+            "20. 麻烦问下，平台介入后还要等商家同意吗？",
+            "21. 多轮对话：用户先问“平台介入后还要等商家同意吗？”，客服初步回复后，用户继续追问“如果对方一直不处理怎么办？”",
+            "23. 这个问题我有点不太明白，我提交售后后还能修改理由吗？能不能给我一个解决办法？",
+            "24. 多轮对话：用户先问“我提交售后后还能修改理由吗？”，客服初步回复后，用户继续追问“需要我上传什么凭证吗？”",
+            "26. 您好，商家一直不处理售后怎么办？",
+            "27. 多轮对话：用户先问“商家一直不处理售后怎么办？”，客服初步回复后，用户继续追问“我还能继续申请平台介入吗？”",
+            "29. 这个问题我有点不太明白，我不小心撤销售后了，还能重新申请吗？现在我该怎么办？",
+            "30. 多轮对话：用户先问“我不小心撤销售后了，还能重新申请吗？”，客服初步回复后，用户继续追问“这个会影响退款吗？”",
+            "32. 请问一下，我想咨询一下退款和投诉能不能同时申请。",
+            "33. 多轮对话：用户先问“我想咨询一下退款和投诉能不能同时申请。”，客服初步回复后，用户继续追问“那现在我应该先做什么？”",
+            "35. 您好，订单已经完成了，还能申请售后吗？",
+            "36. 多轮对话：用户先问“订单已经完成了，还能申请售后吗？”，客服初步回复后，用户继续追问“我还能继续申请平台介入吗？”"
+          ]
+        },
+        "after": {
+          "chunk_count": 78,
+          "bare_heading_chunks": 2,
+          "question_only_chunks": 0,
+          "dropped_duplicate": 0,
+          "source_answer_blocks": 38,
+          "answer_blocks_without_matching_chunk": 0,
+          "lost_answer_headings": []
+        }
+      }
+    }
+  ],
+  "live_fixture": {
+    "scope": "three-FAQ diagnostic fixture; real PostgreSQL/pipeline/local BGE; no HTTP/worker/generation",
+    "source_file": "data/corpus/html/takeout_售后流程.html",
+    "source_sha256": "1e34c0b771b2b27a144a004a1ada7242851f5dc53053685e7ea9dbe35d6474f1",
+    "fixture_sha256": "79be09d6c0deb5072504cf7bc747b8a10b3cac21e9b3614e64ef089b9aef18cc",
+    "fixture_parse_quality": {
+      "policy_version": "1",
+      "status": "passed",
+      "reasons": [],
+      "metrics": {
+        "text_length": 341,
+        "garbled_ratio": 0.0,
+        "duplicate_ratio": 0.3792,
+        "structure_issues": []
+      }
+    },
+    "original_parse_quality": {
+      "policy_version": "1",
+      "status": "requires_review",
+      "reasons": [
+        "repeated_content"
+      ],
+      "metrics": {
+        "text_length": 4157,
+        "garbled_ratio": 0.0,
+        "duplicate_ratio": 0.5189,
+        "structure_issues": []
+      }
+    },
+    "tenant_id": "ed039dc8ac5b40cc9a8dfc0d9a5a9079",
+    "pipeline": {
+      "job_id": "528ddd61ad2e49848d9eb372bdd0d99e",
+      "tenant_id": "ed039dc8ac5b40cc9a8dfc0d9a5a9079",
+      "document_id": "bbf60f8646934edab9739925e3a84284",
+      "stage": "published",
+      "status": "succeeded",
+      "document_version_id": "8b8aeacccfa34228b7474f84b21ee076",
+      "document_version": 1,
+      "chunk_count": 8,
+      "index_version": 7,
+      "index_switched": true,
+      "duplicate": false,
+      "warnings": [],
+      "resumed_from": "received",
+      "skipped": false,
+      "skip_reason": "",
+      "error_code": "",
+      "error_message": ""
+    },
+    "own_section_answers_preserved": true,
+    "retrieval": [
+      {
+        "query": "10. 麻烦问下，客服你好，我想问一下怎么申请售后。",
+        "answer_hit_at_5": true
+      },
+      {
+        "query": "11. 这个问题我有点不太明白，客服你好，我想问一下怎么申请售后。这个要怎么处理？",
+        "answer_hit_at_5": true
+      },
+      {
+        "query": "1. 客服你好，我想问一下怎么申请售后。",
+        "answer_hit_at_5": true
+      }
+    ]
+  }
+}

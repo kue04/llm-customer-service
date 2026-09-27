@@ -19,6 +19,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from services.ingestion import models
+from services.ingestion.parse_quality import requires_review
 from services.ingestion.models import utcnow
 
 
@@ -685,7 +686,8 @@ def list_indexable_chunks(
 ) -> Sequence[tuple[models.DocumentChunk, models.DocumentVersion, models.Document]]:
     """索引构建（3.4）的数据来源：chunk + 版本 + 文档三元组。
 
-    ``version_statuses`` 为 ``None`` 时不做版本状态过滤（索引包含本租户全部 chunk），
+    ``version_statuses`` 为 ``None`` 时不做常规版本状态过滤，
+    但质量隔离始终排除，包括状态或 ``parse_quality`` 表明待复核的版本。
     传入集合时只取这些状态的版本 —— 两种用法在测试里都有覆盖。
     默认不过滤的理由与后果见台账 ``[D-11]``：
     「索引文件里有什么」与「谁能检索到」是两件事，后者由检索层的 fail-closed
@@ -720,7 +722,11 @@ def list_indexable_chunks(
         stmt = stmt.where(models.DocumentChunk.tenant_id == tenant_id)
     if version_statuses:
         stmt = stmt.where(models.DocumentVersion.status.in_(list(version_statuses)))
-    return session.execute(stmt).all()
+    # Quality quarantine cannot be overridden by caller-provided statuses,
+    # global rebuilds, or a stale set of chunks from an interrupted job.
+    stmt = stmt.where(models.DocumentVersion.status != "requires_review")
+    return [row for row in session.execute(stmt).all()
+            if not requires_review(row[1].status, row[1].metadata_json)]
 
 
 # ---------------------------------------------------------------- 索引构建

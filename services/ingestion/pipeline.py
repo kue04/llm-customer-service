@@ -9,7 +9,7 @@
 =========================  =====================================================
 ``received``               任务已入库（上传接口建 job 后投递队列）
 ``stored``                 确认对象存储里能取到字节（上传时已 put，这里只做**存在性校验**）
-``parsed``                 解析字节 → ``ParsedDocument``；内容 hash 判重；**创建 document_version**
+``parsed``                 解析、质量门禁、内容 hash 判重；**创建 document_version**
 ``normalized``             解析产物 → 切分输入：解析生效切分配置（知识库覆盖）+ 装配 ``ChunkContext``
 ``chunked``                调切分器得到 ``ChunkingResult``（**不写库**）
 ``persisted``              落库 ``document_chunks``（重跑先删后写）
@@ -24,6 +24,8 @@
 两处结果就可能不同，而"少了一段内容"这种差异几乎无法从结果看出来。
 因此 ``normalized`` 的定义是**归一化「输入」**（配置 + 归属上下文 + 留痕），
 不是再洗一遍正文 —— 具体动作见 ``_stage_normalized``。
+质量门禁在清洗前检查空文本、乱码、重复内容和结构异常；不改写原文，
+拒绝结果持久化为 ``requires_review``，并在重试的准备模式下同样执行。
 
 「幂等重试」在本实现里的准确含义
 --------------------------------
@@ -61,7 +63,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from config.chunking_config import ChunkConfig, ChunkConfigError, build_config
-from services.ingestion import index_builder, models, parser_registry, repository
+from services.ingestion import index_builder, models, parse_quality, parser_registry, repository
 from services.ingestion.chunkers import (
     AclEntry,
     ChunkContext,
@@ -72,10 +74,14 @@ from services.ingestion.chunkers import (
 from services.ingestion.index_builder import IndexBuildError, IndexBuildResult
 from services.ingestion.index_manifest import DEFAULT_INDEX_NAME, IndexManifestError
 from services.ingestion.object_store import ObjectStore, build_object_key, filename_from_source_uri
-from services.ingestion.parsers.base import ParserError, ParsedDocument
+from services.ingestion.parsers.base import ParserError, ParsedDocument, compute_content_hash
 
 
 logger = logging.getLogger(__name__)
+
+
+class RequiresReview(Exception):
+    """Stop before chunking; quarantine is a terminal, acknowledged outcome."""
 
 
 #: 计划给定的固定状态流转（顺序即契约，测试按它参数化）
@@ -335,6 +341,8 @@ class IngestionPipeline:
                     return self._duplicate_outcome(job, state, resumed_from)
                 if persist:
                     self._advance(job, stage)
+        except RequiresReview:
+            return self._review_outcome(job, state, resumed_from)
         except Exception as error:  # noqa: BLE001 - 逐类翻译，最后兜底为 unexpected_error
             return self._fail(job, current_stage, error, resumed_from=resumed_from)
 
@@ -382,15 +390,24 @@ class IngestionPipeline:
         """解析 + 内容 hash 判重 + 创建版本（[D-6]：版本由流水线创建）。
 
         ``persist=False``（重试时该阶段已成功过）的行为差异只有两处：
-        不新建版本、不写文档状态 —— 解析与判重本身是只读计算，重算无害。
+        不新建版本、不写通过状态；质量拒绝仍必须隔离，不能借重试跳过门禁。
         """
 
         tenant_id = state.document.tenant_id
         key = build_object_key(tenant_id, state.document.id, state.filename)
         data = self.store.get(key)
-        parsed = self.parser(data, state.filename, source_type=state.document.source_type)
+        try:
+            parsed = self.parser(data, state.filename, source_type=state.document.source_type)
+        except ParserError as error:
+            if error.error_code != "empty_document":
+                raise
+            # Empty extraction is reviewable, not an infrastructure failure.
+            parsed = ParsedDocument(title=state.filename, source_type=state.document.source_type,
+                                    parser_name=error.parser_name,
+                                    metadata={"content_hash": compute_content_hash(data)})
         state.parsed = parsed
         state.warnings = tuple(item.to_dict() for item in parsed.warnings)
+        state.extra["parse_quality"] = parse_quality.evaluate(parsed)
 
         content_hash = parsed.content_hash
         if not content_hash:
@@ -406,6 +423,9 @@ class IngestionPipeline:
                 # 同一份内容已经存在：**不建第二份有效版本**（uq(tenant_id, content_hash) 的语义）
                 state.duplicate_of = existing.id
                 state.version = existing
+                if (state.extra["parse_quality"]["status"] != "passed"
+                        or parse_quality.requires_review(existing.status, existing.metadata_json)):
+                    raise RequiresReview
                 if existing.document_id != state.document.id:
                     # 本次上传的这个"文档"没有任何自己的内容 → 标 duplicate（计划原文口径）
                     repository.update_document_status(
@@ -454,6 +474,9 @@ class IngestionPipeline:
             )
 
         state.version = version
+        if (state.extra["parse_quality"]["status"] != "passed"
+                or parse_quality.requires_review(version.status, version.metadata_json)):
+            raise RequiresReview
         if persist:
             repository.update_document_status(self.session, tenant_id, state.document.id, "parsed")
         logger.info(
@@ -686,6 +709,7 @@ class IngestionPipeline:
         """
 
         metadata: dict[str, Any] = {
+            "parse_quality": state.extra["parse_quality"],
             WARNINGS_METADATA_KEY: [dict(item) for item in state.warnings],
             "parser": {
                 "name": parsed.parser_name,
@@ -702,6 +726,33 @@ class IngestionPipeline:
             payload["stats"] = stats.to_dict() if stats is not None else None
             metadata[CHUNKING_METADATA_KEY] = payload
         return metadata
+
+    def _review_outcome(self, job, state, resumed_from):
+        version = self._require_version(state)
+        quality = state.extra["parse_quality"]
+        if parse_quality.requires_review(version.status, version.metadata_json):
+            quality = (version.metadata_json or {}).get("parse_quality") or quality
+        if quality["status"] == "passed":
+            quality = {**quality, "status": "requires_review", "reasons": ["previously_quarantined"]}
+        # A rejected new upload must not invalidate a previously published
+        # version with the same hash (legacy/parser differences).
+        if version.status != STATUS_PUBLISHED:
+            version.metadata_json = {**(version.metadata_json or {}), "parse_quality": quality}
+            version.status = "requires_review"
+        versions = repository.list_document_versions(self.session, job.tenant_id, job.document_id)
+        if not any(v.status == STATUS_PUBLISHED for v in versions):
+            repository.update_document_status(self.session, job.tenant_id, job.document_id, "requires_review")
+        repository.update_ingestion_job(
+            self.session, job.tenant_id, job.id, status="requires_review", stage="parsed",
+            document_version_id=version.id, error_code="parse_quality_requires_review",
+            error_message=",".join(quality["reasons"]),
+        )
+        self.session.commit()
+        return PipelineOutcome(job_id=job.id, tenant_id=job.tenant_id, document_id=job.document_id,
+                               status="requires_review", stage="parsed", document_version_id=version.id,
+                               error_code="parse_quality_requires_review",
+                               error_message=",".join(quality["reasons"]), resumed_from=resumed_from,
+                               warnings=state.warnings)
 
     def _resume_stage(self, job: models.IngestionJob) -> str:
         """决定从哪个阶段开始。

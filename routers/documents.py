@@ -656,6 +656,7 @@ def get_ingestion_job(
         created_at=job.created_at,
         updated_at=job.updated_at,
         warnings=_extract_warnings(version),
+        parse_quality=(version.metadata_json or {}).get("parse_quality") if version else None,
     )
 
 

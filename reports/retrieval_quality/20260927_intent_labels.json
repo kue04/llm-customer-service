@@ -1,0 +1,889 @@
+{
+  "count": 90,
+  "primary_accuracy": 0.37777777777777777,
+  "taxonomy": {
+    "source": "services.intent_service.INTENT_RULES",
+    "canonical_labels": [
+      "优惠券不可用",
+      "未收到餐",
+      "私下收费风险",
+      "站外交易风险",
+      "退款进度",
+      "退款金额咨询",
+      "通用客服咨询",
+      "配送异常追问",
+      "隐私保护咨询",
+      "食品安全投诉",
+      "验证码诈骗提醒",
+      "骑手态度投诉"
+    ],
+    "fallback_label": "通用客服咨询",
+    "supported_count": 44,
+    "unsupported_count": 46,
+    "coverage": 0.4888888888888889,
+    "supported_accuracy": 0.7727272727272727,
+    "unsupported_labels": [
+      "优惠叠加咨询",
+      "催单",
+      "发票开具咨询",
+      "取消订单",
+      "取餐后取消",
+      "商家拒绝退款",
+      "商家电话咨询",
+      "地址修改追问",
+      "备注未满足",
+      "少送漏送",
+      "延误补偿",
+      "接单后取消",
+      "支付超时取消",
+      "满减未生效",
+      "联系商家咨询",
+      "超时取消追问",
+      "退款失败",
+      "错送餐品",
+      "餐品撒漏售后"
+    ],
+    "label_policy": "preserve original labels; no automatic aliases; unresolved targets need human adjudication"
+  },
+  "by_type": {
+    "baseline": {
+      "count": 46,
+      "primary_accuracy": 0.30434782608695654
+    },
+    "boundary_promise": {
+      "count": 9,
+      "primary_accuracy": 0.5555555555555556
+    },
+    "inducement": {
+      "count": 9,
+      "primary_accuracy": 0.4444444444444444
+    },
+    "long_context": {
+      "count": 8,
+      "primary_accuracy": 0.125
+    },
+    "multi_intent": {
+      "count": 8,
+      "primary_accuracy": 0.625
+    },
+    "oral": {
+      "count": 10,
+      "primary_accuracy": 0.5
+    }
+  },
+  "details": [
+    {
+      "id": "case_baseline_001",
+      "case_type": "baseline",
+      "expected": "退款进度",
+      "predicted": "退款进度",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_002",
+      "case_type": "baseline",
+      "expected": "退款进度",
+      "predicted": "退款进度",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_003",
+      "case_type": "baseline",
+      "expected": "退款金额咨询",
+      "predicted": "退款金额咨询",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_004",
+      "case_type": "baseline",
+      "expected": "退款失败",
+      "predicted": "退款进度",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_005",
+      "case_type": "baseline",
+      "expected": "商家拒绝退款",
+      "predicted": "退款进度",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_006",
+      "case_type": "baseline",
+      "expected": "超时取消追问",
+      "predicted": "配送异常追问",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_007",
+      "case_type": "baseline",
+      "expected": "接单后取消",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_008",
+      "case_type": "baseline",
+      "expected": "取餐后取消",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_009",
+      "case_type": "baseline",
+      "expected": "取消订单",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_010",
+      "case_type": "baseline",
+      "expected": "配送异常追问",
+      "predicted": "配送异常追问",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_011",
+      "case_type": "baseline",
+      "expected": "催单",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_012",
+      "case_type": "baseline",
+      "expected": "未收到餐",
+      "predicted": "未收到餐",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_013",
+      "case_type": "baseline",
+      "expected": "延误补偿",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_014",
+      "case_type": "baseline",
+      "expected": "地址修改追问",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_015",
+      "case_type": "baseline",
+      "expected": "餐品撒漏售后",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_016",
+      "case_type": "baseline",
+      "expected": "食品安全投诉",
+      "predicted": "食品安全投诉",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_017",
+      "case_type": "baseline",
+      "expected": "少送漏送",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_018",
+      "case_type": "baseline",
+      "expected": "错送餐品",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_019",
+      "case_type": "baseline",
+      "expected": "备注未满足",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_020",
+      "case_type": "baseline",
+      "expected": "骑手态度投诉",
+      "predicted": "骑手态度投诉",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_021",
+      "case_type": "baseline",
+      "expected": "商家电话咨询",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_022",
+      "case_type": "baseline",
+      "expected": "联系商家咨询",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_023",
+      "case_type": "baseline",
+      "expected": "私下收费风险",
+      "predicted": "私下收费风险",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_024",
+      "case_type": "baseline",
+      "expected": "隐私保护咨询",
+      "predicted": "隐私保护咨询",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_025",
+      "case_type": "baseline",
+      "expected": "验证码诈骗提醒",
+      "predicted": "验证码诈骗提醒",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_026",
+      "case_type": "baseline",
+      "expected": "优惠券不可用",
+      "predicted": "优惠券不可用",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_027",
+      "case_type": "baseline",
+      "expected": "满减未生效",
+      "predicted": "优惠券不可用",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_028",
+      "case_type": "baseline",
+      "expected": "优惠叠加咨询",
+      "predicted": "优惠券不可用",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_029",
+      "case_type": "baseline",
+      "expected": "支付超时取消",
+      "predicted": "配送异常追问",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_030",
+      "case_type": "baseline",
+      "expected": "发票开具咨询",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_031",
+      "case_type": "baseline",
+      "expected": "退款金额咨询",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "case_baseline_032",
+      "case_type": "baseline",
+      "expected": "催单",
+      "predicted": "配送异常追问",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_033",
+      "case_type": "baseline",
+      "expected": "地址修改追问",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_034",
+      "case_type": "baseline",
+      "expected": "备注未满足",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_035",
+      "case_type": "baseline",
+      "expected": "商家电话咨询",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_036",
+      "case_type": "baseline",
+      "expected": "退款金额咨询",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "case_baseline_037",
+      "case_type": "baseline",
+      "expected": "催单",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_038",
+      "case_type": "baseline",
+      "expected": "商家电话咨询",
+      "predicted": "隐私保护咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_039",
+      "case_type": "baseline",
+      "expected": "退款金额咨询",
+      "predicted": "退款金额咨询",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_040",
+      "case_type": "baseline",
+      "expected": "联系商家咨询",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_041",
+      "case_type": "baseline",
+      "expected": "隐私保护咨询",
+      "predicted": "隐私保护咨询",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_042",
+      "case_type": "baseline",
+      "expected": "备注未满足",
+      "predicted": "食品安全投诉",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_043",
+      "case_type": "baseline",
+      "expected": "配送异常追问",
+      "predicted": "配送异常追问",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "case_baseline_044",
+      "case_type": "baseline",
+      "expected": "未收到餐",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "case_baseline_045",
+      "case_type": "baseline",
+      "expected": "接单后取消",
+      "predicted": "退款金额咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "case_baseline_046",
+      "case_type": "baseline",
+      "expected": "备注未满足",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "refund_oral_001",
+      "case_type": "oral",
+      "expected": "退款进度",
+      "predicted": "退款进度",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "refund_oral_002",
+      "case_type": "oral",
+      "expected": "退款金额咨询",
+      "predicted": "退款金额咨询",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "delivery_oral_001",
+      "case_type": "oral",
+      "expected": "催单",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "delivery_oral_002",
+      "case_type": "oral",
+      "expected": "未收到餐",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "food_oral_001",
+      "case_type": "oral",
+      "expected": "餐品撒漏售后",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "food_oral_002",
+      "case_type": "oral",
+      "expected": "错送餐品",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "promo_oral_001",
+      "case_type": "oral",
+      "expected": "优惠券不可用",
+      "predicted": "优惠券不可用",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "complaint_oral_001",
+      "case_type": "oral",
+      "expected": "骑手态度投诉",
+      "predicted": "骑手态度投诉",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "safety_oral_001",
+      "case_type": "oral",
+      "expected": "验证码诈骗提醒",
+      "predicted": "验证码诈骗提醒",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "faq_oral_001",
+      "case_type": "oral",
+      "expected": "发票开具咨询",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "refund_long_001",
+      "case_type": "long_context",
+      "expected": "退款进度",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "refund_long_002",
+      "case_type": "long_context",
+      "expected": "退款金额咨询",
+      "predicted": "退款进度",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "delivery_long_001",
+      "case_type": "long_context",
+      "expected": "未收到餐",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "delivery_long_002",
+      "case_type": "long_context",
+      "expected": "延误补偿",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "address_long_001",
+      "case_type": "long_context",
+      "expected": "地址修改追问",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "food_long_001",
+      "case_type": "long_context",
+      "expected": "备注未满足",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "safety_long_001",
+      "case_type": "long_context",
+      "expected": "验证码诈骗提醒",
+      "predicted": "验证码诈骗提醒",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "promo_long_001",
+      "case_type": "long_context",
+      "expected": "满减未生效",
+      "predicted": "优惠券不可用",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "refund_multi_001",
+      "case_type": "multi_intent",
+      "expected": "退款进度",
+      "predicted": "退款进度",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "refund_multi_002",
+      "case_type": "multi_intent",
+      "expected": "退款金额咨询",
+      "predicted": "退款金额咨询",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "delivery_multi_001",
+      "case_type": "multi_intent",
+      "expected": "配送异常追问",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "food_multi_001",
+      "case_type": "multi_intent",
+      "expected": "餐品撒漏售后",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "food_multi_002",
+      "case_type": "multi_intent",
+      "expected": "错送餐品",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "promo_multi_001",
+      "case_type": "multi_intent",
+      "expected": "优惠券不可用",
+      "predicted": "优惠券不可用",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "safety_multi_001",
+      "case_type": "multi_intent",
+      "expected": "验证码诈骗提醒",
+      "predicted": "验证码诈骗提醒",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "complaint_multi_001",
+      "case_type": "multi_intent",
+      "expected": "骑手态度投诉",
+      "predicted": "骑手态度投诉",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "refund_boundary_001",
+      "case_type": "boundary_promise",
+      "expected": "退款进度",
+      "predicted": "退款进度",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "refund_boundary_002",
+      "case_type": "boundary_promise",
+      "expected": "退款进度",
+      "predicted": "退款进度",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "delivery_boundary_001",
+      "case_type": "boundary_promise",
+      "expected": "延误补偿",
+      "predicted": "配送异常追问",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "delivery_boundary_002",
+      "case_type": "boundary_promise",
+      "expected": "未收到餐",
+      "predicted": "退款金额咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "food_boundary_001",
+      "case_type": "boundary_promise",
+      "expected": "食品安全投诉",
+      "predicted": "食品安全投诉",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "food_boundary_002",
+      "case_type": "boundary_promise",
+      "expected": "少送漏送",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "promo_boundary_001",
+      "case_type": "boundary_promise",
+      "expected": "优惠券不可用",
+      "predicted": "优惠券不可用",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "cancel_boundary_001",
+      "case_type": "boundary_promise",
+      "expected": "接单后取消",
+      "predicted": "退款金额咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "complaint_boundary_001",
+      "case_type": "boundary_promise",
+      "expected": "骑手态度投诉",
+      "predicted": "骑手态度投诉",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "phone_induce_001",
+      "case_type": "inducement",
+      "expected": "商家电话咨询",
+      "predicted": "隐私保护咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "phone_induce_002",
+      "case_type": "inducement",
+      "expected": "商家电话咨询",
+      "predicted": "隐私保护咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "merchant_induce_001",
+      "case_type": "inducement",
+      "expected": "联系商家咨询",
+      "predicted": "私下收费风险",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    },
+    {
+      "id": "safety_induce_001",
+      "case_type": "inducement",
+      "expected": "私下收费风险",
+      "predicted": "私下收费风险",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "safety_induce_002",
+      "case_type": "inducement",
+      "expected": "验证码诈骗提醒",
+      "predicted": "验证码诈骗提醒",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "privacy_induce_001",
+      "case_type": "inducement",
+      "expected": "隐私保护咨询",
+      "predicted": "隐私保护咨询",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "refund_induce_001",
+      "case_type": "inducement",
+      "expected": "退款金额咨询",
+      "predicted": "退款金额咨询",
+      "correct": true,
+      "label_supported": true,
+      "failure_type": ""
+    },
+    {
+      "id": "food_induce_001",
+      "case_type": "inducement",
+      "expected": "食品安全投诉",
+      "predicted": "通用客服咨询",
+      "correct": false,
+      "label_supported": true,
+      "failure_type": "classification_mismatch"
+    },
+    {
+      "id": "cancel_induce_001",
+      "case_type": "inducement",
+      "expected": "接单后取消",
+      "predicted": "退款金额咨询",
+      "correct": false,
+      "label_supported": false,
+      "failure_type": "taxonomy_gap"
+    }
+  ],
+  "source_file": "data/chat_grounding_cases.jsonl",
+  "source_sha256": "27e115da31fc6c670cb9460b02c4b705921930f66250d75ab40f8db5eb7863e2",
+  "scope": "unchanged classifier; label audit only; no blind data"
+}

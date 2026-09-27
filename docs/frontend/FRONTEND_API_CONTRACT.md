@@ -1,6 +1,6 @@
 # 后端接口与字段契约（前端对齐用）
 
-> 生成时间：2026-09-25 21:09　|　来源：`main.app.openapi()`　|　生成器：`scripts/export_frontend_contract.py`
+> 生成时间：2026-09-25 22:11　|　来源：`main.app.openapi()`　|　生成器：`scripts/export_frontend_contract.py`
 >
 > **本文件是机器生成的，不要手改。** 后端接口变了，重跑一次脚本即可：
 >

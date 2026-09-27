@@ -32,6 +32,15 @@ reports/*
 !reports/execution_baseline/
 !reports/rag_ingestion_auth_review/
 !reports/retrieval_hybrid/
+!reports/retrieval_quality/
+reports/retrieval_quality/*
+!reports/retrieval_quality/20260927_summary.json
+!reports/retrieval_quality/20260927_provenance.json
+!reports/retrieval_quality/20260927_checks.txt
+!reports/retrieval_quality/20260927_faq_chunking.json
+!reports/retrieval_quality/20260927_faq_live.json
+!reports/retrieval_quality/20260927_intent_labels.json
+!reports/retrieval_quality/20260927_followup.json
 eval_outputs/
 tmp/
 output/pdf/

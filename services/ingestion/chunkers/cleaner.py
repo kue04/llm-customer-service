@@ -10,7 +10,7 @@
 
 三处刻意的保守取舍（方向已在任务级审查里标注）：
 
-* **重复段落只在 ``paragraph`` 类型上做整段去重**（不覆盖 list / table / code）：
+* **重复段落只在同一标题路径的 ``paragraph`` 上做整段去重**（不覆盖 list / table / code）：
   表格与列表重复出现往往是有意义的结构（同一张表在两个章节各出现一次），
   删掉会真的丢内容；而计划原文说的是「完全重复**段落**」；
 * **页眉页脚判定要求同一文本出现在 >= 3 个不同页码上**，
@@ -211,15 +211,17 @@ def clean_blocks(blocks: Sequence[Block], *, token_counter: TokenCounter) -> Cle
             continue
         after_headers.append(block)
 
-    # ---- 4) 完全重复段落（保留首次出现）
-    seen: set[str] = set()
+    # ---- 4) 同一标题上下文内的重复段落（保留首次出现）。
+    # FAQ 的不同问题可以有相同答案；跨标题删除会产生仅有问题的 chunk。
+    seen: set[tuple[tuple[str, ...], str]] = set()
     kept: list[Block] = []
     for block in after_headers:
         if block.type in DEDUP_BLOCK_TYPES:
-            if block.text in seen:
+            key = (block.heading_path, block.text)
+            if key in seen:
                 counters["dropped_duplicate"] = counters.get("dropped_duplicate", 0) + 1
                 continue
-            seen.add(block.text)
+            seen.add(key)
         kept.append(block)
 
     return CleanResult(

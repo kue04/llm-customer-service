@@ -1,6 +1,6 @@
 // 后端接口类型（由 scripts/export_frontend_contract.py 自动生成，请勿手改）
 //
-// 生成时间：2026-09-25 21:09
+// 生成时间：2026-09-25 22:11
 // 来源：main.app.openapi() → docs/frontend/openapi.json
 //
 // 用法：整体复制到前端 src/types/backendContract.ts，

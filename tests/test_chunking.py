@@ -683,6 +683,31 @@ class TestCleanBlocks:
         assert [item.text for item in result.blocks] == ["重复的话", "别的内容"]
         assert result.counters.dropped_duplicate == 1
 
+    def test_same_answer_under_different_questions_is_not_deleted(self):
+        answer = '售后审核进度请在订单售后详情页查看。'
+        first = ('售后流程', '审核一般要多久？')
+        second = ('售后流程', '提交售后后在哪里看审核进度？')
+        blocks = [para(answer, heading_path=first),
+                  para(answer, heading_path=second), para(answer, heading_path=second)]
+        result = clean_blocks(blocks, token_counter=WordTokenCounter())
+        assert [item.heading_path for item in result.blocks] == [first, second]
+        assert result.counters.dropped_duplicate == 1
+
+    def test_repeated_faq_answers_survive_real_markdown_parser_and_gate(self):
+        from services.ingestion.parser_registry import parse_document
+        from services.ingestion.parse_quality import evaluate
+
+        answer = '请到订单售后详情页查看。'
+        source = f'# 售后说明\n\n## 售后审核进度在哪里查询？\n\n{answer}\n\n## 退款审核进度在哪里查询？\n\n{answer}\n'
+        parsed = parse_document(source.encode('utf-8'), 'faq.md')
+        assert evaluate(parsed)['status'] == 'passed'
+        result = chunk_document(parsed, context=make_context(), config=word_config())
+        for question in ('售后审核进度在哪里查询？', '退款审核进度在哪里查询？'):
+            evidence = [item for item in result.chunks if item.heading_path[-1] == question]
+            assert evidence
+            assert all(answer in item.text for item in evidence)
+            assert all(item.metadata_json['chunker_version'] == '1.1' for item in evidence)
+
     @pytest.mark.parametrize("block_type", [BLOCK_LIST, BLOCK_TABLE, BLOCK_CODE, BLOCK_QUOTE])
     def test_exact_duplicates_are_only_removed_for_paragraphs(self, block_type):
         """刻意收窄：结构块重复出现往往是有意义的（同一张表在两个章节各出现一次）。"""

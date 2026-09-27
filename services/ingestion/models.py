@@ -64,7 +64,7 @@ INGESTION_STAGES: tuple[str, ...] = (
 )
 
 #: 任务状态
-JOB_STATUSES: tuple[str, ...] = ("pending", "running", "succeeded", "failed", "retrying", "cancelled")
+JOB_STATUSES: tuple[str, ...] = ("pending", "running", "succeeded", "failed", "retrying", "cancelled", "requires_review")
 
 #: 索引构建状态
 INDEX_BUILD_STATUSES: tuple[str, ...] = ("building", "active", "failed", "superseded", "rolled_back")
@@ -83,6 +83,7 @@ DOCUMENT_STATUSES: tuple[str, ...] = (
     "archived",
     "failed",
     "duplicate",
+    "requires_review",
 )
 
 NAMING_CONVENTION = {

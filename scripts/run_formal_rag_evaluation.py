@@ -12,7 +12,7 @@ from scripts.evaluate_chat_grounding import (
     load_formal_chunk_grounding_cases,
     summarize_grounding_reports,
 )
-from scripts.evaluate_formal_rag import aggregate_formal_report
+from scripts.evaluate_formal_rag import aggregate_formal_report, run_retrieval_quality
 from scripts.evaluate_hybrid_retrieval import (
     COLLOQUIAL_PATH,
     GOLD_PATH,
@@ -84,7 +84,15 @@ def main() -> int:
     parser.add_argument("--tenant-id", default="tenant-dev")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--output-dir", type=Path, default=Path("reports/formal_rag"))
+    parser.add_argument('--quality-snapshot', type=Path)
+    parser.add_argument('--quality-output', type=Path)
+    parser.add_argument('--candidate-cases', type=Path)
     args = parser.parse_args()
+    if args.quality_snapshot:
+        if args.quality_output is None:
+            parser.error('--quality-snapshot requires --quality-output')
+        run_retrieval_quality(args.quality_snapshot, args.quality_output, args.candidate_cases)
+        return 0
     report = run_formal_evaluation(args.tenant_id, args.top_k)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     output = args.output_dir / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"

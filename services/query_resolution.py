@@ -83,13 +83,30 @@ class SubQueryPlan:
 
 
 def _split_hop_text(query: str) -> list[str]:
-    parts = [part.strip(" ：:！？!? \t") for part in re.split(
-        r"(?:[，,；;。！？!?]|并且|同时|另外|然后|之后|以及|还要)", query
-    ) if part.strip(" ：:！？!? \t")]
+    question_markers = ("为什么", "怎么", "多久", "什么时候", "找谁", "怎么办", "是否", "能不能", "应该",
+                        "如何", "哪些", "什么", "几天", "吗", "能否")
+
+    def is_question(text: str) -> bool:
+        return any(marker in text for marker in question_markers)
+
+    parts = []
+    # Sentence boundaries separate complete questions; conjunctions may instead
+    # join objects ("支付方式以及优惠券") or a condition and its question.
+    for sentence in re.split(r'[。！？!?；;]', query):
+        sentence = sentence.strip(' ：: \t')
+        if not sentence:
+            continue
+        fragments = [part.strip(' ：: \t') for part in re.split(
+            r'(?:[，,]|并且|同时|另外|然后|之后|以及|还要)', sentence
+        ) if part.strip(' ：: \t')]
+        parts.extend(fragments if len(fragments) > 1 and all(map(is_question, fragments)) else [sentence])
     if len(parts) < 2 or len(parts) > 4:
         return []
-    question_markers = ("为什么", "怎么", "多久", "什么时候", "找谁", "怎么办", "是否", "能不能", "应该")
-    if not any(marker in part for part in parts for marker in question_markers):
+    # A comma often separates a condition from its question. Retrieving
+    # "订单拒收后" and "退款什么时候返还" independently loses the condition
+    # and discards the original-query fallback in retrieve_with_query_plan.
+    # Split only when every fragment is independently interrogative.
+    if not all(map(is_question, parts)):
         return []
     return parts
 

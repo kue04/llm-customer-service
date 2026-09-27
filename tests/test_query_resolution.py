@@ -14,6 +14,26 @@ from services.query_rewrite_provider import rewrite_query
 
 
 class QueryResolutionTest(unittest.TestCase):
+    def test_single_question_keeps_its_comma_separated_condition(self) -> None:
+        for query in (
+            '订单拒收后，退款什么时候返还？',
+            '用卡付的钱，开票时抬头应该写谁',
+            '东西送到门口再给钱，能不能刷银行卡',
+        ):
+            with self.subTest(query=query):
+                plan = resolve_query(query, {'primary_intent': '退款进度'})
+                self.assertEqual(plan.sub_queries, [])
+                self.assertIn(query, plan.retrieval_queries)
+
+    def test_two_independent_questions_still_decompose(self) -> None:
+        plan = resolve_query('退款什么时候到账？优惠券为什么不能用？')
+        self.assertEqual(len(plan.sub_queries), 2)
+
+    def test_object_conjunction_does_not_erase_separate_questions(self) -> None:
+        plan = resolve_query('订单拒收后退款什么时候返还？京品加油支持哪些支付方式以及优惠券？')
+        self.assertEqual(len(plan.sub_queries), 2)
+        self.assertEqual(plan.sub_queries[1]['query'], '京品加油支持哪些支付方式以及优惠券')
+
     def test_normalization_is_conservative(self) -> None:
         self.assertEqual(normalize_query("  退款咋办？  "), "退款怎么办")
         self.assertEqual(normalize_query("我想退钱，钱还没回来"), "我想退款，退款未到账")

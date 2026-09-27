@@ -714,23 +714,83 @@ class TestWarningsAndEmptyDocuments:
         assert version.metadata_json[CHUNKING_METADATA_KEY]["stats"]["child_count"] > 0
         assert [item["code"] for item in outcome.warnings] == ["no_text_layer"]
 
-    def test_empty_document_publishes_without_an_index(self, harness):
+    def test_empty_document_requires_review_without_an_index(self, harness):
         harness.parser = FakeParser(blocks=[Block(type=BLOCK_IMAGE, image_ref="a.png")])
         job, document = harness.upload()
 
         outcome = harness.run(job)
 
-        assert outcome.succeeded, outcome.to_dict()
+        assert outcome.status == "requires_review", outcome.to_dict()
         assert outcome.chunk_count == 0
         assert outcome.index_switched is False
         version = harness.versions(document)[0]
-        assert version.status == "published"
+        assert version.status == "requires_review"
+        assert version.metadata_json["parse_quality"]["reasons"] == ["empty_text"]
         with pytest.raises(index_manifest.IndexManifestError):
             index_manifest.read_pointer(harness.index_root, INDEX_NAME)
         assert harness.active_builds() == []
 
 
 # ================================================================ 7. worker
+
+
+class TestParseQualityQuarantine:
+    @pytest.mark.parametrize("data", [b"   ", ("�" * 100).encode(),
+                                     (("这是一段错误重复提取的内容，需要工作人员检查具体解析流程。\n\n") * 8).encode(),
+                                     b"# Heading only"])
+    def test_real_parser_retry_and_duplicate_cannot_publish(self, harness, data):
+        job, doc = harness.upload(data=data)
+        first = harness.run(job)
+        assert first.status == "requires_review", first.to_dict()
+        version = harness.versions(doc)[0]
+        assert version.metadata_json["parse_quality"]["status"] == "requires_review"
+        assert doc.status == "requires_review"
+        assert harness.chunks_of(version) == []
+        assert harness.run(job).status == "requires_review"
+        reprocess, _ = harness.upload(data=data)
+        assert harness.run(reprocess).status == "requires_review"
+        duplicate, other = harness.upload(filename="duplicate.md", data=data)
+        assert harness.run(duplicate).status == "requires_review"
+        assert other.status == "requires_review"
+        assert len(harness.versions(doc)) == 1
+        assert harness.versions(other) == []
+        assert harness.active_builds() == []
+
+    def test_bad_new_version_preserves_published_version_and_index(self, harness):
+        _, doc, _ = harness.run_to_success()
+        before = {str(p): p.read_bytes() for p in harness.index_root.rglob("*") if p.is_file()}
+        old = harness.versions(doc)[0]
+        job, _ = harness.upload(document=doc, data=("�" * 100).encode())
+        assert harness.run(job).status == "requires_review"
+        assert doc.status == "published" and old.status == "published"
+        assert before == {str(p): p.read_bytes() for p in harness.index_root.rglob("*") if p.is_file()}
+        assert {v.id for _, v, _ in repository.list_indexable_chunks(harness.session, TENANT)} == {old.id}
+
+    def test_late_retry_checks_quality_and_rebuild_excludes_stale_chunks(self, harness):
+        def fail_index(*args, **kwargs):
+            raise IndexBuildError("embedding_unavailable", "offline")
+
+        job, doc = harness.upload()
+        assert harness.run(job, index_runner=fail_index).failed
+        version = harness.versions(doc)[0]
+        assert harness.chunks_of(version)
+        outcome = harness.run(job, parser=FakeParser(blocks=[]))
+        assert outcome.status == "requires_review"
+        assert version.status == "requires_review"
+        # Explicit statuses and all-tenants rebuild cannot bypass quarantine.
+        assert repository.list_indexable_chunks(harness.session, TENANT,
+            version_statuses=("requires_review",), all_tenants=True) == []
+        # Stale status alone cannot release a previously rejected quality result.
+        version.status = "chunked"
+        harness.session.commit()
+        assert repository.list_indexable_chunks(harness.session, TENANT) == []
+        from services.ingestion.index_builder import rebuild_index
+        rebuilt = rebuild_index(harness.session, tenant_id=TENANT, root=harness.index_root,
+                                embedder=fake_embedding, embedding_model=EMBEDDING_MODEL)
+        assert rebuilt.skipped and not rebuilt.switched
+        assert harness.run(job).status == "requires_review"
+
+
 
 
 class RecordingQueue(InMemoryIngestionQueue):

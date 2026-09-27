@@ -76,7 +76,7 @@ from .tokenizer import TokenCounter, get_token_counter
 #: 切分器实现版本。**切分行为变化时必须提升**，并写进 chunk metadata，
 #: 这样以后能识别「同一份文件的旧切分结果」，为增量重建索引提供依据
 #: （与解析器 ``parser_version`` 同一思路，见踩坑 B7）。
-CHUNKER_VERSION = "1.0"
+CHUNKER_VERSION = "1.1"
 
 #: 单元类型
 UNIT_PARAGRAPH = "paragraph"
